@@ -9,6 +9,7 @@ from robot.vision import (
     VisionStatus,
     VISION_EXPRESSION_STABLE,
     VISION_FACE_LOST,
+    VISION_FACE_POSITION,
 )
 
 
@@ -125,6 +126,26 @@ def test_face_lost_is_published_after_a_previously_detected_face():
     result, published = asyncio.run(exercise())
     assert result.status is VisionStatus.NO_FACE
     assert published == [VISION_FACE_LOST]
+
+
+def test_detected_face_position_is_published_without_expression_configuration():
+    async def exercise():
+        events = EventBus()
+        published = []
+        events.subscribe(VISION_FACE_POSITION, lambda event: published.append(event.data))
+        pipeline = VisionPipeline(
+            FakeCamera(),
+            FakeFaceDetector([FaceRegion(400, 120, 80, 120)]),
+            None,
+            None,
+            events=events,
+        )
+        result = await pipeline.process_once(timestamp=0.0)
+        return result, published
+
+    result, published = asyncio.run(exercise())
+    assert result.status is VisionStatus.FACE_DETECTED
+    assert published == [{"face_position": {"x": 0.375, "y": -0.25}}]
 
 
 def test_smoother_requires_consistent_timely_observations():

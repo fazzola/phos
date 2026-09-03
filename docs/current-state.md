@@ -30,7 +30,10 @@ This file is an implementation handoff for coding agents. It records what is pre
 - `VisionPipeline` rate-limits detection and expression inference independently and publishes stable-expression / face-lost events.
 - Temporal expression smoothing is present.
 - A concrete lightweight ONNX expression model is not selected/bundled; model path/labels/preprocessing remain configuration concerns.
-- Face-position tracking into gaze is not yet the documented verified milestone: current Vision events focus on stable expression and face loss.
+- Face-position tracking is implemented: Vision publishes normalized largest-face
+  position events, and `BehaviorEngine` smoothly maps them into bounded
+  `FaceState` pupil targets. Hardware verification on the Pi Camera/display is
+  still required.
 
 ### AI
 - Provider-neutral `LLMProvider` contract and `RobotAgent` skeleton exist.
@@ -47,14 +50,16 @@ This file is an implementation handoff for coding agents. It records what is pre
 
 ## Current development priority
 
-The next priority is **not adding more subsystems**. Verify the existing eye milestone concretely:
-1. run the standalone eye demo;
-2. verify neutral/happy/curious/surprised/sleepy visual states;
-3. verify blink, smooth transitions and bounded pupil motion;
-4. verify startup/shutdown on the Raspberry Pi 3 and real 800x600 display;
-5. record any display/backend issues before proceeding.
+The current priority is to verify the completed face-tracking implementation
+on target hardware:
+1. run `python3 src/robot/main.py --face-tracking` with the Pi Camera;
+2. verify the pupils follow the largest visible face smoothly and remain bounded;
+3. verify face loss returns PHOS to idle gaze;
+4. verify startup/shutdown and CPU use on the Raspberry Pi 3 and real 800x600 display;
+5. record camera/display/backend issues before proceeding.
 
-After M1 is verified, move to face-position tracking (M2). Existing expression/runtime code may remain in place but should not be expanded until the preceding runnable milestone is stable.
+Do not enable or expand expression reactions while verifying this face-tracking
+milestone. Existing expression/runtime code remains separate.
 
 ## Known verification note
 

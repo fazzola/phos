@@ -17,6 +17,7 @@ from .state import RobotState
 
 VISION_EXPRESSION_STABLE = "vision.visual_expression_stable"
 VISION_FACE_LOST = "vision.face_lost"
+VISION_FACE_POSITION = "vision.face_position"
 
 
 class BehaviorEngine(Behavior):
@@ -30,20 +31,25 @@ class BehaviorEngine(Behavior):
         *,
         blink_interval: tuple[float, float] = (3.5, 6.5),
         gaze_interval: tuple[float, float] = (2.5, 5.5),
+        face_gaze_smoothing: float = 0.35,
     ) -> None:
         if blink_interval[0] <= 0 or blink_interval[1] < blink_interval[0]:
             raise ValueError("Blink interval must contain positive ascending values.")
         if gaze_interval[0] <= 0 or gaze_interval[1] < gaze_interval[0]:
             raise ValueError("Gaze interval must contain positive ascending values.")
+        if not 0.0 < face_gaze_smoothing <= 1.0:
+            raise ValueError("face_gaze_smoothing must be between zero and one.")
         self._events = events
         self._blink_interval = blink_interval
         self._gaze_interval = gaze_interval
+        self._face_gaze_smoothing = face_gaze_smoothing
         self._state = FaceState()
         self._robot_state = RobotState.IDLE
         self._blink_phase = BlinkPhase.OPEN
         self._blink_started_at = 0.0
         self._next_blink_at = 0.0
         self._next_gaze_at = 0.0
+        self._face_is_tracked = False
         self._unsubscribers: list[Callable[[], None]] = []
         self._task: Optional[asyncio.Task[None]] = None
 
@@ -61,6 +67,7 @@ class BehaviorEngine(Behavior):
         self._unsubscribers = [
             self._events.subscribe(STATE_CHANGED, self._on_robot_state),
             self._events.subscribe(VISION_EXPRESSION_STABLE, self._on_visual_expression),
+            self._events.subscribe(VISION_FACE_POSITION, self._on_face_position),
             self._events.subscribe(VISION_FACE_LOST, self._on_face_lost),
         ]
         now = time.monotonic()
@@ -115,13 +122,32 @@ class BehaviorEngine(Behavior):
             )
 
     async def _on_face_lost(self, event: Event) -> None:
+        self._face_is_tracked = False
         self._state = _face_state_for_robot_state(self._robot_state)
+
+    async def _on_face_position(self, event: Event) -> None:
+        payload = event.data.get("face_position", {})
+        try:
+            x = _clamp_unit(float(payload["x"]))
+            y = _clamp_unit(float(payload["y"]))
+        except (KeyError, TypeError, ValueError):
+            return
+        self._face_is_tracked = True
+        if self._robot_state is not RobotState.IDLE:
+            return
+        target_x = x * 0.65
+        target_y = y * 0.45
+        self._state = replace(
+            self._state,
+            pupil_x=_smooth(self._state.pupil_x, target_x, self._face_gaze_smoothing),
+            pupil_y=_smooth(self._state.pupil_y, target_y, self._face_gaze_smoothing),
+        )
 
     async def _animation_loop(self) -> None:
         while True:
             now = time.monotonic()
             self._advance_blink(now)
-            if self._robot_state is RobotState.IDLE and now >= self._next_gaze_at:
+            if self._robot_state is RobotState.IDLE and not self._face_is_tracked and now >= self._next_gaze_at:
                 pupil_x, pupil_y = random.choice(_IDLE_GAZE_OFFSETS)
                 self._state = replace(self._state, pupil_x=pupil_x, pupil_y=pupil_y)
                 self._next_gaze_at = now + random.uniform(*self._gaze_interval)
@@ -174,3 +200,11 @@ _IDLE_GAZE_OFFSETS = (
     (-0.25, -0.15),
     (0.25, -0.15),
 )
+
+
+def _clamp_unit(value: float) -> float:
+    return max(-1.0, min(value, 1.0))
+
+
+def _smooth(current: float, target: float, amount: float) -> float:
+    return current + (target - current) * amount

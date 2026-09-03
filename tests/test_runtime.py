@@ -83,6 +83,19 @@ def make_vision(events, camera, *, faces=None, observation=None):
     )
 
 
+def make_face_tracking(events, camera, *, faces=None):
+    return VisionPipeline(
+        camera,
+        FakeFaceDetector([FaceRegion(440, 120, 80, 120)] if faces is None else faces),
+        None,
+        None,
+        events=events,
+        capture_interval_seconds=0.002,
+        detection_interval_seconds=0.002,
+        expression_interval_seconds=0.002,
+    )
+
+
 def test_runtime_starts_and_stops_vision_camera_and_display():
     async def exercise():
         camera = FakeCamera()
@@ -97,6 +110,16 @@ def test_runtime_starts_and_stops_vision_camera_and_display():
     assert not runtime.core.is_running
     assert camera.started and camera.stopped
     assert display.frames
+
+
+def test_face_tracking_config_builds_camera_pipeline_without_expression_model():
+    runtime = build_runtime(
+        config=RuntimeConfig(face_tracking_enabled=True),
+        eye_display=MemoryEyeDisplay(),
+    )
+
+    assert runtime._vision_pipeline is not None
+    assert runtime._vision_pipeline._expression_provider is None
 
 
 def test_stable_vision_observation_reaches_behavior_engine_and_renderer():
@@ -115,6 +138,26 @@ def test_stable_vision_observation_reaches_behavior_engine_and_renderer():
     state, display = asyncio.run(exercise())
     assert state.expression is FaceExpression.HAPPY
     assert state.reaction_strength == 0.9
+    assert len(display.frames) >= 2
+
+
+def test_face_tracking_reaches_behavior_engine_without_expression_reactions():
+    async def exercise():
+        display = MemoryEyeDisplay()
+        runtime = build_runtime(
+            eye_display=display,
+            vision_factory=lambda events: make_face_tracking(events, FakeCamera()),
+        )
+        await runtime.start()
+        await asyncio.sleep(0.05)
+        state = runtime._behavior_engine.face_state
+        await runtime.stop()
+        return state, display
+
+    state, display = asyncio.run(exercise())
+    assert state.expression is FaceExpression.NEUTRAL
+    assert state.pupil_x > 0.3
+    assert state.pupil_y < -0.1
     assert len(display.frames) >= 2
 
 
