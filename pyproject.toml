@@ -1,0 +1,19 @@
+[project]
+name = "phos-robot"
+version = "0.1.0"
+description = "Modular personal robot for Raspberry Pi"
+requires-python = ">=3.9"
+
+[project.optional-dependencies]
+vision = [
+    "opencv-python-headless>=4.8",
+    "picamera2>=0.3",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
