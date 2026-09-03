@@ -30,11 +30,11 @@ Existing foundation:
 - [x] camera abstraction
 - [x] Picamera2 adapter present
 - [x] face detector abstraction/implementation present
+- [x] publish provider-neutral normalized face position
+- [x] map position through BehaviorEngine/FaceState with bounded smoothing
 
 Milestone work/verification:
 - [ ] confirm Pi Camera works on target hardware
-- [ ] publish/use provider-neutral face position or attention target
-- [ ] map face position through BehaviorEngine/FaceState, not directly to renderer
 - [ ] verify subtle bounded/smoothed pupil tracking
 - [ ] verify face loss returns PHOS to idle behavior
 

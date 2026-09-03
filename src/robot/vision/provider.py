@@ -22,6 +22,14 @@ class FaceRegion:
 
 
 @dataclass(frozen=True)
+class FacePosition:
+    """The center of a detected face, normalized to the camera frame."""
+
+    x: float
+    y: float
+
+
+@dataclass(frozen=True)
 class ExpressionObservation:
     """One uncertain classification of visible facial features."""
 

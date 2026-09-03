@@ -18,15 +18,9 @@ Raspberry Pi Camera
         |
         v
    FaceDetector
+        +--> normalized face position --> Robot Core --> BehaviorEngine --> FaceState
         |
-        v
- ExpressionProvider
-        |
-        v
- temporal smoothing
-        |
-        v
-    Robot Core
+        +--> ExpressionProvider --> temporal smoothing --> Robot Core
 ```
 
 ## CameraProvider
@@ -120,13 +114,22 @@ Simple UI/behavior reactions should be possible without involving the LLM.
 ## Initial implementation
 
 `VisionPipeline` is the lifecycle-managed service implementing this flow. It
-captures RGB frames in memory, rate-limits Haar face detection and ONNX
-expression inference independently, then publishes only stable observations as
-`vision.visual_expression_stable`. The event payload contains
-`visual_expression.label`, `confidence`, and `observed_for_ms`; it does not
+captures RGB frames in memory and rate-limits Haar face detection. For every
+detection interval with a face, it publishes `vision.face_position`, whose
+`face_position.x` and `face_position.y` are the detected face center normalized
+to `[-1, 1]` in camera coordinates. Vision does not choose pupil geometry;
+`BehaviorEngine` clamps and smooths that provider-neutral attention input into
+`FaceState`. When a face is lost, Vision publishes `vision.face_lost`.
+
+Expression inference remains optional and independently rate-limited. When it
+is configured, the pipeline publishes stable observations as
+`vision.visual_expression_stable`; its payload contains
+`visual_expression.label`, `confidence`, and `observed_for_ms` and does not
 make a claim about internal emotional state.
 
-The default Pi adapter uses `Picamera2CameraProvider` at 640x480. Install
-optional vision dependencies with `pip install '.[vision]'`; the ONNX model is
-external and its path, labels, input size, and preprocessing must be supplied
-when constructing `OpenCVExpressionProvider`.
+The default Pi adapter uses `Picamera2CameraProvider` at 640x480. Install the
+Pi Camera and OpenCV dependencies using the Raspberry Pi OS instructions in
+`docs/installation.md`; the ONNX model is external and its path, labels, input
+size, and preprocessing must be supplied when constructing
+`OpenCVExpressionProvider`. Face tracking alone needs no ONNX model: start it
+with `python3 src/robot/main.py --face-tracking`.

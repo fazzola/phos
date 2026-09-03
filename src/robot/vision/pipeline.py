@@ -10,11 +10,12 @@ from typing import Any, Optional
 
 from robot.core import Behavior, Event, EventBus
 
-from .provider import CameraProvider, ExpressionProvider, FaceDetector, FaceRegion, VisualExpression
+from .provider import CameraProvider, ExpressionProvider, FaceDetector, FacePosition, FaceRegion, VisualExpression
 from .smoother import ExpressionSmoother
 
 VISION_EXPRESSION_STABLE = "vision.visual_expression_stable"
 VISION_FACE_LOST = "vision.face_lost"
+VISION_FACE_POSITION = "vision.face_position"
 
 
 class VisionStatus(str, Enum):
@@ -23,6 +24,7 @@ class VisionStatus(str, Enum):
     LOW_CONFIDENCE = "low_confidence"
     UNSTABLE = "unstable"
     STABLE = "stable"
+    FACE_DETECTED = "face_detected"
 
 
 @dataclass(frozen=True)
@@ -40,8 +42,8 @@ class VisionPipeline(Behavior):
         self,
         camera: CameraProvider,
         face_detector: FaceDetector,
-        expression_provider: ExpressionProvider,
-        smoother: ExpressionSmoother,
+        expression_provider: Optional[ExpressionProvider],
+        smoother: Optional[ExpressionSmoother],
         *,
         events: Optional[EventBus] = None,
         capture_interval_seconds: float = 1.0 / 15.0,
@@ -55,6 +57,8 @@ class VisionPipeline(Behavior):
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be positive.")
+        if (expression_provider is None) != (smoother is None):
+            raise ValueError("expression_provider and smoother must be configured together.")
         self._camera = camera
         self._face_detector = face_detector
         self._expression_provider = expression_provider
@@ -105,7 +109,8 @@ class VisionPipeline(Behavior):
         faces = await self._face_detector.detect(frame)
         face = _select_largest_face(faces)
         if face is None:
-            self._smoother.reset()
+            if self._smoother is not None:
+                self._smoother.reset()
             self._last_published_label = None
             if self._face_present and self._events is not None:
                 await self._events.publish(Event(VISION_FACE_LOST))
@@ -113,6 +118,13 @@ class VisionPipeline(Behavior):
             return VisionResult(VisionStatus.NO_FACE)
 
         self._face_present = True
+        if self._events is not None:
+            position = face_position(frame, face)
+            await self._events.publish(
+                Event(VISION_FACE_POSITION, {"face_position": {"x": position.x, "y": position.y}})
+            )
+        if self._expression_provider is None or self._smoother is None:
+            return VisionResult(VisionStatus.FACE_DETECTED)
         if now < self._next_expression_at:
             return VisionResult(VisionStatus.NOT_DUE)
         self._next_expression_at = now + self._expression_interval
@@ -167,3 +179,23 @@ def crop_face(frame: Any, face: FaceRegion) -> Optional[Any]:
     if left >= right or top >= bottom:
         return None
     return frame[top:bottom, left:right]
+
+
+def face_position(frame: Any, face: FaceRegion) -> FacePosition:
+    """Map a detected face center to bounded, UI-neutral camera coordinates."""
+    shape = getattr(frame, "shape", None)
+    if not shape or len(shape) < 2:
+        raise ValueError("Camera frames must expose image-like shape information.")
+    frame_height, frame_width = int(shape[0]), int(shape[1])
+    if frame_width <= 0 or frame_height <= 0:
+        raise ValueError("Camera frame dimensions must be positive.")
+    center_x = face.x + face.width / 2
+    center_y = face.y + face.height / 2
+    return FacePosition(
+        x=_clamp_unit(center_x / (frame_width / 2) - 1.0),
+        y=_clamp_unit(center_y / (frame_height / 2) - 1.0),
+    )
+
+
+def _clamp_unit(value: float) -> float:
+    return max(-1.0, min(value, 1.0))

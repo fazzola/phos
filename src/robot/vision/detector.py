@@ -8,6 +8,9 @@ from typing import Any, Optional, Sequence, Tuple
 
 from .provider import FaceDetector, FaceRegion
 
+_CASCADE_FILENAME = "haarcascade_frontalface_default.xml"
+_RASPBERRY_PI_CASCADE_PATH = Path("/usr/share/opencv4/haarcascades") / _CASCADE_FILENAME
+
 
 class OpenCVFaceDetector(FaceDetector):
     """Low-cost Haar Cascade face detector suitable for Raspberry Pi 3."""
@@ -52,10 +55,19 @@ class OpenCVFaceDetector(FaceDetector):
         except ImportError as error:
             raise RuntimeError("OpenCV is required for face detection.") from error
 
-        path = self._cascade_path or Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
+        path = self._cascade_path or _default_cascade_path(cv2)
         cascade = cv2.CascadeClassifier(str(path))
         if cascade.empty():
             raise RuntimeError("Could not load the configured OpenCV Haar Cascade.")
         self._cv2 = cv2
         self._cascade = cascade
         return cv2, cascade
+
+
+def _default_cascade_path(cv2: Any) -> Path:
+    """Use OpenCV's bundled data when available, else Raspberry Pi OS data."""
+    data = getattr(cv2, "data", None)
+    haarcascades = getattr(data, "haarcascades", None)
+    if haarcascades:
+        return Path(haarcascades) / _CASCADE_FILENAME
+    return _RASPBERRY_PI_CASCADE_PATH

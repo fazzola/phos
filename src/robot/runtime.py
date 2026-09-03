@@ -28,6 +28,7 @@ class RuntimeConfig:
 
     display_fps: int = 30
     fullscreen: bool = True
+    face_tracking_enabled: bool = False
     camera_resolution: Tuple[int, int] = (640, 480)
     vision_capture_fps: float = 15.0
     face_detection_fps: float = 4.0
@@ -50,7 +51,7 @@ class RuntimeConfig:
 
     @property
     def vision_enabled(self) -> bool:
-        return self.expression_model_path is not None
+        return self.face_tracking_enabled or self.expression_model_path is not None
 
 
 class PhosRuntime:
@@ -182,15 +183,20 @@ def build_runtime(
 def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optional[VisionPipeline]:
     if not config.vision_enabled:
         return None
-    return VisionPipeline(
-        Picamera2CameraProvider(config.camera_resolution),
-        OpenCVFaceDetector(),
-        OpenCVExpressionProvider(
+    expression_provider = None
+    smoother = None
+    if config.expression_model_path is not None:
+        expression_provider = OpenCVExpressionProvider(
             config.expression_model_path,
             config.expression_labels,
             input_size=config.expression_input_size,
-        ),
-        ExpressionSmoother(),
+        )
+        smoother = ExpressionSmoother()
+    return VisionPipeline(
+        Picamera2CameraProvider(config.camera_resolution),
+        OpenCVFaceDetector(),
+        expression_provider,
+        smoother,
         events=events,
         capture_interval_seconds=1.0 / config.vision_capture_fps,
         detection_interval_seconds=1.0 / config.face_detection_fps,

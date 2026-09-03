@@ -37,9 +37,18 @@ loop in a fullscreen Tkinter window on the HDMI display. Press `Ctrl+C` to
 shut PHOS down cleanly; press `Escape` to leave fullscreen mode. Run it from a
 graphical Raspberry Pi OS desktop session.
 
-Vision starts when `RuntimeConfig` is given an ONNX model path and matching
-model labels. Without those model-specific settings, PHOS runs in development
-mode without camera access.
+Enable the completed face-tracking milestone with the Pi Camera connected:
+
+```bash
+python3 src/robot/main.py --face-tracking
+```
+
+This uses Picamera2 plus the OpenCV Haar detector at 640×480 and moves the
+pupils toward the largest detected face. It does not require or run an ONNX
+expression model. Follow [the Raspberry Pi installation guide](docs/installation.md)
+to install the camera and OpenCV dependencies. Without `--face-tracking`,
+PHOS runs without camera access. Expression classification remains separately
+configured in code and is not enabled by this command.
 
 ## Eye demo
 
