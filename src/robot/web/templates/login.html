@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="account"><h2>Administrator login</h2>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
+<button>Log in</button></form></section>
+{% endblock %}
