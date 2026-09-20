@@ -31,15 +31,17 @@ class FacePosition:
 
 @dataclass(frozen=True)
 class ExpressionObservation:
-    """One uncertain classification of visible facial features."""
+    """Raw model output; labelled probabilities enable semantic abstention."""
 
     label: str
     confidence: float
+    probabilities: Tuple[Tuple[str, float], ...] = ()
+    sampled_at: Optional[float] = None  # cached providers retain the original capture time
 
 
 @dataclass(frozen=True)
 class VisualExpression:
-    """A temporally stable, uncertain observation of a visible expression."""
+    """A confirmed semantic observation, or explicit UNKNOWN abstention."""
 
     label: str
     confidence: float
@@ -72,6 +74,12 @@ class FaceDetector(ABC):
 
 class ExpressionProvider(ABC):
     """Classify visible features in a cropped face image."""
+
+    def invalidate(self) -> None:
+        """Discard evidence when local selection loses continuity."""
+
+    async def close(self) -> None:
+        """Drain background work during shutdown, if any."""
 
     @abstractmethod
     async def classify(self, face_crop: Any) -> Optional[ExpressionObservation]:

@@ -1,0 +1,11 @@
+{
+  "expression_provider": "aws",
+  "cloud_expression": {
+    "cooldown_seconds": 30,
+    "stable_seconds": 1,
+    "refresh_seconds": 60,
+    "cache_ttl_seconds": 90,
+    "max_requests_per_minute": 2,
+    "max_requests_per_session": 0
+  }
+}

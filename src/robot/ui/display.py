@@ -85,7 +85,7 @@ class TkEyeDisplay(EyeDisplay):
         self._canvas.delete("all")
         self._canvas.configure(background=frame.background)
         for eye in frame.eyes:
-            self._draw_eye(eye)
+            self._draw_eye(eye, frame)
 
     def poll_keys(self) -> List[str]:
         if self._root is not None:
@@ -105,7 +105,7 @@ class TkEyeDisplay(EyeDisplay):
         self._canvas = None
         self._tk = None
 
-    def _draw_eye(self, eye: EyeGeometry) -> None:
+    def _draw_eye(self, eye: EyeGeometry, frame: EyeFrame) -> None:
         if eye.closed:
             self._canvas.create_arc(
                 eye.center_x - eye.radius_x,
@@ -115,7 +115,7 @@ class TkEyeDisplay(EyeDisplay):
                 start=200,
                 extent=140,
                 style=self._tk.ARC,
-                outline="#FFFFFF",
+                outline=frame.eye_color,
                 width=12,
             )
             return
@@ -124,7 +124,7 @@ class TkEyeDisplay(EyeDisplay):
             eye.center_y - eye.radius_y,
             eye.center_x + eye.radius_x,
             eye.center_y + eye.radius_y,
-            fill="#FFFFFF",
+            fill=frame.eye_color,
             outline="",
         )
         self._canvas.create_oval(
@@ -132,7 +132,7 @@ class TkEyeDisplay(EyeDisplay):
             eye.pupil_y - eye.pupil_radius,
             eye.pupil_x + eye.pupil_radius,
             eye.pupil_y + eye.pupil_radius,
-            fill="#14202D",
+            fill=frame.pupil_color,
             outline="",
         )
         highlight = eye.pupil_radius * 0.25

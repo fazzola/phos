@@ -108,3 +108,19 @@ Code that already exists ahead of the currently verified milestone is preserved,
 The reusable coding-agent skill is project-neutral and contains only implementation workflow. PHOS-specific facts, hardware constraints, architecture, milestone order and subsystem rules live in this repository through hierarchical `AGENTS.md` files and `docs/`.
 
 The project does not require a PHOS-specific skill.
+
+## ADR-014 — Optional cloud facial-expression adapter
+
+**Status:** Accepted (explicitly requested extension of ADR-007).
+
+Keep local ONNX as default and add selectable AWS Rekognition behind the existing
+ExpressionProvider. Capture, tracking, selection and cropping stay local; only
+selected stable crops leave the Pi when AWS is explicitly selected. Cloud work
+is single-flight, asynchronous, rate-limited and cached with expiry/backoff;
+there is no implicit fallback. Cached reads are not independent temporal evidence.
+The existing semantic/behavior/UI boundaries remain unchanged. This extends
+ADR-007's local baseline without replacing it. See Vision for policy and privacy.
+
+Normal settings belong to RuntimeConfig and must be reusable by a future web
+configuration layer. Secrets stay outside application settings in standard AWS
+credential resolution. No web interface is part of this change.
