@@ -1,6 +1,9 @@
-# PHOS - Raspberry Pi Robot
+# PHOS 1.0.0 — Raspberry Pi Robot
 
-Personal modular robot project targeting Raspberry Pi 3.
+Modular robot targeting Raspberry Pi 3. Version 1.0.0 includes animated eyes,
+face tracking, local/AWS expression observations and authenticated configuration
+administration. See the [release scope and limitations](docs/release-1.0.0.md),
+[installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
 ## Current hardware
 - Raspberry Pi 3
@@ -22,14 +25,15 @@ Personal modular robot project targeting Raspberry Pi 3.
 4. Read `docs/roadmap.md`
 5. Read `docs/decisions.md`
 
-The `src/` tree is intentionally lightweight at the beginning. Add modules only when the feature requires them.
+The 1.0.0 feature scope is frozen. Sensors, LEDs, voice, conversational AI,
+Home Assistant, remote control API and MCP remain explicitly deferred.
 
 ## Run PHOS
 
 From the repository root in a graphical Raspberry Pi OS desktop session:
 
 ```bash
-python3 src/robot/main.py --config config/phos.json
+.venv/bin/python src/robot/main.py --config config/phos.json
 ```
 
 [config/phos.json](config/phos.json) is the single, editable configuration and

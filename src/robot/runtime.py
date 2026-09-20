@@ -50,11 +50,15 @@ class PhosRuntime:
             await self.core.start()
             logger.info("PHOS core, behavior engine, and renderer started")
             if self._vision_pipeline is not None:
-                await self._vision_pipeline.start()
+                # Stop must also release a partially started camera/pipeline.
                 self._vision_started = True
+                await self._vision_pipeline.start()
                 logger.info("PHOS vision pipeline and camera started")
             self._started = True
             logger.info("PHOS runtime started")
+        except asyncio.CancelledError:
+            await self.stop()
+            raise
         except Exception:
             logger.exception("PHOS runtime failed during startup")
             await self._transition_to_error("runtime startup failure")

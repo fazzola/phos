@@ -1,8 +1,10 @@
-rsync -av --delete \
-  --exclude '__pycache__' \
-  ./src/ pi@192.168.1.127:/home/pi/phos/src/
+#!/bin/sh
+set -eu
+cd -- "$(dirname -- "$0")"
 
-# Seed the canonical configuration once; preserve settings edited on the Pi.
-# Create /home/pi/phos/config on first setup (see docs/installation.md).
-rsync -av --ignore-existing \
-  ./config/phos.json pi@192.168.1.127:/home/pi/phos/config/
+# Copy only release source/docs/metadata; preserve Pi settings and credentials.
+ssh pi@192.168.1.127 'mkdir -p /home/pi/phos/src /home/pi/phos/config /home/pi/phos/docs'
+rsync -av --delete --exclude '__pycache__' ./src/ pi@192.168.1.127:/home/pi/phos/src/
+rsync -av ./pyproject.toml ./requirements-web.txt ./requirements.txt ./README.md pi@192.168.1.127:/home/pi/phos/
+rsync -av ./docs/ pi@192.168.1.127:/home/pi/phos/docs/
+rsync -av --ignore-existing ./config/phos.json pi@192.168.1.127:/home/pi/phos/config/

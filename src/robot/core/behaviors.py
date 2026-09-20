@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import asyncio
 
 
 class Behavior(ABC):
@@ -36,7 +37,7 @@ class BehaviorManager:
             for behavior in self._behaviors:
                 await behavior.start()
                 self._started.append(behavior)
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             await self.stop_all()
             raise
 

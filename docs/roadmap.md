@@ -1,104 +1,42 @@
-# PHOS Milestone Roadmap
+# PHOS roadmap
 
-The roadmap separates **implemented in code** from **verified as a runnable milestone**. Existing code may be ahead of the currently verified milestone; do not delete it, but do not automatically expand it.
+## PHOS 1.0.0 — scope frozen
 
-## M1 — Eyes are runnable on PHOS
+The current implemented feature set is the complete 1.0.0 scope; see the
+[release record](release-1.0.0.md). Do not expand it during hardening.
 
-**Current priority: verify on target hardware.**
+- [x] Raspberry Pi runtime, animated eyes, visual state/behavior and independent rendering
+- [x] Camera face tracking and bounded gaze via BehaviorEngine
+- [x] Facial-expression observations/reactions with local ONNX or optional AWS
+- [x] Canonical JSON model, validation and atomic persistence
+- [x] Authenticated web administration, mandatory bootstrap password change and external secrets
+- [x] Eight configuration domains with isolated page saves and read-only status
+- [x] Release version, installation/user documentation and hardware-free regression tests
+- [ ] Repeat the complete release acceptance sequence on the Pi after these changes
+- [ ] Establish expression accuracy and calibrate neutral reactions on actual hardware
+- [ ] Verify optional AWS behavior/latency and mobile/tablet LAN administration on the Pi
 
-Implementation already present:
-- [x] UI-neutral `FaceState`
-- [x] basic expressive eye rendering
-- [x] neutral / happy / curious / surprised / sleepy states
-- [x] smooth animation/interpolation path
-- [x] blink behavior
-- [x] bounded pupil movement
-- [x] standalone eye demo
-- [x] display render loop independent from Vision inference
+The hardware document records the display and Pi Camera/tracking as already
+operational. Fresh release regression and expression-quality verification remain
+separate from that prior evidence. See the release record for exact checks.
 
-Verification still required:
-- [ ] run eye demo on Raspberry Pi 3
-- [ ] verify actual 800x600 display/fullscreen behavior
-- [ ] verify smoothness and CPU usage are acceptable
-- [ ] verify clean startup/shutdown on target hardware
+## Post-1.0 — explicitly deferred
 
-**Done means:** PHOS can be started on the Pi and visibly demonstrate the eye states, smooth transitions, blink and pupil motion without Vision or AI.
+| Area | Deferred work |
+| --- | --- |
+| Environmental/inertial sensors | BME280, CCS811 and GY-521/MPU-6050 adapters, observations and designed behavior; CCS811 eCO2 must not be labeled direct CO2. |
+| LED ring | WS2812B electrical verification, adapter and behavior mapping. |
+| Remote-control API | Authenticated service-mediated control, authorization and documented contracts. |
+| MCP server | Service-mediated tools; no direct hardware or subsystem-internal access. |
+| STT | Microphone capture, VAD and speech recognition. |
+| TTS | Provider-neutral synthesis, playback and speaker verification. |
+| Conversational LLM | End-to-end conversation through LLMProvider; existing skeletons are not a delivered conversation feature. |
+| Home Assistant | Integration/tool layer and explicit permissions; not the reasoning core. |
 
-## M2 — PHOS looks at a face
+Future Web/API/MCP/Voice adapters must reuse PHOS application services for
+validation, authorization, configuration and behavior commands. They must not
+access GPIO, hardware drivers or subsystem internals directly. Extend services
+when a capability is approved; do not create parallel control implementations.
 
-Existing foundation:
-- [x] camera abstraction
-- [x] Picamera2 adapter present
-- [x] face detector abstraction/implementation present
-- [x] publish provider-neutral normalized face position
-- [x] map position through BehaviorEngine/FaceState with bounded smoothing
-
-Milestone work/verification:
-- [ ] confirm Pi Camera works on target hardware
-- [ ] verify subtle bounded/smoothed pupil tracking
-- [ ] verify face loss returns PHOS to idle behavior
-
-Do not require expression classification to complete this milestone.
-
-## M3 — PHOS reacts to facial expressions
-
-Existing foundation:
-- [x] expression provider abstraction
-- [x] selectable local/AWS adapter with JSON configuration, bounded background cloud work and mock tests
-- [ ] verify AWS crop processing, latency and semantic usefulness on Pi (explicit opt-in cloud mode)
-- [x] OpenCV DNN/ONNX provider implementation present
-- [x] temporal smoothing present
-- [x] stable-expression and face-lost event integration present
-- [x] BehaviorEngine maps stable observations to subtle reactions, with smooth
-  decay and RobotState priority
-- [x] canonical JSON configuration for display/behavior/Vision, local/AWS providers and logging
-- [x] early typed validation and reusable persistence; legacy CLI overrides deprecated
-
-Remaining:
-- [x] select and configure ONNX Model Zoo `emotion-ferplus-8.onnx`
-- [x] validate labels/input/preprocessing against the selected model contract
-- [ ] benchmark detection/inference rate on target hardware
-- [x] abstaining semantic decisions with explicit UNKNOWN and temporal confirmation
-- [ ] verify happy/surprised reactions and UNKNOWN abstention visually; calibrate neutral before enabling
-- [x] ensure negative observations do not mechanically make PHOS angry/sad
-- [ ] verify no image/face persistence by default
-
-## M4 — PHOS speaks and listens
-
-AI foundation already present:
-- [x] provider-neutral `LLMProvider` contract
-- [x] provider adapter structure
-- [x] provider-independent `RobotAgent` skeleton
-
-Voice milestone:
-- [ ] microphone abstraction/capture
-- [ ] VAD or equivalent turn detection as needed
-- [ ] speech-to-text
-- [ ] validate at least one usable LLM provider end to end
-- [ ] implement/validate `TTSProvider`
-- [ ] benchmark Piper with an Italian voice on Raspberry Pi 3
-- [ ] speaker/audio playback subsystem
-- [ ] integrate RobotState transitions through listening/thinking/speaking
-- [ ] verify the full microphone -> STT -> LLM -> TTS -> playback loop
-
-## M5 — Home Assistant and physical integrations
-
-- [ ] Home Assistant integration/tool layer
-- [ ] explicit allowlists/policy for sensitive actions
-- [ ] optional WebSocket event/state integration
-- [ ] optional MQTT entities for PHOS status
-- [ ] LEDs
-- [ ] servos/motors
-- [ ] additional sensors
-- [ ] safety limits for actuators
-
-## Rule
-Each milestone must be runnable and verified on its own before the next major component is deliberately expanded.
-
-## Configuration administration extension
-
-- [x] Optional authenticated web editor around canonical configuration
-- [x] Mandatory bootstrap password rotation and local credential recovery
-- [x] CSRF, expiring/revocable sessions and login throttling
-- [x] Safe persistence with explicit restart requirement
-- [ ] Verify mobile/desktop LAN access and CPU use alongside eyes/Vision on Pi 3
+Existing ahead-of-scope AI/voice scaffolding is preserved. Implement one approved,
+runnable vertical capability at a time; do not start deferred work automatically.

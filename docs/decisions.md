@@ -159,3 +159,19 @@ bootstrap password change, expiring signed sessions with server-side revocation,
 CSRF protection and bounded password attempts. AWS secrets remain external. HTTP
 is trusted-LAN-only; Internet/TLS/proxy deployment is outside this milestone.
 Details and local recovery belong in the [web manual](web-administration.md).
+
+## ADR-017 — PHOS 1.0.0 scope and shared control services
+
+**Status:** Accepted (explicit release-finalization request).
+
+Freeze 1.0.0 at the existing runtime, eyes, tracking, local/AWS expression and
+canonical configuration/web administration scope. Hardware availability does
+not bring sensors, LEDs, conversation, remote API or MCP into this release.
+Keep one authoritative version in `robot.__version__`, consumed by packaging
+and runtime/status reporting. Separate automated release checks from physical
+acceptance and expression accuracy.
+
+Future Web/API/MCP/Voice control surfaces must reuse application services and
+must not access hardware or subsystem internals. Shared validation, authorization
+and behavior semantics belong in those services, not in duplicated adapters.
+See the release record and roadmap for scope and deferred capabilities.

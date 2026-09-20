@@ -8,7 +8,7 @@ This file is an implementation handoff for coding agents. It records what is pre
 - Target: Raspberry Pi 3.
 - Display target: 5-inch 800x600.
 - Microphone available; exact interface remains TBD.
-- Raspberry Pi Camera is the intended Vision source; exact hardware availability/model must be confirmed in `docs/hardware.md`.
+- Display/eyes and Pi Camera/tracking are documented as operational in `docs/hardware.md`; exact camera model remains unspecified.
 
 ## Present in the repository
 
@@ -47,8 +47,8 @@ This file is an implementation handoff for coding agents. It records what is pre
 - Face-position tracking is implemented: Vision initially acquires the largest
   valid face, then prefers geometric continuity and publishes normalized selected-face
   position events, and `BehaviorEngine` smoothly maps them into bounded
-  `FaceState` pupil targets. Hardware verification on the Pi Camera/display is
-  still required.
+  `FaceState` pupil targets. Hardware operation is recorded in `docs/hardware.md`;
+  fresh release regression remains required.
 - Expression crops are bounded squares with configurable margin and smoothed
   scale; two matching detections are required before inference. Debug logs expose
   all detections, selections and rejections. See `docs/vision.md` for geometric
@@ -75,10 +75,6 @@ preprocessing, then verify semantic happy/surprised confirmation and UNKNOWN
 abstention on the Pi Camera/display while checking CPU use and clean shutdown.
 Neither current model has demonstrated reliable recognition; neutral activation
 requires calibration, not just a high softmax score.
-
-## Known verification note
-
-At the time this governance merge was prepared, the repository test suite had 30 tests, with 28 passing and 2 Vision tests failing only on exact floating-point equality around an averaged confidence value (`0.8` vs floating-point representations such as `0.8000000000000002`). This is an existing code/test issue, not introduced by governance files. Re-run the suite in the actual working checkout before relying on this note.
 
 ## Selectable expression providers
 
@@ -119,3 +115,29 @@ implemented fields. Password management stays separate.
 No live reload, AWS credential probe, automatic backup or Internet deployment.
 See [user manual](web-administration.md) for installation and recovery. Tests are
 hardware-free; Pi resource usage and LAN browser verification remain required.
+
+## PHOS 1.0.0 finalization
+
+The current implemented scope is frozen; see [release record](release-1.0.0.md)
+and [deferred roadmap](roadmap.md). Version is authoritative in
+`src/robot/__init__.py`, with package metadata, startup logs and Status using it.
+Camera failure/partial-start and cancellation cleanup are hardened. Source sync
+ships metadata, docs and the pinned web dependency snapshot while preserving
+deployed settings/credentials. Packaged installs include the canonical JSON.
+
+Release verification in this audit (Python 3.11.6):
+- Relevant lifecycle/core/UI/configuration tests: 103 passed.
+- Release metadata/packaged-config tests: 2 passed.
+- Full suite: **242 passed, 1 skipped** in 123.66 seconds. The skipped OpenCV
+  preprocessing test at `tests/vision/test_expression.py:105` requires `cv2`,
+  unavailable in this environment. Optional dependency installation was declined.
+- Real loopback web-worker startup/shutdown passed within the full suite;
+  authentication/domain tests made no real AWS calls.
+- Source distribution built with version 1.0.0; canonical JSON, web assets,
+  manuals, dependency snapshot and tests verified in the archive.
+- Pinned web versions match the installed environment; `pip check`, Python
+  compilation, `sh -n run_pi.sh`, startup `--help` and `git diff --check` passed.
+- Fresh wheel installation was not run (wheel/build tools unavailable); the
+  source deployment path, sdist contents and installed-config lookup were checked.
+Physical Pi regression and AWS service verification were not performed during
+this source audit. Expression quality remains unproven as documented above.

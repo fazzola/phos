@@ -11,6 +11,7 @@ import time
 from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 from flask_wtf.csrf import CSRFError, CSRFProtect
 
+from robot import __version__
 from robot.config import ConfigurationError
 from robot.web.auth import PasswordStore
 from robot.web.configuration import ConfigurationService
@@ -66,7 +67,7 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
 
     @app.context_processor
     def navigation():
-        return {"domains": DOMAINS}
+        return {"domains": DOMAINS, "phos_version": __version__}
 
     @app.before_request
     def require_authentication():

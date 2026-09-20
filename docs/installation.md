@@ -5,6 +5,62 @@ This guide installs the dependencies required to run PHOS from
 sync script copies `src/` and seeds `config/phos.json` once, so install dependencies separately
 on the Pi.
 
+## PHOS 1.0.0 reproducible installation
+
+The documented release baseline is Raspberry Pi OS with a graphical desktop,
+Python 3.11+ and apt-provided camera/OpenCV/Tk packages. From your development
+checkout, `./run_pi.sh` copies the source, documentation, package metadata and
+`requirements-web.txt` to `/home/pi/phos`, creates required directories and seeds
+configuration only if it is absent. It does not install dependencies or restart
+PHOS. Review the SSH destination in that script for your Pi. A full checkout at
+`/home/pi/phos` is also supported.
+
+On the Pi, run once:
+
+```bash
+sudo apt update
+sudo apt install -y python3-venv python3-tk python3-picamera2 python3-opencv opencv-data
+cd /home/pi/phos
+python3 -m venv --system-site-packages .venv
+.venv/bin/python -m pip install -r requirements-web.txt
+.venv/bin/python -c "import tkinter, cv2, flask, flask_wtf, waitress; from picamera2 import Picamera2; print('Runtime imports OK')"
+```
+
+The web snapshot pins its direct and transitive dependencies to the release-tested
+versions. Hardware libraries stay in apt; do not pip-install the `vision` extra
+on the Pi. Record the Raspberry Pi OS image and apt package versions with your
+deployment: this procedure is not a frozen OS image.
+
+For optional AWS mode, also install the platform SDK:
+
+```bash
+sudo apt install -y python3-boto3
+.venv/bin/python -c "import boto3; print('AWS SDK import OK')"
+```
+
+No AWS API call is made by these import checks. Keep credentials in the standard
+external environment/profile/role chain as described below. The existing
+`.[web]` and `.[aws]` extras remain available for full package installations;
+use `-c requirements-web.txt` when installing `.[web]` on the release baseline.
+
+For local expressions, download and checksum the ONNX model in step 5. With
+expressions/tracking disabled, no model/camera is required to start eyes. Existing
+configurations must include the full canonical schema, including `web`; the sync
+script intentionally does not overwrite them or migrate them silently.
+
+Start from the Pi's desktop session:
+
+```bash
+cd /home/pi/phos
+.venv/bin/python src/robot/main.py --config config/phos.json
+```
+
+To enable administration, set `web.enabled` true and `web.host` to the Pi LAN IP
+or `0.0.0.0`; the port is 8080 by default. Open `http://<PI-LAN-IP>:8080/`, use
+bootstrap password `phos`, complete the mandatory password change and log in
+again. See the [user manual](web-administration.md) for all eight domain pages.
+Stop with Ctrl+C and use the same command after configuration changes.
+
 ## 1. Prepare Raspberry Pi OS
 
 Use a current Raspberry Pi OS image with a graphical desktop session. PHOS
@@ -65,7 +121,8 @@ From the development machine, run the repository script:
 ```
 
 It synchronizes local `src/` to `/home/pi/phos/src/` on the host configured
-in `run_pi.sh`, and copies `config/phos.json` only if the Pi has no such file.
+in `run_pi.sh`, copies release metadata/dependency files and docs, and copies
+`config/phos.json` only if the Pi has no such file.
 Existing Pi settings are not overwritten.
 For a first copy, create the destination directory on the Pi if necessary:
 
@@ -98,7 +155,7 @@ Run from a graphical Raspberry Pi OS desktop session:
 
 ```bash
 cd /home/pi/phos
-python3 src/robot/main.py --config config/phos.json
+.venv/bin/python src/robot/main.py --config config/phos.json
 ```
 
 This same command is used for all modes. The committed configuration starts
@@ -199,7 +256,7 @@ In `config/phos.json`, change `expression.enabled` to true and
 edit its request limits/region if needed. Then run:
 
 ```bash
-python3 src/robot/main.py --config config/phos.json
+.venv/bin/python src/robot/main.py --config config/phos.json
 ```
 
 **AWS mode sends selected cropped facial images to AWS.** No local ONNX file

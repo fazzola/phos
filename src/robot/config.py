@@ -6,11 +6,16 @@ import ipaddress
 import math
 import os
 import tempfile
+import sys
 from dataclasses import asdict, dataclass, fields, field
 from pathlib import Path
 from typing import Optional, Tuple
 
+# Source checkouts use the one canonical document. Wheels install that same
+# source file as data; no independent defaults are maintained in the package.
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "phos.json"
+if not DEFAULT_CONFIG_PATH.is_file():
+    DEFAULT_CONFIG_PATH = Path(sys.prefix) / "share" / "phos" / "config" / "phos.json"
 
 
 class ConfigurationError(ValueError):

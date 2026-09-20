@@ -281,3 +281,28 @@ def test_runtime_passes_configurable_margin_to_vision_pipeline():
 def test_runtime_rejects_invalid_crop_margin(margin):
     with pytest.raises(ValueError, match='expression_crop_margin'):
         RuntimeConfig(expression_crop_margin=margin)
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_partial_vision_startup_releases_camera_and_core(cancel):
+    async def exercise():
+        entered = asyncio.Event()
+        class StartingCamera(FakeCamera):
+            async def start(self):
+                self.started = True
+                entered.set()
+                if cancel:
+                    await asyncio.Event().wait()
+                raise RuntimeError("camera startup failed")
+        camera = StartingCamera()
+        runtime = build_runtime(eye_display=MemoryEyeDisplay(),
+                                vision_factory=lambda events: make_vision(events, camera))
+        task = asyncio.create_task(runtime.start())
+        await entered.wait()
+        if cancel:
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError if cancel else RuntimeError):
+            await task
+        assert camera.stopped and not runtime.core.is_running
+        assert not runtime._unsubscribers
+    asyncio.run(exercise())

@@ -7,7 +7,7 @@ Current documented hardware baseline:
 - Raspberry Pi 3
 - 5-inch 800x600 display
 - microphone
-- Raspberry Pi Camera is planned/required for the Vision milestone; exact camera hardware remains documented in `docs/hardware.md`
+- Raspberry Pi Camera and face tracking are documented as operational; exact hardware details remain in `docs/hardware.md`
 
 The existing Python package namespace is `robot`. Do not rename it to `phos` without an explicit approved migration.
 
@@ -66,11 +66,16 @@ Additional boundaries:
 - `FaceState` is the UI-neutral visual state consumed by the renderer.
 - `EyeRenderer` renders `FaceState`; it must not interpret Vision objects.
 - Home Assistant is an integration/tool layer, not PHOS's reasoning core.
+- Future Web/API/MCP/Voice control surfaces must reuse PHOS application services;
+  they must not access hardware, drivers or subsystem internals directly. Extend
+  the shared services for approved capabilities instead of duplicating control logic.
 
 ## Milestone discipline
 PHOS is developed as vertical, runnable milestones. Finish, run and verify one capability before deliberately expanding the next major subsystem.
 
-Current preferred progression:
+The implemented 1.0.0 scope is frozen; post-1.0 capabilities are explicitly deferred
+in `docs/roadmap.md`. Hardware regression remains separate from implementation.
+The progression for separately approved future milestones remains:
 1. verify the animated eyes/demo on the real 800x600 Raspberry Pi display;
 2. add/verify face-position tracking so the already-working eyes can look toward a detected face;
 3. complete and verify facial-expression observation plus BehaviorEngine reactions with a selected ONNX model;

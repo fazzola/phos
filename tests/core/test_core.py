@@ -130,3 +130,24 @@ def test_core_shutdown_marks_core_stopped_when_a_behavior_shutdown_fails():
     core, calls = asyncio.run(exercise())
     assert not core.is_running
     assert calls == ["start:first", "start:broken", "stop:broken", "stop:first"]
+
+
+def test_cancelled_behavior_start_rolls_back_started_behaviors():
+    async def exercise():
+        calls = []
+        entered = asyncio.Event()
+        class WaitingBehavior(RecordingBehavior):
+            async def start(self):
+                entered.set()
+                await asyncio.Event().wait()
+        core = RobotCore()
+        core.add_behavior(RecordingBehavior("first", calls))
+        core.add_behavior(WaitingBehavior("waiting", calls))
+        task = asyncio.create_task(core.start())
+        await entered.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert calls == ["start:first", "stop:first"]
+        assert not core.is_running
+    asyncio.run(exercise())

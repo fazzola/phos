@@ -15,7 +15,8 @@ Your edits on this page have not been saved.</p>
 </div>
 {% elif area == 'status' %}
 <section class="status" aria-label="Read-only system information">
-<dl><dt>Configuration file in use</dt><dd><code>{{ config_path }}</code></dd>
+<dl><dt>PHOS version</dt><dd>{{ phos_version }}</dd>
+<dt>Configuration file in use</dt><dd><code>{{ config_path }}</code></dd>
 <dt>Runtime state</dt><dd>Not monitored by the administration worker.</dd>
 <dt>Startup expression provider</dt><dd>{{ active.expression.provider if active else 'Unavailable' }}</dd>
 <dt>Expressions at startup</dt><dd>{{ ('Enabled' if active.expression.enabled else 'Disabled') if active else 'Unavailable' }}</dd>

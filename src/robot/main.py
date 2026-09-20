@@ -18,6 +18,7 @@ SOURCE_DIRECTORY = Path(__file__).resolve().parent.parent
 if str(SOURCE_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SOURCE_DIRECTORY))
 
+from robot import __version__
 from robot.config import DEFAULT_CONFIG_PATH, ConfigurationError, RuntimeConfig, load_document
 from robot.runtime import PhosRuntime, build_runtime
 
@@ -140,6 +141,7 @@ def main() -> None:
     logging.getLogger("botocore").setLevel(logging.WARNING)
     if arguments:
         logger.warning("Individual runtime CLI flags are deprecated; edit %s instead", config_path)
+    logger.info("PHOS %s", __version__)
     logger.info("PHOS configuration loaded: %s", config_path.resolve())
     # The optional web worker is isolated from camera/rendering and is stopped
     # even when runtime startup or execution fails.

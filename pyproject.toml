@@ -1,6 +1,6 @@
 [project]
 name = "phos-robot"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Modular personal robot for Raspberry Pi"
 requires-python = ">=3.9"
 
@@ -22,3 +22,9 @@ pythonpath = ["src"]
 
 [tool.setuptools.package-data]
 "robot.web" = ["templates/*.html", "static/*.css", "static/*.js"]
+
+[tool.setuptools.dynamic]
+version = {attr = "robot.__version__"}
+
+[tool.setuptools.data-files]
+"share/phos/config" = ["config/phos.json"]

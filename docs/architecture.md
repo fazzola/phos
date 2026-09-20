@@ -191,3 +191,13 @@ Administration domains select canonical field paths for presentation only. Each
 page merges its submitted fields into the complete document and calls the same
 validation/persistence boundary. System / Status is read-only; password changes
 use the separate credential service. See the manual for the domain-to-field map.
+
+## Shared application services for control surfaces
+
+Web, future remote API, MCP and Voice are adapters around PHOS application
+services. They reuse the same validation, authorization, configuration and
+behavior-command services; they must not reach into GPIO, hardware adapters,
+provider objects, renderer state or other subsystem internals. Add an application
+service when an approved capability needs one, rather than duplicating behavior
+in each surface. The current configuration service is the implemented example;
+remote-control/API/MCP/Voice services remain deferred after 1.0.0.

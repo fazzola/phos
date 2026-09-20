@@ -194,3 +194,13 @@ Do not make ordinary unit tests depend on physical GPIO/audio/display hardware.
 For web development install `.[web]` plus pytest in a virtual environment and
 run `python -m pytest -q`. Web tests exercise real password hashing, CSRF,
 configuration persistence and an isolated local WSGI worker without hardware.
+
+## Release version and installation
+
+`robot.__version__` in `src/robot/__init__.py` is authoritative. Setuptools derives
+metadata from that literal; do not add another independently maintained version.
+Source checkouts use `config/phos.json`; wheels install that same source document
+under the environment's `share/phos/config/` data directory. Explicit `--config`
+remains the supported deployment boundary; no alternate schema is introduced.
+The pinned Python 3.11+ web snapshot is `requirements-web.txt`; platform camera
+dependencies remain managed by Raspberry Pi OS. See the release record.

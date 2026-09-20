@@ -30,11 +30,16 @@ class Picamera2CameraProvider(CameraProvider):
             raise RuntimeError("Picamera2 is required for Raspberry Pi Camera capture.") from error
 
         camera = Picamera2()
-        configuration = camera.create_preview_configuration(
-            main={"size": self._resolution, "format": "RGB888"}
-        )
-        camera.configure(configuration)
-        camera.start()
+        try:
+            configuration = camera.create_preview_configuration(
+                main={"size": self._resolution, "format": "RGB888"}
+            )
+            camera.configure(configuration)
+            camera.start()
+        except BaseException:
+            # Picamera2 may own resources before configuration/start succeeds.
+            camera.close()
+            raise
         self._camera = camera
 
     async def capture_frame(self) -> Any:
@@ -47,5 +52,7 @@ class Picamera2CameraProvider(CameraProvider):
             return
         camera = self._camera
         self._camera = None
-        await asyncio.to_thread(camera.stop)
-        await asyncio.to_thread(camera.close)
+        try:
+            await asyncio.to_thread(camera.stop)
+        finally:
+            await asyncio.to_thread(camera.close)

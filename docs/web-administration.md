@@ -6,22 +6,20 @@ from the web worker. All changes require restarting PHOS.
 
 ## Install and enable
 
-Use Python 3.9 or later. In a full repository checkout, install the optional web
-extra in a virtual environment. On the Pi, preserve access to the installed
-system camera/OpenCV/Tk packages:
+Use the [PHOS 1.0.0 installation procedure](installation.md#phos-100-reproducible-installation)
+on the Pi (Python 3.11+). In `/home/pi/phos`, create the virtual environment with
+`--system-site-packages` so the system camera/OpenCV/Tk packages remain available,
+then install the pinned web dependencies:
 
 ```bash
-cd /home/pi/phos
 python3 -m venv --system-site-packages .venv
-.venv/bin/python -m pip install '.[web]'
+.venv/bin/python -m pip install -r requirements-web.txt
 ```
 
-If `run_pi.sh` has copied only `src/` and `config/`, install the same dependencies
-in that virtual environment instead:
-
-```bash
-.venv/bin/python -m pip install 'Flask>=3.1,<4' 'Flask-WTF>=1.2,<2' 'Werkzeug>=3.1,<4' 'waitress>=3.0.2,<4'
-```
+`run_pi.sh` now copies that snapshot and the manual alongside source. Full
+package installs may use `.venv/bin/python -m pip install -c requirements-web.txt
+'.[web]'`. The existing Python >=3.9 package compatibility remains, but older
+interpreters are not the pinned release-installation baseline.
 
 The canonical `web` section defaults to `enabled: false`, `host: "127.0.0.1"`,
 `port: 8080`, preserving eyes-only startup without extra dependencies. Existing
@@ -91,13 +89,12 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Expression Recognition | Provider selection/enabling and observation cadence/crop margin; smoothing; local ONNX model, labels and preprocessing; AWS region/confidence/timeouts; a separate cloud cost/rate-limit group. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
-| System / Status | Read-only configuration path, startup expression provider/enabled state, saved provider and saved-versus-startup comparison. Live robot state is not monitored and AWS credential availability is not probed. |
+| System / Status | Read-only PHOS version, configuration path, startup expression provider/enabled state, saved provider and saved-versus-startup comparison. Live robot state is not monitored and AWS credential availability is not probed. |
 
 Startup information is shown only on **System / Status**, visually separated
 from editable settings. Deprecated CLI overrides, if used, appear in startup
-settings but do not change the saved file. No version is inferred from the UI's
-release target; this page does not claim a software version or live health value
-that the runtime has not supplied.
+settings but do not change the saved file. The software version comes from the authoritative `robot.__version__`; live
+health is not inferred from the startup snapshot.
 
 Every editable page has its own **Save** button. It merges only that page's
 fields into the same canonical JSON file, validates the **complete configuration**,
