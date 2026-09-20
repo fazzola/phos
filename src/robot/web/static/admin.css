@@ -1,0 +1,39 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #10191e; color: #e5f5f6; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1050px; margin: auto; padding: 1.2rem; }
+header { border-bottom: 1px solid #45616a; padding-bottom: 1rem; }
+h1 { color: #a7ecea; letter-spacing: .05em; }
+h1 small { display: block; color: #d2e4e8; font-size: 1rem; font-weight: normal; }
+nav { display: flex; align-items: center; flex-wrap: wrap; gap: 1.2rem; }
+a { color: #b2f4f1; }
+nav form { margin: 0; }
+fieldset, .status, .account { border: 1px solid #45616a; border-radius: .5rem; padding: 1rem; margin: 1.2rem 0; min-width: 0; }
+legend { font-weight: bold; color: #b2f4f1; }
+p { line-height: 1.5; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1.2rem; }
+label { display: block; margin: .4rem 0; }
+input, select, button { font: inherit; border-radius: .3rem; padding: .7rem; }
+input, select { width: 100%; background: #1e3038; color: #fff; border: 1px solid #72919b; }
+input[type=checkbox] { width: 1.5rem; height: 1.5rem; accent-color: #a7ecea; }
+button { background: #b2f4f1; color: #13252d; border: 0; cursor: pointer; }
+button:hover { background: #e1ffff; }
+:focus-visible { outline: 3px solid #ffd380; outline-offset: 3px; }
+small, footer { color: #b3c9ce; }
+.notice, .error { padding: 1rem; border-radius: .3rem; border: 1px solid #87c5c1; background: #233e42; }
+.error { border-color: #ffb5a7; background: #472c2b; }
+.account { max-width: 480px; }
+.account button { margin-top: 1.3rem; }
+footer { border-top: 1px solid #45616a; margin-top: 2rem; padding-top: 1rem; line-height: 1.5; }
+code { overflow-wrap: anywhere; }
+[hidden] { display: none !important; }
+
+.domain-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: .5rem; margin: 1.2rem 0; }
+.domain-nav a { padding: .8rem; border: 1px solid #45616a; border-radius: .3rem; text-decoration: none; }
+.domain-nav a[aria-current=page] { background: #b2f4f1; color: #13252d; font-weight: bold; }
+.domain-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; }
+.domain-card { display: grid; gap: .6rem; padding: 1rem; border: 1px solid #45616a; border-radius: .5rem; text-decoration: none; }
+.domain-card span { color: #d2e4e8; line-height: 1.5; }
+dt { font-weight: bold; margin-top: 1rem; }
+dd { margin: .4rem 0; overflow-wrap: anywhere; }
+fieldset { scroll-margin-top: 1rem; }

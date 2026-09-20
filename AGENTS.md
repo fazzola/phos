@@ -43,8 +43,11 @@ New non-secret PHOS runtime configuration must be added to the canonical
 `RuntimeConfig` model in `src/robot/config.py` and `config/phos.json`.
 Do not introduce new standalone CLI configuration unless explicitly required.
 Use the reusable loading/validation/persistence boundary for future configuration
-interfaces; keep secrets external. See `docs/development.md` for the schema and
-migration policy. Do not duplicate schema/defaults in AGENTS files.
+interfaces; keep secrets external. The web administration adapter must reuse
+this model and validation; future configurable subsystems extend the same
+configuration/editor architecture rather than adding separate mechanisms.
+Administrator credentials and all other secrets stay outside runtime JSON.
+See `docs/development.md` for the schema and migration policy. Do not duplicate schema/defaults in AGENTS files.
 
 ## Architecture boundaries
 - `core/`: lifecycle, state, events, orchestration and behavior decisions.

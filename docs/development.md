@@ -23,9 +23,9 @@ To keep a separate deployment copy, copy the full canonical file, edit it and
 pass its path explicitly. Keep deployment changes out of commits if inappropriate.
 No file may contain credentials.
 
-The five required sections are `display`, `behavior`, `vision`, `expression`
+The six required sections are `web`, `display`, `behavior`, `vision`, `expression`
 (with `smoothing`, `local`, `aws`) and `logging`. `vision` includes `detector`.
-There are no speculative runtime/voice/web/sensor sections. Every field in the
+There are no speculative runtime/voice/sensor sections. Every field in the
 canonical file is required, including null values and inactive-provider settings;
 a missing value is an error, not a second default hidden in code.
 
@@ -36,6 +36,7 @@ must be finite; booleans must be JSON booleans, not strings or numbers.
 
 | Section | Fields and purpose |
 | --- | --- |
+| `web` | `enabled`: start the administration worker; `host`: IPv4/IPv6 bind address; `port`: integer 1–65535. See the [web manual](web-administration.md). |
 | `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration. |
 | `behavior` | `blink_interval_seconds`, `gaze_interval_seconds`: positive ascending `[minimum, maximum]` timing ranges; `face_gaze_smoothing`: gaze smoothing coefficient in (0,1]; `reaction_decay_per_second`: positive visual reaction decay. |
 | `vision` | `face_tracking_enabled`: camera/tracking without expression inference; `camera_resolution`: positive integer `[width,height]`; `capture_fps`, `detection_fps`: positive capture/detection cadences. |
@@ -134,7 +135,7 @@ Geometric face association gates, class-specific semantic safeguards, visual
 profiles and SDK JPEG implementation details remain implementation constants.
 No AI/voice settings are added for subsystems outside this runtime milestone.
 
-### Reusable configuration API and future web layer
+### Reusable configuration API and web layer
 
 `robot.config.RuntimeConfig` is the existing typed surface moved out of runtime;
 `robot.runtime.RuntimeConfig` remains import-compatible. Cloud settings retain
@@ -155,9 +156,19 @@ Python calls overlay the canonical file for compatibility; they contain no
 independent numeric defaults. Runtime construction revalidates before hardware
 starts. New application code should use full-file/dict loading instead.
 
-A future web interface must reuse this read/edit/validate/save boundary. It must
-never accept/store/display AWS credentials as normal settings. No web UI, secret
-management endpoint or live reload exists now; restart to apply persisted edits.
+The optional [web administration adapter](web-administration.md) reuses this
+read/edit/validate/save boundary. It never accepts/stores/displays AWS credentials
+as normal settings. Its separate password store is not runtime configuration.
+There is no live reload; restart to apply persisted edits.
+The editor may call `from_dict(..., check_paths=False)` to repair a removed model
+path; schema/types/ranges are still validated. Startup and saves always validate
+active paths.
+`robot.web.domains` maps canonical field paths into navigation and presentation
+only. Page saves merge the selected area's fields into the full document, reject
+out-of-area fields and run normal full-document validation/atomic persistence.
+The registry defines no defaults, types or validation rules. New implemented
+settings must be assigned to a domain; coverage tests require every canonical
+field to appear exactly once. Read-only General/Status pages cannot save settings.
 New non-secret runtime options must extend this canonical model/file, not add
 standalone CLI arguments or another configuration mechanism.
 
@@ -179,3 +190,7 @@ Test:
 - error handling
 
 Do not make ordinary unit tests depend on physical GPIO/audio/display hardware.
+
+For web development install `.[web]` plus pytest in a virtual environment and
+run `python -m pytest -q`. Web tests exercise real password hashing, CSRF,
+configuration persistence and an isolated local WSGI worker without hardware.

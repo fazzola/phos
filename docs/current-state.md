@@ -91,7 +91,7 @@ capture timestamps and do not advance semantic confirmation. See Vision and
 installation for policy, privacy, exact commands and external credentials.
 Mocked tests cover cloud behavior without credentials/network/cost. Physical
 Pi/AWS validation, expression accuracy and cloud threshold calibration remain
-outstanding. No web UI, automatic fallback or additional milestone is implemented.
+outstanding. No automatic provider fallback is implemented.
 
 ## Canonical configuration
 
@@ -101,6 +101,21 @@ passes JSON values for display, behavior, detector, Vision, expression smoothing
 local/AWS providers and logging. The default file enables only eyes. The old
 expression-specific partial JSON files are removed; migrate existing deployments
 using `docs/development.md`. No secrets are part of the model. `run_pi.sh` seeds
-configuration without overwriting existing Pi settings. A future web interface
-must reuse this model; it is not implemented. Startup flags remain deprecated
+configuration without overwriting existing Pi settings. The optional web interface
+reuses this model; see below. Startup flags remain deprecated
 overrides pending a separately announced removal after consumers migrate.
+
+## Web administration
+
+Implemented: optional Flask/Waitress process, required canonical `web` section,
+responsive domain pages with shared navigation, per-page merges through full
+configuration validation/atomic saves, provider
+selection, bootstrap password rotation, hashed local credentials, expiring
+revocable sessions, CSRF and global password attempt throttling. Startup owns
+worker cleanup and exposes the startup snapshot on a separate read-only Status
+page. General provides navigation; Network, Display & Appearance, Vision,
+Expression Recognition, Logging and Web Administration / Security expose only
+implemented fields. Password management stays separate.
+No live reload, AWS credential probe, automatic backup or Internet deployment.
+See [user manual](web-administration.md) for installation and recovery. Tests are
+hardware-free; Pi resource usage and LAN browser verification remain required.

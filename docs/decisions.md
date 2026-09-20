@@ -142,3 +142,20 @@ in their subsystems. New normal runtime settings extend the central schema/file.
 Reusable loading, validation, serialization and atomic persistence are independent
 of CLI and available for the future web milestone. Secrets remain external;
 no web UI or live reload is part of this change.
+
+## ADR-016 — Optional local web administration
+
+**Status:** Accepted (explicit user-requested web administration milestone).
+
+Add a lightweight Flask/Waitress administration adapter in a separate process
+owned by application startup. Reuse RuntimeConfig schema, validation and atomic
+persistence; expose saved settings separately from the startup snapshot. No hot
+reload. Canonical web settings opt into LAN binding; default disabled/loopback
+preserves the existing runtime. The optional web dependencies stay outside Core,
+Vision and rendering.
+
+Use one administrator, an external owner-only salted password-hash file, mandatory
+bootstrap password change, expiring signed sessions with server-side revocation,
+CSRF protection and bounded password attempts. AWS secrets remain external. HTTP
+is trusted-LAN-only; Internet/TLS/proxy deployment is outside this milestone.
+Details and local recovery belong in the [web manual](web-administration.md).

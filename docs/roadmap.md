@@ -94,3 +94,11 @@ Voice milestone:
 
 ## Rule
 Each milestone must be runnable and verified on its own before the next major component is deliberately expanded.
+
+## Configuration administration extension
+
+- [x] Optional authenticated web editor around canonical configuration
+- [x] Mandatory bootstrap password rotation and local credential recovery
+- [x] CSRF, expiring/revocable sessions and login throttling
+- [x] Safe persistence with explicit restart requirement
+- [ ] Verify mobile/desktop LAN access and CPU use alongside eyes/Vision on Pi 3

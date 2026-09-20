@@ -221,6 +221,11 @@ tracking/eyes without silently selecting another provider. Check boto3, region,
 external credentials, IAM permission and network. Automated tests do not verify
 recognition quality or cloud service availability on physical hardware.
 
-Normal settings can later be edited through a web interface using the same
-validation/persistence model. No web interface is implemented now; secrets
-must remain outside that normal configuration, as described above.
+## Optional web administration
+
+Follow the [web administration user manual](web-administration.md) to install
+the web extra, add/enable the canonical `web` section and access the editor.
+It documents LAN URLs, first login with `phos`, mandatory password change, local
+recovery and HTTP security limits. Configuration edits use the existing model
+and require restart; AWS credentials remain external. Existing deployments must
+add the required `web` section from the canonical file when upgrading.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import math
 import os
 import tempfile
@@ -101,6 +102,7 @@ class CloudExpressionConfig:
 # The section structure maps to the existing typed RuntimeConfig surface. Values
 # live only in phos.json; this mapping is schema, not a second set of defaults.
 _SCHEMA = {
+    "web": {"enabled": "web_enabled", "host": "web_host", "port": "web_port"},
     "display": {"width": "display_width", "height": "display_height", "fps": "display_fps",
                 "fullscreen": "fullscreen", "transition_seconds": "display_transition_seconds"},
     "behavior": {"blink_interval_seconds": "blink_interval_seconds", "gaze_interval_seconds": "gaze_interval_seconds",
@@ -161,6 +163,9 @@ class RuntimeConfig:
     it overlays canonical settings. File/dict loading requires the full schema.
     """
 
+    web_enabled: bool
+    web_host: str
+    web_port: int
     display_width: int
     display_height: int
     display_fps: int
@@ -229,11 +234,16 @@ class RuntimeConfig:
         return cls.from_dict(load_document(path), base_dir=path.parent, overrides=overrides)
 
     @classmethod
-    def from_dict(cls, document: dict, *, base_dir: Path, overrides=None) -> RuntimeConfig:
-        """Validate an edited document, independent of argparse and AWS credentials."""
+    def from_dict(cls, document: dict, *, base_dir: Path, overrides=None, check_paths=True) -> RuntimeConfig:
+        """Validate a document, independent of argparse and AWS credentials.
+
+        Editors may skip filesystem checks to repair removed model paths; schema
+        and value validation still run. Startup and save always check paths.
+        """
         result = object.__new__(cls)
         result._assign(_decode(document), base_dir, overrides)
-        result.validate_paths()
+        if check_paths:
+            result.validate_paths()
         return result
 
     def to_dict(self) -> dict:
@@ -296,6 +306,14 @@ class RuntimeConfig:
                     or (maximum is not None and value > maximum)):
                 raise ConfigurationError(f"{name}: invalid number/range")
 
+        number("web_port", integer=True, maximum=65535)
+        try:
+            ipaddress.ip_address(self.web_host)
+        except (ValueError, TypeError):
+            raise ConfigurationError("web.host must be an IPv4 or IPv6 bind address") from None
+        if not isinstance(self.web_host, str):
+            raise ConfigurationError("web.host must be an IP address string")
+
         for name in ("display_width", "display_height", "display_fps", "expression_minimum_observations"):
             number(name, integer=True)
         number("detector_min_neighbors", inclusive=True, integer=True)
@@ -307,7 +325,7 @@ class RuntimeConfig:
         number("face_gaze_smoothing", maximum=1)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("fullscreen", "face_tracking_enabled", "expression_enabled", "expression_neutral_enabled",
+        for name in ("web_enabled", "fullscreen", "face_tracking_enabled", "expression_enabled", "expression_neutral_enabled",
                      "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(f"{name} must be a boolean")
