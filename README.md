@@ -1,5 +1,7 @@
 # PHOS 1.0.0 — Raspberry Pi Robot
 
+![PHOS robot](img/phos.png)
+
 Modular robot targeting Raspberry Pi 3. Version 1.0.0 includes animated eyes,
 face tracking, local/AWS expression observations and authenticated configuration
 administration. See the [release scope and limitations](docs/release-1.0.0.md),
