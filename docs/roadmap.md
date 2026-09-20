@@ -47,14 +47,18 @@ Existing foundation:
 - [x] OpenCV DNN/ONNX provider implementation present
 - [x] temporal smoothing present
 - [x] stable-expression and face-lost event integration present
-- [x] BehaviorEngine has initial reactions for selected expression labels
+- [x] BehaviorEngine maps stable observations to subtle reactions, with smooth
+  decay and RobotState priority
+- [x] runtime command-line configuration for external ONNX model/labels/input
+  preprocessing
 
 Remaining:
-- [ ] select/test a lightweight ONNX expression model suitable for Raspberry Pi 3
-- [ ] validate labels/input/preprocessing against the selected model
+- [x] select and configure ONNX Model Zoo `emotion-ferplus-8.onnx`
+- [x] validate labels/input/preprocessing against the selected model contract
 - [ ] benchmark detection/inference rate on target hardware
-- [ ] verify stable happy/surprised/neutral reactions visually
-- [ ] ensure negative observations do not mechanically make PHOS angry/sad
+- [x] abstaining semantic decisions with explicit UNKNOWN and temporal confirmation
+- [ ] verify happy/surprised reactions and UNKNOWN abstention visually; calibrate neutral before enabling
+- [x] ensure negative observations do not mechanically make PHOS angry/sad
 - [ ] verify no image/face persistence by default
 
 ## M4 — PHOS speaks and listens

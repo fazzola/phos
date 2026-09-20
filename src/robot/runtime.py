@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Tuple
@@ -36,8 +37,16 @@ class RuntimeConfig:
     expression_model_path: Optional[Path] = None
     expression_labels: Tuple[str, ...] = ()
     expression_input_size: Tuple[int, int] = (64, 64)
+    expression_scale: float = 1.0 / 255.0
+    expression_mean: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    expression_swap_rb: bool = True
+    expression_grayscale: bool = False
+    expression_diagnostics: bool = False
+    expression_crop_margin: float = 0.10
 
     def __post_init__(self) -> None:
+        if not math.isfinite(self.expression_crop_margin) or not 0 <= self.expression_crop_margin <= 0.5:
+            raise ValueError("expression_crop_margin must be between zero and 0.5.")
         if self.display_fps <= 0:
             raise ValueError("display_fps must be positive.")
         if self.camera_resolution[0] <= 0 or self.camera_resolution[1] <= 0:
@@ -48,6 +57,8 @@ class RuntimeConfig:
             raise ValueError("expression_labels require expression_model_path.")
         if self.expression_model_path is not None and not self.expression_labels:
             raise ValueError("expression_model_path requires configured expression_labels.")
+        if len(self.expression_mean) != 3:
+            raise ValueError("expression_mean must contain three channel values.")
 
     @property
     def vision_enabled(self) -> bool:
@@ -190,6 +201,11 @@ def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optiona
             config.expression_model_path,
             config.expression_labels,
             input_size=config.expression_input_size,
+            scale=config.expression_scale,
+            mean=config.expression_mean,
+            swap_rb=config.expression_swap_rb,
+            grayscale=config.expression_grayscale,
+            diagnostics=config.expression_diagnostics,
         )
         smoother = ExpressionSmoother()
     return VisionPipeline(
@@ -201,4 +217,6 @@ def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optiona
         capture_interval_seconds=1.0 / config.vision_capture_fps,
         detection_interval_seconds=1.0 / config.face_detection_fps,
         expression_interval_seconds=1.0 / config.expression_inference_fps,
+        diagnostics=config.expression_diagnostics,
+        crop_margin=config.expression_crop_margin,
     )

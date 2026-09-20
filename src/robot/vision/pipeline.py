@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import math
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -12,10 +14,15 @@ from robot.core import Behavior, Event, EventBus
 
 from .provider import CameraProvider, ExpressionProvider, FaceDetector, FacePosition, FaceRegion, VisualExpression
 from .smoother import ExpressionSmoother
+from .selection import FaceSelector
 
 VISION_EXPRESSION_STABLE = "vision.visual_expression_stable"
 VISION_FACE_LOST = "vision.face_lost"
 VISION_FACE_POSITION = "vision.face_position"
+
+logger = logging.getLogger(__name__)
+
+_EXPRESSION_LOG_INTERVAL_SECONDS = 1.0
 
 
 class VisionStatus(str, Enum):
@@ -24,6 +31,7 @@ class VisionStatus(str, Enum):
     LOW_CONFIDENCE = "low_confidence"
     UNSTABLE = "unstable"
     STABLE = "stable"
+    UNKNOWN = "unknown"
     FACE_DETECTED = "face_detected"
 
 
@@ -49,6 +57,8 @@ class VisionPipeline(Behavior):
         capture_interval_seconds: float = 1.0 / 15.0,
         detection_interval_seconds: float = 1.0 / 4.0,
         expression_interval_seconds: float = 1.0 / 3.0,
+        diagnostics: bool = False,
+        crop_margin: float = 0.10,
     ) -> None:
         for name, value in (
             ("capture_interval_seconds", capture_interval_seconds),
@@ -59,6 +69,10 @@ class VisionPipeline(Behavior):
                 raise ValueError(f"{name} must be positive.")
         if (expression_provider is None) != (smoother is None):
             raise ValueError("expression_provider and smoother must be configured together.")
+        if not math.isfinite(crop_margin) or not 0.0 <= crop_margin <= 0.5:
+            raise ValueError("crop_margin must be between zero and 0.5.")
+        self._crop_margin = crop_margin
+        self._face_selector = FaceSelector()
         self._camera = camera
         self._face_detector = face_detector
         self._expression_provider = expression_provider
@@ -67,15 +81,22 @@ class VisionPipeline(Behavior):
         self._capture_interval = capture_interval_seconds
         self._detection_interval = detection_interval_seconds
         self._expression_interval = expression_interval_seconds
+        self._diagnostics = diagnostics
         self._next_detection_at = 0.0
         self._next_expression_at = 0.0
         self._face_present = False
-        self._last_published_label: Optional[str] = None
+        self._last_logged_expression_label: Optional[str] = None
+        self._last_expression_log_at: Optional[float] = None
         self._task: Optional[asyncio.Task[None]] = None
 
     async def start(self) -> None:
         if self._task is not None:
             raise RuntimeError("Vision pipeline is already running.")
+        self._face_selector.reset()
+        self._next_detection_at = self._next_expression_at = 0.0
+        self._face_present = False
+        if self._smoother is not None:
+            self._smoother.reset()
         await self._camera.start()
         self._task = asyncio.create_task(self._run(), name="vision-pipeline")
 
@@ -107,11 +128,20 @@ class VisionPipeline(Behavior):
             return VisionResult(VisionStatus.NOT_DUE)
         self._next_detection_at = now + self._detection_interval
         faces = await self._face_detector.detect(frame)
-        face = _select_largest_face(faces)
+        height, width = frame.shape[:2]
+        selection = self._face_selector.select(faces, width=width, height=height, timestamp=now)
+        face = selection.face
+        if self._diagnostics:
+            logger.info(
+                "Face selection: detected=%s selected=%s reason=%s rejected=%s expression_ready=%s",
+                faces, face, selection.reason, selection.rejected, selection.expression_ready,
+            )
+        if selection.new_track and self._smoother is not None:
+            self._smoother.reset()
         if face is None:
             if self._smoother is not None:
                 self._smoother.reset()
-            self._last_published_label = None
+            self._reset_expression_log()
             if self._face_present and self._events is not None:
                 await self._events.publish(Event(VISION_FACE_LOST))
             self._face_present = False
@@ -125,60 +155,126 @@ class VisionPipeline(Behavior):
             )
         if self._expression_provider is None or self._smoother is None:
             return VisionResult(VisionStatus.FACE_DETECTED)
+        if not selection.expression_ready:
+            self._smoother.reset()
+            return VisionResult(VisionStatus.UNSTABLE, VisualExpression("unknown", 0.0, 0))
         if now < self._next_expression_at:
             return VisionResult(VisionStatus.NOT_DUE)
         self._next_expression_at = now + self._expression_interval
-        face_crop = crop_face(frame, face)
+        region = square_face_region(frame, face, margin=self._crop_margin, reference_size=selection.crop_size)
+        face_crop = None if region is None else frame[
+            region.y:region.y + region.height, region.x:region.x + region.width
+        ]
+        if self._diagnostics:
+            logger.info("Face crop: region=%s margin=%.3f smoothed_size=%s",
+                        region, self._crop_margin, selection.crop_size)
         if face_crop is None:
             self._smoother.reset()
+            self._reset_expression_log()
             return VisionResult(VisionStatus.NO_FACE)
+        if self._diagnostics:
+            logger.info(
+                "Expression diagnostics: selected_face=(x=%s, y=%s, width=%s, height=%s) crop_shape=%s",
+                face.x,
+                face.y,
+                face.width,
+                face.height,
+                getattr(face_crop, "shape", None),
+            )
         observation = await self._expression_provider.classify(face_crop)
-        if observation is None or observation.confidence < self._smoother.minimum_confidence:
-            self._smoother.reset()
-            return VisionResult(VisionStatus.LOW_CONFIDENCE)
-
+        if observation is not None:
+            self._log_expression_observation(observation.label, observation.confidence, now)
         stable = self._smoother.observe(observation, timestamp=now)
-        if stable is None:
-            return VisionResult(VisionStatus.UNSTABLE)
-        if stable.label != self._last_published_label and self._events is not None:
+        decision = self._smoother.decision
+        result = stable or VisualExpression("unknown", 0.0, 0)
+        if self._diagnostics:
+            logger.info(
+                "Expression semantics: top=%s semantic=%s reason=%s temporal=%s",
+                sorted(observation.probabilities, key=lambda item: item[1], reverse=True)[:3]
+                if observation is not None else [],
+                result.label, decision.reason, self._smoother.temporal_state,
+            )
+        if self._events is not None:
             await self._events.publish(
                 Event(
                     VISION_EXPRESSION_STABLE,
                     {
                         "visual_expression": {
-                            "label": stable.label,
-                            "confidence": stable.confidence,
-                            "observed_for_ms": stable.observed_for_ms,
+                            "label": result.label,
+                            "confidence": result.confidence,
+                            "observed_for_ms": result.observed_for_ms,
                         }
                     },
                 )
             )
-        self._last_published_label = stable.label
-        return VisionResult(VisionStatus.STABLE, stable)
+        status = VisionStatus.STABLE if stable else (
+            VisionStatus.UNSTABLE if decision.reason == "temporal_pending" else VisionStatus.UNKNOWN
+        )
+        return VisionResult(status, result)
 
     async def _run(self) -> None:
         while True:
             await self.process_once()
             await asyncio.sleep(self._capture_interval)
 
+    def _log_expression_observation(self, label: str, confidence: float, now: float) -> None:
+        """Report classifier output without logging every inference frame."""
+        if (
+            label == self._last_logged_expression_label
+            and self._last_expression_log_at is not None
+            and now - self._last_expression_log_at < _EXPRESSION_LOG_INTERVAL_SECONDS
+        ):
+            return
+        logger.info("Visible expression observation: %s (confidence %.2f)", label, confidence)
+        self._last_logged_expression_label = label
+        self._last_expression_log_at = now
+
+    def _reset_expression_log(self) -> None:
+        self._last_logged_expression_label = None
+        self._last_expression_log_at = None
+
 
 def _select_largest_face(faces: Any) -> Optional[FaceRegion]:
     return max(faces, key=lambda face: face.area, default=None)
 
 
-def crop_face(frame: Any, face: FaceRegion) -> Optional[Any]:
-    """Return a bounds-checked image slice without copying the face crop."""
+def crop_face(
+    frame: Any, face: FaceRegion, *, margin: float = 0.10, reference_size: Optional[float] = None
+) -> Optional[Any]:
+    """Return a square, bounded image view with margin; no copying or stretching."""
+    region = square_face_region(frame, face, margin=margin, reference_size=reference_size)
+    if region is None:
+        return None
+    return frame[region.y:region.y + region.height, region.x:region.x + region.width]
+
+
+def square_face_region(
+    frame: Any, face: FaceRegion, *, margin: float = 0.10,
+    reference_size: Optional[float] = None,
+) -> Optional[FaceRegion]:
+    """Shift a square inside the frame, reducing margin before clipping a face."""
+    if not math.isfinite(margin) or not 0 <= margin <= 0.5:
+        raise ValueError("margin must be between zero and 0.5.")
     shape = getattr(frame, "shape", None)
     if not shape or len(shape) < 2:
         raise ValueError("Camera frames must expose image-like shape information.")
-    frame_height, frame_width = int(shape[0]), int(shape[1])
-    left = max(face.x, 0)
-    top = max(face.y, 0)
-    right = min(face.x + face.width, frame_width)
-    bottom = min(face.y + face.height, frame_height)
+    height, width = int(shape[0]), int(shape[1])
+    if width <= 0 or height <= 0:
+        raise ValueError("Camera frame dimensions must be positive.")
+    if face.width <= 0 or face.height <= 0:
+        return None
+    left, top = max(0, face.x), max(0, face.y)
+    right, bottom = min(width, face.x + face.width), min(height, face.y + face.height)
     if left >= right or top >= bottom:
         return None
-    return frame[top:bottom, left:right]
+    minimum_side = max(right - left, bottom - top)
+    if minimum_side > min(width, height):
+        return None  # A square cannot contain this face without trimming it.
+    size = max(face.width, face.height) if reference_size is None else reference_size
+    side = min(width, height, max(minimum_side, math.ceil(size * (1 + 2 * margin))))
+    x = max(0, min(width - side, round((left + right - side) / 2)))
+    y = max(0, min(height - side, round((top + bottom - side) / 2)))
+    return FaceRegion(x, y, side, side)
 
 
 def face_position(frame: Any, face: FaceRegion) -> FacePosition:

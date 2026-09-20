@@ -2,7 +2,7 @@
 
 from .display import EyeDisplay, MemoryEyeDisplay, TkEyeDisplay
 from .eyes import EyeFrame, EyeGeometry, EyeRenderer
-from .state import BlinkPhase, FaceExpression, FaceState
+from .state import BlinkPhase, FaceExpression, FaceState, VisualAccent
 
 __all__ = [
     "BlinkPhase",
@@ -14,4 +14,5 @@ __all__ = [
     "FaceState",
     "MemoryEyeDisplay",
     "TkEyeDisplay",
+    "VisualAccent",
 ]

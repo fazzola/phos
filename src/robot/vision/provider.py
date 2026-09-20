@@ -31,15 +31,16 @@ class FacePosition:
 
 @dataclass(frozen=True)
 class ExpressionObservation:
-    """One uncertain classification of visible facial features."""
+    """Raw model output; labelled probabilities enable semantic abstention."""
 
     label: str
     confidence: float
+    probabilities: Tuple[Tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
 class VisualExpression:
-    """A temporally stable, uncertain observation of a visible expression."""
+    """A confirmed semantic observation, or explicit UNKNOWN abstention."""
 
     label: str
     confidence: float

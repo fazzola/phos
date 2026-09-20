@@ -16,6 +16,17 @@ class FaceExpression(str, Enum):
     WORRIED = "worried"
 
 
+class VisualAccent(str, Enum):
+    """Provider-neutral color intent for PHOS's visual reaction."""
+
+    NEUTRAL = "neutral"
+    WARM = "warm"
+    CURIOUS = "curious"
+    ALERT = "alert"
+    SLEEPY = "sleepy"
+    ERROR = "error"
+
+
 class BlinkPhase(str, Enum):
     OPEN = "open"
     CLOSING = "closing"
@@ -37,11 +48,13 @@ class FaceState:
     pupil_y: float = 0.0
     reaction_strength: float = 0.0
     expression: FaceExpression = FaceExpression.NEUTRAL
+    accent: VisualAccent = VisualAccent.NEUTRAL
     blink_phase: BlinkPhase = BlinkPhase.OPEN
     blink_progress: float = 0.0
 
     def normalized(self) -> "FaceState":
         expression = self.expression if isinstance(self.expression, FaceExpression) else FaceExpression.NEUTRAL
+        accent = self.accent if isinstance(self.accent, VisualAccent) else VisualAccent.NEUTRAL
         blink_phase = self.blink_phase if isinstance(self.blink_phase, BlinkPhase) else BlinkPhase.OPEN
         background = self.background if isinstance(self.background, str) else "#10243A"
         return FaceState(
@@ -52,6 +65,7 @@ class FaceState:
             pupil_y=_clamp(self.pupil_y, -1.0, 1.0),
             reaction_strength=_clamp(self.reaction_strength, 0.0, 1.0),
             expression=expression,
+            accent=accent,
             blink_phase=blink_phase,
             blink_progress=_clamp(self.blink_progress, 0.0, 1.0),
         )

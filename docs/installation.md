@@ -73,6 +73,25 @@ mkdir -p /home/pi/phos/src
 
 ## 5. Start PHOS
 
+The selected replacement candidate is OpenCV Zoo MobileFaceNet (FP32 ONNX).
+Pi CPU timings are recorded, but camera accuracy still requires validation in
+[Vision model evaluation](vision-model-evaluation.md) before production promotion.
+Download and verify the published model (no model conversion or new runtime needed):
+
+```bash
+cd ~/phos
+
+mkdir -p models/expression
+
+wget -O models/expression/facial_expression_recognition_mobilefacenet_2022july.onnx \
+https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/facial_expression_recognition/facial_expression_recognition_mobilefacenet_2022july.onnx
+
+echo '4f61307602fc089ce20488a31d4e4614e3c9753a7d6c41578c854858b183e1a9  models/expression/facial_expression_recognition_mobilefacenet_2022july.onnx' | sha256sum -c -
+
+wget -O models/expression/opencv-zoo-LICENSE \
+https://raw.githubusercontent.com/opencv/opencv_zoo/main/LICENSE
+```
+
 Run these commands from a graphical Raspberry Pi OS desktop session:
 
 ```bash
@@ -87,10 +106,30 @@ cd /home/pi/phos
 python3 src/robot/main.py --face-tracking
 ```
 
+Start PHOS with the MobileFaceNet replacement candidate:
+
+```bash
+cd ~/phos
+python3 src/robot/main.py \
+  --expression-model models/expression/facial_expression_recognition_mobilefacenet_2022july.onnx \
+  --expression-labels angry,disgust,fearful,happy,neutral,sad,surprised \
+  --expression-input-size 112x112 \
+  --expression-scale 0.00784313725490196 \
+  --expression-mean 127.5,127.5,127.5
+```
+
 The default command requires no camera and displays idle animated eyes. The
 face-tracking command starts Picamera2 and OpenCV, detects the largest visible
 face at the configured detection rate, and smoothly moves pupils toward it.
-Press `Ctrl+C` to stop PHOS cleanly; press `Escape` to leave fullscreen mode.
+The expression command additionally classifies the cropped face with the ONNX
+model; it does not save frames or face crops. Press `Ctrl+C` to stop PHOS
+cleanly; press `Escape` to leave fullscreen mode.
+
+Keep channel swapping enabled for the current Picamera2 `RGB888` capture,
+whose array contains BGR bytes. Do not use the FER+ grayscale flags with this
+model. Add `--expression-debug` for confidence, scores and forward-time logs.
+The FER+ rollback command remains in [Vision](vision.md); the paired benchmark
+and physical acceptance procedure are in [Vision model evaluation](vision-model-evaluation.md).
 
 ## Troubleshooting
 

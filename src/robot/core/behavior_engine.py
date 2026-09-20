@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
 from dataclasses import replace
 from typing import Callable, Optional
 
-from robot.ui.state import BlinkPhase, FaceExpression, FaceState
+from robot.ui.state import BlinkPhase, FaceExpression, FaceState, VisualAccent
 
 from .behaviors import Behavior
 from .events import Event, EventBus
@@ -32,6 +33,8 @@ class BehaviorEngine(Behavior):
         blink_interval: tuple[float, float] = (3.5, 6.5),
         gaze_interval: tuple[float, float] = (2.5, 5.5),
         face_gaze_smoothing: float = 0.35,
+        reaction_decay_per_second: float = 0.30,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if blink_interval[0] <= 0 or blink_interval[1] < blink_interval[0]:
             raise ValueError("Blink interval must contain positive ascending values.")
@@ -39,10 +42,14 @@ class BehaviorEngine(Behavior):
             raise ValueError("Gaze interval must contain positive ascending values.")
         if not 0.0 < face_gaze_smoothing <= 1.0:
             raise ValueError("face_gaze_smoothing must be between zero and one.")
+        if reaction_decay_per_second <= 0.0:
+            raise ValueError("reaction_decay_per_second must be positive.")
         self._events = events
         self._blink_interval = blink_interval
         self._gaze_interval = gaze_interval
         self._face_gaze_smoothing = face_gaze_smoothing
+        self._reaction_decay_per_second = reaction_decay_per_second
+        self._clock = clock
         self._state = FaceState()
         self._robot_state = RobotState.IDLE
         self._blink_phase = BlinkPhase.OPEN
@@ -50,6 +57,9 @@ class BehaviorEngine(Behavior):
         self._next_blink_at = 0.0
         self._next_gaze_at = 0.0
         self._face_is_tracked = False
+        self._last_reaction_update_at: Optional[float] = None
+        self._surprise_armed = True
+        self._surprise_last_at = float("-inf")
         self._unsubscribers: list[Callable[[], None]] = []
         self._task: Optional[asyncio.Task[None]] = None
 
@@ -58,7 +68,7 @@ class BehaviorEngine(Behavior):
         return replace(
             self._state,
             blink_phase=self._blink_phase,
-            blink_progress=self._blink_progress(time.monotonic()),
+            blink_progress=self._blink_progress(self._clock()),
         ).normalized()
 
     async def start(self) -> None:
@@ -70,7 +80,7 @@ class BehaviorEngine(Behavior):
             self._events.subscribe(VISION_FACE_POSITION, self._on_face_position),
             self._events.subscribe(VISION_FACE_LOST, self._on_face_lost),
         ]
-        now = time.monotonic()
+        now = self._clock()
         self._next_blink_at = now + random.uniform(*self._blink_interval)
         self._next_gaze_at = now + random.uniform(*self._gaze_interval)
         self._task = asyncio.create_task(self._animation_loop(), name="behavior-engine")
@@ -105,25 +115,31 @@ class BehaviorEngine(Behavior):
         if self._robot_state is not RobotState.IDLE:
             return
         payload = event.data.get("visual_expression", {})
-        expression = {
-            "happy": FaceExpression.HAPPY,
-            "surprised": FaceExpression.SURPRISED,
-            "neutral": FaceExpression.NEUTRAL,
-        }.get(payload.get("label"))
-        if expression is not None:
-            try:
-                confidence = float(payload.get("confidence", 0.0))
-            except (TypeError, ValueError):
-                confidence = 0.0
-            self._state = replace(
-                self._state,
-                expression=expression,
-                reaction_strength=max(0.0, min(confidence, 1.0)),
-            )
+        try:
+            confidence = float(payload.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            return
+        label = payload.get("label")
+        reaction = _visual_reaction(label, confidence)
+        if reaction is None:
+            return
+        now = self._clock()
+        if label in {"happy", "happiness", "neutral"}:
+            self._surprise_armed = True
+        if label in {"surprise", "surprised"}:
+            if not self._surprise_armed or now - self._surprise_last_at < 4.0:
+                return
+        if label in {"surprise", "surprised"}:
+            self._surprise_armed = False
+            self._surprise_last_at = now
+        expression, accent, strength = reaction
+        self._state = replace(self._state, expression=expression, accent=accent, reaction_strength=strength)
+        self._last_reaction_update_at = self._clock()
 
     async def _on_face_lost(self, event: Event) -> None:
         self._face_is_tracked = False
-        self._state = _face_state_for_robot_state(self._robot_state)
+        if self._robot_state is RobotState.IDLE:
+            self._state = replace(self._state, pupil_x=0.0, pupil_y=0.0)
 
     async def _on_face_position(self, event: Event) -> None:
         payload = event.data.get("face_position", {})
@@ -145,13 +161,25 @@ class BehaviorEngine(Behavior):
 
     async def _animation_loop(self) -> None:
         while True:
-            now = time.monotonic()
+            now = self._clock()
             self._advance_blink(now)
+            self._decay_visual_reaction(now)
             if self._robot_state is RobotState.IDLE and not self._face_is_tracked and now >= self._next_gaze_at:
                 pupil_x, pupil_y = random.choice(_IDLE_GAZE_OFFSETS)
                 self._state = replace(self._state, pupil_x=pupil_x, pupil_y=pupil_y)
                 self._next_gaze_at = now + random.uniform(*self._gaze_interval)
             await asyncio.sleep(1.0 / 60.0)
+
+    def _decay_visual_reaction(self, now: float) -> None:
+        """Ease an idle Vision reaction back to PHOS's normal face."""
+        if self._robot_state is not RobotState.IDLE or self._last_reaction_update_at is None:
+            return
+        elapsed = max(0.0, now - self._last_reaction_update_at)
+        self._last_reaction_update_at = now
+        strength = max(0.0, self._state.reaction_strength - elapsed * self._reaction_decay_per_second)
+        expression = self._state.expression if strength > 0.0 else FaceExpression.NEUTRAL
+        accent = self._state.accent if strength > 0.0 else VisualAccent.NEUTRAL
+        self._state = replace(self._state, expression=expression, accent=accent, reaction_strength=strength)
 
     def _advance_blink(self, now: float) -> None:
         if self._blink_phase is BlinkPhase.OPEN and now >= self._next_blink_at:
@@ -180,15 +208,40 @@ class BehaviorEngine(Behavior):
 
 def _face_state_for_robot_state(state: RobotState) -> FaceState:
     if state is RobotState.LISTENING:
-        return FaceState(background="#075B66", expression=FaceExpression.CURIOUS, reaction_strength=0.70)
+        return FaceState(
+            background="#075B66",
+            expression=FaceExpression.CURIOUS,
+            accent=VisualAccent.CURIOUS,
+            reaction_strength=0.70,
+        )
     if state is RobotState.THINKING:
-        return FaceState(background="#35245E", expression=FaceExpression.CURIOUS, reaction_strength=0.55)
+        return FaceState(
+            background="#35245E",
+            expression=FaceExpression.CURIOUS,
+            accent=VisualAccent.CURIOUS,
+            reaction_strength=0.55,
+        )
     if state is RobotState.SPEAKING:
-        return FaceState(background="#164F3B", expression=FaceExpression.HAPPY, reaction_strength=0.55)
+        return FaceState(
+            background="#164F3B",
+            expression=FaceExpression.HAPPY,
+            accent=VisualAccent.WARM,
+            reaction_strength=0.55,
+        )
     if state is RobotState.SLEEPING:
-        return FaceState(background="#08101E", expression=FaceExpression.SLEEPY, reaction_strength=1.0)
+        return FaceState(
+            background="#08101E",
+            expression=FaceExpression.SLEEPY,
+            accent=VisualAccent.SLEEPY,
+            reaction_strength=1.0,
+        )
     if state is RobotState.ERROR:
-        return FaceState(background="#6B1D2A", expression=FaceExpression.WORRIED, reaction_strength=0.80)
+        return FaceState(
+            background="#6B1D2A",
+            expression=FaceExpression.WORRIED,
+            accent=VisualAccent.ERROR,
+            reaction_strength=0.80,
+        )
     return FaceState()
 
 
@@ -208,3 +261,19 @@ def _clamp_unit(value: float) -> float:
 
 def _smooth(current: float, target: float, amount: float) -> float:
     return current + (target - current) * amount
+
+
+def _visual_reaction(
+    label: object, confidence: float
+) -> Optional[tuple[FaceExpression, VisualAccent, float]]:
+    """React to useful semantic observations; UNKNOWN allows normal decay."""
+    if not isinstance(label, str) or not math.isfinite(confidence) or confidence <= 0:
+        return None
+    bounded_confidence = max(0.0, min(confidence, 1.0))
+    if label in {"happy", "happiness"}:
+        return FaceExpression.HAPPY, VisualAccent.WARM, min(0.90, bounded_confidence)
+    if label in {"surprised", "surprise"}:
+        return FaceExpression.SURPRISED, VisualAccent.ALERT, min(0.90, bounded_confidence)
+    if label == "neutral":
+        return FaceExpression.NEUTRAL, VisualAccent.NEUTRAL, min(0.25, bounded_confidence * 0.30)
+    return None

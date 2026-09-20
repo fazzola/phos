@@ -47,8 +47,29 @@ This uses Picamera2 plus the OpenCV Haar detector at 640×480 and moves the
 pupils toward the largest detected face. It does not require or run an ONNX
 expression model. Follow [the Raspberry Pi installation guide](docs/installation.md)
 to install the camera and OpenCV dependencies. Without `--face-tracking`,
-PHOS runs without camera access. Expression classification remains separately
-configured in code and is not enabled by this command.
+PHOS runs without camera access.
+
+## Expression reactions
+
+Expression reactions use the same camera/face tracking path and the ONNX Model
+Zoo FER+ model downloaded during installation. It expects 1×1×64×64 grayscale
+input and produces eight labels in a fixed order.
+
+```bash
+python3 src/robot/main.py \
+  --expression-model models/expression/emotion-ferplus-8.onnx \
+  --expression-labels neutral,happiness,surprise,sadness,anger,disgust,fear,contempt \
+  --expression-input-size 64x64 \
+  --expression-grayscale \
+  --expression-scale 1 \
+  --expression-mean 0,0,0 \
+  --expression-no-swap-rb
+```
+
+The command converts the RGB camera crop to grayscale and supplies unscaled
+pixels (`scale=1`), zero mean, and no channel swap, as required by this model.
+It enables camera face tracking as well. See [Vision](docs/vision.md) for the
+stable-observation policy and supported reaction behavior.
 
 ## Eye demo
 
