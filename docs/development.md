@@ -8,11 +8,158 @@ Use interfaces and fakes/mocks for hardware.
 
 ## Configuration
 
-Keep environment-specific values out of source code.
+`config/phos.json` is the **single canonical configuration and complete example**.
+The complete JSON structure and authoritative default values are in
+[the file itself](../config/phos.json); edit it directly and restart PHOS:
 
-Prefer a configuration file plus environment variables for secrets.
+```bash
+python3 src/robot/main.py --config config/phos.json
+```
 
-Never commit API keys, passwords or tokens.
+No separate example/provider files or hidden JSON overlays are loaded. With no
+argument, startup resolves that same file relative to the source checkout, not
+its working directory. A custom `--config` selects one complete file instead.
+To keep a separate deployment copy, copy the full canonical file, edit it and
+pass its path explicitly. Keep deployment changes out of commits if inappropriate.
+No file may contain credentials.
+
+The five required sections are `display`, `behavior`, `vision`, `expression`
+(with `smoothing`, `local`, `aws`) and `logging`. `vision` includes `detector`.
+There are no speculative runtime/voice/web/sensor sections. Every field in the
+canonical file is required, including null values and inactive-provider settings;
+a missing value is an error, not a second default hidden in code.
+
+### Field reference
+
+Values/defaults are maintained only in `config/phos.json`. All numeric values
+must be finite; booleans must be JSON booleans, not strings or numbers.
+
+| Section | Fields and purpose |
+| --- | --- |
+| `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration. |
+| `behavior` | `blink_interval_seconds`, `gaze_interval_seconds`: positive ascending `[minimum, maximum]` timing ranges; `face_gaze_smoothing`: gaze smoothing coefficient in (0,1]; `reaction_decay_per_second`: positive visual reaction decay. |
+| `vision` | `face_tracking_enabled`: camera/tracking without expression inference; `camera_resolution`: positive integer `[width,height]`; `capture_fps`, `detection_fps`: positive capture/detection cadences. |
+| `vision.detector` | `cascade_path`: custom readable Haar file or null for existing platform discovery; `scale_factor`: pyramid scale greater than 1; `min_neighbors`: nonnegative integer detection support; `min_size`: positive pixel pair no larger than the camera resolution. |
+| `expression` | `enabled`: expression processing, also enabling local tracking; `provider`: local/aws; `inference_fps`: positive local inference/cloud polling cadence; `crop_margin`: extra square-crop margin per side in [0,0.5]. |
+| `expression.smoothing` | `minimum_confidence`: additional evidence floor in [0,1]; `minimum_observations`: positive integer count of distinct samples; `local_maximum_gap_seconds`: positive maximum gap for local evidence; `neutral_enabled`: enable neutral perception only after calibration. Cloud maximum gap is derived from its TTL. |
+| `expression.local` | `model_path`: ONNX path or null; `labels`: unique, nonempty strings in output order (array may be empty only when local inference is inactive); `input_size`: positive `[width,height]`; `scale`: positive preprocessing multiplier; `mean`: three finite channel means; `swap_rb`: swap BGR/RGB; `grayscale`: existing grayscale preprocessing. When grayscale is true, provider behavior ignores swap_rb. |
+| `expression.aws` | `region`: nonempty region string or null for external SDK/environment resolution; no credentials. |
+| `expression.aws` | `cooldown_seconds`: minimum request interval; `stable_seconds`: eligible local continuity before requesting; `refresh_seconds`: refresh unchanged input; `cache_ttl_seconds`: maximum sample age. All positive; refresh must be less than TTL. |
+| `expression.aws` | `max_requests_per_minute`: positive rate implemented as minimum spacing; `max_requests_per_session`: nonnegative integer cap, zero means unlimited; `change_threshold`: normalized crop difference threshold in [0,1]; `minimum_face_confidence`: AWS face-confidence floor in [0,1]. |
+| `expression.aws` | `retry_initial_seconds`, `retry_max_seconds`: positive backoff limits, maximum at least initial; `connect_timeout_seconds`, `read_timeout_seconds`: positive SDK timeouts. |
+| `logging` | `level`: DEBUG/INFO/WARNING/ERROR/CRITICAL; `file`: output path or null for console only; `expression_diagnostics`: detailed Vision/cloud diagnostics. SDK debug output is suppressed to avoid exposing request/credential metadata. |
+
+All JSON paths resolve relative to the selected JSON file's directory. The
+canonical local path therefore starts with `../models/`, and its log path points
+back to the checkout root. Active local models and explicit active cascades must
+be readable files. Inactive models need not exist; AWS mode needs no ONNX file.
+The log parent must already exist and be writable. PHOS does not create arbitrary
+configuration/model/log directories. ONNX content/model-output compatibility and
+physical device availability still require runtime verification.
+
+### Provider examples
+
+Edit these fields **inside the complete file**, preserving the other fields.
+These are illustrative fragments, not additional partial configuration files:
+
+```json
+{"expression": {"enabled": true, "provider": "local"}}
+```
+
+The canonical `expression.local` block already contains the MobileFaceNet input
+contract. Download its model using [installation](installation.md). For FER+
+rollback use the block in [Vision](vision.md), replacing every preprocessing
+field rather than depending on former CLI defaults.
+
+```json
+{"expression": {"enabled": true, "provider": "aws"}}
+```
+
+Keep the existing `expression.aws` block; optionally edit region and request
+policy. No fallback is supported. All camera selection/cropping stays local;
+AWS receives selected crops only. See [Vision](vision.md) for privacy and policy.
+AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY and, for temporary credentials,
+AWS_SESSION_TOKEN are external environment credentials. AWS_REGION /
+AWS_DEFAULT_REGION, shared SDK profiles and roles are also supported.
+A null JSON region defers resolution to the external environment/SDK. Parsing
+never imports boto3, searches for credentials or contacts AWS.
+
+### Validation, precedence and migration
+
+Startup reads one JSON, applies explicit deprecated CLI overrides, validates
+schema/types/ranges and active paths, then builds typed settings and constructs
+subsystems. Errors name the field or JSON line/column and exit with status 2
+before camera/display startup. Duplicate keys, unknown keys (including secrets),
+missing sections/fields and incompatible refresh/TTL or detector/camera sizes
+are rejected. Finite numeric validation also rejects NaN/infinity.
+
+Precedence: explicit legacy CLI value > selected JSON value. CLI values have no
+independent defaults and never overwrite the file. `--expression-provider` or
+`--expression-model` also enables expression processing for compatibility;
+`--face-tracking` enables tracking without changing expression enablement.
+`--aws-region` overrides JSON region, followed by AWS_REGION, then the standard
+SDK AWS_DEFAULT_REGION/profile fallback. CLI model paths retain their old
+working-directory-relative interpretation; JSON paths are config-relative.
+
+Retained but deprecated: `--face-tracking`, `--expression-provider`,
+`--aws-region`, `--expression-model`, `--expression-labels`,
+`--expression-input-size`, `--expression-scale`, `--expression-mean`,
+`--expression-no-swap-rb`, `--expression-grayscale`, `--expression-debug`,
+`--expression-crop-margin`. Help and startup warn about this transition.
+`--config` and `--help` remain the supported primary interface. No runtime flags
+were removed in this migration. Migrate launch scripts now; remove compatibility
+flags only in a separately announced breaking change after consumers migrate.
+
+The old partial flat JSON format and `config/expression-local.json` /
+`config/expression-aws.json` are retired. To migrate, start from `config/phos.json`:
+
+| Former field(s) | Canonical destination |
+| --- | --- |
+| `display_fps`, `fullscreen` | `display.fps`, `display.fullscreen` |
+| `face_tracking_enabled`, `camera_resolution` | same names under `vision` |
+| `vision_capture_fps`, `face_detection_fps` | `vision.capture_fps`, `vision.detection_fps` |
+| `expression_provider` | `expression.provider`; set `expression.enabled` explicitly |
+| `expression_inference_fps`, `expression_crop_margin` | `expression.inference_fps`, `expression.crop_margin` |
+| `expression_minimum_confidence` | `expression.smoothing.minimum_confidence` |
+| `expression_model_path`, `expression_labels`, `expression_input_size`, `expression_scale`, `expression_mean`, `expression_swap_rb`, `expression_grayscale` | `expression.local` with the `expression_` prefix removed |
+| `cloud_expression` | `expression.aws` (same member names) |
+| `expression_diagnostics` | `logging.expression_diagnostics` |
+
+The current runtime previously combined flat dataclass defaults, CLI overrides,
+provider configuration, renderer/behavior/detector constructor defaults and
+hard-coded logging setup. Composition now passes all applicable settings
+explicitly from the canonical file. Standalone library/demo/benchmark constructor
+fallbacks remain for compatibility, but are not application configuration sources.
+Geometric face association gates, class-specific semantic safeguards, visual
+profiles and SDK JPEG implementation details remain implementation constants.
+No AI/voice settings are added for subsystems outside this runtime milestone.
+
+### Reusable configuration API and future web layer
+
+`robot.config.RuntimeConfig` is the existing typed surface moved out of runtime;
+`robot.runtime.RuntimeConfig` remains import-compatible. Cloud settings retain
+`CloudExpressionConfig`, re-exported from the AWS adapter for existing callers.
+JSON section names are mapped to typed fields at the boundary; raw dictionaries
+never reach providers or behaviors.
+
+- `load_document(path)` reads JSON for an editor without hardware/SDK imports.
+- `RuntimeConfig.from_file(path)` loads and validates a full file.
+- `RuntimeConfig.from_dict(document, base_dir=...)` validates edited settings
+  with the same schema/rules, including config-relative paths.
+- `config.to_dict()` returns the full serializable non-secret structure.
+- `config.save(path)` validates and atomically replaces a file, rebasing paths
+  if the file moves; a failed validation preserves the old file.
+
+Existing `RuntimeConfig(**overrides)` and `CloudExpressionConfig(**overrides)`
+Python calls overlay the canonical file for compatibility; they contain no
+independent numeric defaults. Runtime construction revalidates before hardware
+starts. New application code should use full-file/dict loading instead.
+
+A future web interface must reuse this read/edit/validate/save boundary. It must
+never accept/store/display AWS credentials as normal settings. No web UI, secret
+management endpoint or live reload exists now; restart to apply persisted edits.
+New non-secret runtime options must extend this canonical model/file, not add
+standalone CLI arguments or another configuration mechanism.
 
 ## Dependencies
 
@@ -32,54 +179,3 @@ Test:
 - error handling
 
 Do not make ordinary unit tests depend on physical GPIO/audio/display hardware.
-
-## Expression configuration
-
-The existing frozen `RuntimeConfig` is the single application settings boundary.
-`RuntimeConfig.from_file(Path(...))` loads ordinary JSON settings; `--config PATH`
-uses it at startup. Explicit CLI arguments override file values; unspecified
-fields keep dataclass defaults. Unknown keys (including secret-key fields) are
-rejected. Model paths are relative to the process working directory. JSON arrays
-become the existing tuple settings. See `config/expression-local.json` and
-`config/expression-aws.json` for runnable examples. The existing local model
-path, labels, dimensions, scale, mean, channel swap, grayscale and crop margin
-remain supported through both configuration and CLI.
-
-New top-level fields: `expression_provider` (`local`/`aws`, default `local`),
-`expression_minimum_confidence` (0.60, additional floor on semantic thresholds),
-and the nested `cloud_expression` object:
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `region` | null | SDK region; config overrides AWS_REGION, then SDK AWS_DEFAULT_REGION/profile |
-| `cooldown_seconds` | 30 | Minimum interval between attempts |
-| `stable_seconds` | 1 | Eligible local continuity required before cloud work |
-| `refresh_seconds` | 60 | Refresh similar input before expiry |
-| `cache_ttl_seconds` | 90 | Maximum age from sample capture |
-| `max_requests_per_minute` | 2 | Enforced as minimum spacing, no bursts |
-| `max_requests_per_session` | 0 | Optional cap; zero is unlimited |
-| `change_threshold` | 0.08 | Mean absolute normalized thumbnail difference |
-| `minimum_face_confidence` | 0.90 | Minimum AWS face detection confidence |
-| `retry_initial_seconds` | 60 | First failure backoff |
-| `retry_max_seconds` | 600 | Exponential backoff ceiling |
-| `connect_timeout_seconds` | 3 | SDK connection timeout |
-| `read_timeout_seconds` | 5 | SDK socket read timeout |
-
-Durations/rates must be positive and finite; refresh must precede TTL, retry
-maximum must be at least the initial delay, confidence/change values must be in
-[0, 1], and session cap must be a nonnegative integer. A cooldown longer than TTL
-is permitted but deliberately leaves periods with UNKNOWN evidence.
-New CLI options: `--config`, `--expression-provider`, `--aws-region`.
-Use JSON or Python configuration for all other cloud policy settings.
-
-A future PHOS web configuration layer must read/change these same non-secret
-settings and construct validated RuntimeConfig/CloudExpressionConfig values,
-without changing Vision/provider implementations. Settings are currently applied
-at startup (restart after editing); no web UI or live reconfiguration is present.
-AWS credentials remain external to this configuration boundary and must never
-become fields in normal web-editable application settings. Standard SDK profiles,
-environment credentials or role credentials remain responsible for secrets.
-
-AWS unit tests inject clients/SDK fakes and a clock, require no credentials and
-make no network requests. Run `python3 -m pytest -q`; the OpenCV-specific local
-preprocessing test is skipped when cv2/numpy are unavailable.

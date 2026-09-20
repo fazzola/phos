@@ -1,0 +1,68 @@
+{
+  "display": {
+    "width": 800,
+    "height": 600,
+    "fps": 30,
+    "fullscreen": true,
+    "transition_seconds": 0.18
+  },
+  "behavior": {
+    "blink_interval_seconds": [3.5, 6.5],
+    "gaze_interval_seconds": [2.5, 5.5],
+    "face_gaze_smoothing": 0.35,
+    "reaction_decay_per_second": 0.30
+  },
+  "vision": {
+    "face_tracking_enabled": false,
+    "camera_resolution": [640, 480],
+    "capture_fps": 15.0,
+    "detection_fps": 4.0,
+    "detector": {
+      "cascade_path": null,
+      "scale_factor": 1.1,
+      "min_neighbors": 5,
+      "min_size": [48, 48]
+    }
+  },
+  "expression": {
+    "enabled": false,
+    "provider": "local",
+    "inference_fps": 3.0,
+    "crop_margin": 0.10,
+    "smoothing": {
+      "minimum_confidence": 0.60,
+      "minimum_observations": 3,
+      "local_maximum_gap_seconds": 1.5,
+      "neutral_enabled": false
+    },
+    "local": {
+      "model_path": "../models/expression/facial_expression_recognition_mobilefacenet_2022july.onnx",
+      "labels": ["angry", "disgust", "fearful", "happy", "neutral", "sad", "surprised"],
+      "input_size": [112, 112],
+      "scale": 0.00784313725490196,
+      "mean": [127.5, 127.5, 127.5],
+      "swap_rb": true,
+      "grayscale": false
+    },
+    "aws": {
+      "region": null,
+      "cooldown_seconds": 30.0,
+      "stable_seconds": 1.0,
+      "refresh_seconds": 60.0,
+      "cache_ttl_seconds": 90.0,
+      "max_requests_per_minute": 2.0,
+      "max_requests_per_session": 0,
+      "change_threshold": 0.08,
+      "minimum_face_confidence": 0.90,
+      "retry_initial_seconds": 60.0,
+      "retry_max_seconds": 600.0,
+      "connect_timeout_seconds": 3.0,
+      "read_timeout_seconds": 5.0
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "../phos.log",
+    "expression_diagnostics": false
+  }
+}

@@ -1,8 +1,0 @@
-{
-  "expression_provider": "local",
-  "expression_model_path": "models/expression/facial_expression_recognition_mobilefacenet_2022july.onnx",
-  "expression_labels": ["angry", "disgust", "fearful", "happy", "neutral", "sad", "surprised"],
-  "expression_input_size": [112, 112],
-  "expression_scale": 0.00784313725490196,
-  "expression_mean": [127.5, 127.5, 127.5]
-}

@@ -2,7 +2,7 @@
 
 This guide installs the dependencies required to run PHOS from
 `/home/pi/phos` on a Raspberry Pi 3 with the HDMI display. The project source
-sync script copies only `src/`, so install these system dependencies separately
+sync script copies `src/` and seeds `config/phos.json` once, so install dependencies separately
 on the Pi.
 
 ## 1. Prepare Raspberry Pi OS
@@ -64,11 +64,13 @@ From the development machine, run the repository script:
 ./run_pi.sh
 ```
 
-It synchronizes local `src/` to `/home/pi/phos/src/` on `pi@192.168.1.128`.
+It synchronizes local `src/` to `/home/pi/phos/src/` on the host configured
+in `run_pi.sh`, and copies `config/phos.json` only if the Pi has no such file.
+Existing Pi settings are not overwritten.
 For a first copy, create the destination directory on the Pi if necessary:
 
 ```bash
-mkdir -p /home/pi/phos/src
+mkdir -p /home/pi/phos/src /home/pi/phos/config
 ```
 
 ## 5. Start PHOS
@@ -92,44 +94,37 @@ wget -O models/expression/opencv-zoo-LICENSE \
 https://raw.githubusercontent.com/opencv/opencv_zoo/main/LICENSE
 ```
 
-Run these commands from a graphical Raspberry Pi OS desktop session:
+Run from a graphical Raspberry Pi OS desktop session:
 
 ```bash
 cd /home/pi/phos
-python3 src/robot/main.py
+python3 src/robot/main.py --config config/phos.json
 ```
 
-Start the face-tracking milestone with:
+This same command is used for all modes. The committed configuration starts
+only the animated eyes. Edit `config/phos.json` with your normal text editor:
 
-```bash
-cd /home/pi/phos
-python3 src/robot/main.py --face-tracking
-```
+- Set `vision.face_tracking_enabled` true for local gaze tracking only.
+- Set `expression.enabled` true and keep `expression.provider` as `"local"`
+  for MobileFaceNet expression observations. The model/preprocessing fields
+  are already provided under `expression.local`; the downloaded file must exist.
+- Set `logging.expression_diagnostics` true temporarily to inspect detections,
+  inference and semantic decisions, then turn it off after verification.
 
-Start PHOS with the MobileFaceNet replacement candidate:
+Restart after changes. Model and log paths resolve relative to the JSON file,
+not your terminal directory. The included model path starts with `../models/`.
+Malformed configuration and missing active model files fail before camera or
+fullscreen display startup. Ctrl+C stops PHOS; Escape leaves fullscreen.
+Do not change the candidate's channel/preprocessing settings without checking
+its model contract. FER+ rollback settings are in [Vision](vision.md).
 
-```bash
-cd ~/phos
-python3 src/robot/main.py \
-  --expression-model models/expression/facial_expression_recognition_mobilefacenet_2022july.onnx \
-  --expression-labels angry,disgust,fearful,happy,neutral,sad,surprised \
-  --expression-input-size 112x112 \
-  --expression-scale 0.00784313725490196 \
-  --expression-mean 127.5,127.5,127.5
-```
-
-The default command requires no camera and displays idle animated eyes. The
-face-tracking command starts Picamera2 and OpenCV, detects the largest visible
-face at the configured detection rate, and smoothly moves pupils toward it.
-The expression command additionally classifies the cropped face with the ONNX
-model; it does not save frames or face crops. Press `Ctrl+C` to stop PHOS
-cleanly; press `Escape` to leave fullscreen mode.
-
-Keep channel swapping enabled for the current Picamera2 `RGB888` capture,
-whose array contains BGR bytes. Do not use the FER+ grayscale flags with this
-model. Add `--expression-debug` for confidence, scores and forward-time logs.
-The FER+ rollback command remains in [Vision](vision.md); the paired benchmark
-and physical acceptance procedure are in [Vision model evaluation](vision-model-evaluation.md).
+`config/phos.json` is both the canonical example and the user-editable file;
+there are no separate provider configuration files. You may copy the complete
+file to another location and select it with `--config`; update relative paths
+if moving it manually. See [all fields and validation rules](development.md#configuration).
+The old individual settings flags are deprecated overrides only. For upgrades,
+compare your Pi configuration with the canonical file and add any new required
+fields; the source sync deliberately preserves your settings.
 
 ## Troubleshooting
 
@@ -199,43 +194,33 @@ then `AWS_REGION`, then the SDK (`AWS_DEFAULT_REGION` or profile). Credentials
 are never read manually or stored in PHOS JSON. Do not put secrets in committed
 files or issue/debug logs. PHOS does not use or create a `.env` file.
 
-Start from a graphical Pi desktop session at the repository root:
+In `config/phos.json`, change `expression.enabled` to true and
+`expression.provider` to `"aws"`. Retain the complete `expression.aws` block and
+edit its request limits/region if needed. Then run:
 
 ```bash
-python3 src/robot/main.py --expression-provider aws --expression-debug
+python3 src/robot/main.py --config config/phos.json
 ```
 
-**This sends selected cropped facial images to AWS.** No ONNX model is needed.
-Only locally stable selected crops are sent, with default 30-second minimum
-spacing, 60-second refresh and 90-second result lifetime. Similar crops cost
-about 60 analysis requests/hour; changing crops can reach 120/hour. Check AWS
-pricing for your region before prolonged operation. To stop cloud processing,
-stop PHOS with Ctrl+C and restart in local mode:
+**AWS mode sends selected cropped facial images to AWS.** No local ONNX file
+is required for this mode. Camera capture, selection and cropping remain local.
+The request/cache/backoff policy is documented in [Vision](vision.md#cloud-request-and-evidence-policy).
+To stop cloud processing, stop PHOS and set `expression.provider` to `"local"`
+with a valid local model, or set `expression.enabled` false; restart with the
+same command. To keep gaze without expression analysis, enable
+`vision.face_tracking_enabled`.
 
-```bash
-python3 src/robot/main.py --config config/expression-local.json
-```
+For verification, enable `logging.expression_diagnostics` in JSON. Check
+`PHOS configuration loaded` and `Expression provider: aws`, then hold a well-lit
+face in view. Logs show attempts/cache/skips/latency; tracking should continue
+smoothly during requests. Leave/re-enter to verify stale results are discarded.
+Distinct samples are needed for temporal confirmation; short-term reactions
+are deliberately limited by the conservative cloud policy. Turn diagnostics
+off after testing. If AWS fails, UNKNOWN and bounded retries preserve local
+tracking/eyes without silently selecting another provider. Check boto3, region,
+external credentials, IAM permission and network. Automated tests do not verify
+recognition quality or cloud service availability on physical hardware.
 
-This uses the MobileFaceNet file downloaded in step 5. The existing explicit
-ONNX CLI command also remains valid; add `--expression-provider local` if desired.
-For configurable AWS policy:
-
-```bash
-python3 src/robot/main.py --config config/expression-aws.json --expression-debug
-```
-
-The source sync script copies only `src/`. Copy `config/` separately to
-`/home/pi/phos/config/` if using these JSON examples; alternatively use the CLI
-commands above or create a settings file following [development](development.md#expression-configuration).
-
-Verify the startup `Expression provider:` log, then hold a well-lit face in view.
-Cloud diagnostics show attempts, cached reads, skips and latency. The existing
-semantic policy requires three distinct accepted samples: a consistent pose
-may take about two minutes to confirm with default refresh. Tracking should
-continue smoothly during cloud work. Leave/re-enter to verify stale results
-are discarded. Remove debug after verification. If AWS fails, the log reports
-an exception type, expressions become UNKNOWN and retries back off from 60 to
-600 seconds. Tracking/eyes continue; there is no silent local fallback. Check
-boto3 installation, region, external credentials, IAM permission and network.
-These instructions describe a physical verification path; automated tests do
-not contact AWS or verify recognition quality on the Pi.
+Normal settings can later be edited through a web interface using the same
+validation/persistence model. No web interface is implemented now; secrets
+must remain outside that normal configuration, as described above.

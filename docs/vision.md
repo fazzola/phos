@@ -75,17 +75,16 @@ with the last selected box. It does not recognize identity or store images.
   added gaze/crop motion lag. The square always contains the current detected
   face, even when smoothing would otherwise make it too small.
 - Default margin is 10% per side: a stationary 100-pixel face yields a 120-pixel
-  square. Set `--expression-crop-margin 0.10` (valid range 0–0.5) or
-  `RuntimeConfig.expression_crop_margin` to configure it. Near image edges the
+  square. Set `expression.crop_margin` in `config/phos.json` (valid range 0–0.5). Near image edges the
   square shifts inside the frame; margin is reduced if necessary. If no square
   can contain the detected face within the image, expression inference is
   skipped. There is no padding, non-square stretching, or saved image.
 
-Add `--expression-debug` to the existing launch command to log every detection
+Set `logging.expression_diagnostics` true in the central JSON to log every detection
 cycle's full box list, selected box, selection reason, rejected boxes/reasons,
 and expression eligibility. Expression passes also log the final crop rectangle,
 margin and smoothed size. With tracking alone, use
-`python3 src/robot/main.py --face-tracking --expression-debug` to isolate detection
+`vision.face_tracking_enabled=true` and `expression.enabled=false` in JSON to isolate detection
 without running FER. Disable diagnostics after testing to limit log volume.
 The paired benchmark uses the same selector and default square crop policy,
 and records detected/selected/rejected boxes and selection reasons numerically.
@@ -215,7 +214,7 @@ or neutral observation rearms surprise, with at least four seconds between
 surprise triggers; UNKNOWN and face loss do not rearm it. RobotState retains
 priority, and renderer interpolation and gaze remain unchanged.
 
-With `--expression-debug`, each inference logs raw scores/probabilities, ranked
+With `logging.expression_diagnostics=true`, each inference logs raw scores/probabilities, ranked
 top classes, final semantic result, acceptance/rejection reason and temporal
 candidate/count/duration/confirmation. Reasons include `neutral_not_calibrated`,
 `below_class_threshold`, `unsupported_class`, `missing_distribution`,
@@ -293,31 +292,35 @@ Pi Camera and OpenCV dependencies using the Raspberry Pi OS instructions in
 `docs/installation.md`, which includes the MobileFaceNet candidate launch command.
 For rollback/comparison, the ONNX Model Zoo FER+ baseline expects a
 `1x1x64x64` grayscale input and emits eight scores. The provider converts the
-RGB face crop to grayscale before creating its OpenCV DNN blob. Start it with:
+RGB face crop to grayscale before creating its OpenCV DNN blob. Configure `expression.enabled=true`, `expression.provider="local"`, and replace
+the `expression.local` object in `config/phos.json` with:
 
-```bash
-python3 src/robot/main.py \
-  --expression-model models/expression/emotion-ferplus-8.onnx \
-  --expression-labels neutral,happiness,surprise,sadness,anger,disgust,fear,contempt \
-  --expression-input-size 64x64 \
-  --expression-grayscale \
-  --expression-scale 1 \
-  --expression-mean 0,0,0 \
-  --expression-no-swap-rb
+```json
+{
+  "model_path": "../models/expression/emotion-ferplus-8.onnx",
+  "labels": ["neutral", "happiness", "surprise", "sadness", "anger", "disgust", "fear", "contempt"],
+  "input_size": [64, 64],
+  "grayscale": true,
+  "scale": 1,
+  "mean": [0, 0, 0],
+  "swap_rb": false
+}
 ```
+
+Then run `python3 src/robot/main.py --config config/phos.json`.
 
 FER+ preprocessing uses unscaled grayscale pixel values (`scale=1`), zero mean
 and no channel swap. `happiness` and `surprise` are candidates for happy and surprised semantics;
 `sadness`, `anger`, `disgust`, `fear`, and `contempt` produce UNKNOWN. These model-specific names never reach
 the renderer.
 
-For temporary Pi-side inspection without saving camera data, add
-`--expression-debug` to that command. It logs the selected face rectangle and
+For temporary Pi-side inspection without saving camera data, set
+`logging.expression_diagnostics=true` in JSON. It logs the selected face rectangle and
 crop shape, the grayscale/blob shapes, raw FER+ scores, softmax probabilities,
-forward inference time, and whether the smoother rejected or published the observation. Remove the
-flag after diagnosis because it logs every expression inference.
-Face tracking alone needs no ONNX model: start it with
-`python3 src/robot/main.py --face-tracking`.
+forward inference time, and whether the smoother rejected or published the observation. Disable the
+setting after diagnosis because it logs every expression inference.
+Face tracking alone needs no ONNX model: set `vision.face_tracking_enabled=true`
+and `expression.enabled=false`, then use the same config-file startup command.
 
 ### Camera channel-order inconsistency
 
@@ -332,9 +335,10 @@ See the [Picamera2 format mapping](https://github.com/raspberrypi/picamera2/blob
 
 ## Selectable local / AWS expressions
 
-`RuntimeConfig.expression_provider` selects `local` (default, existing ONNX
-settings) or `aws` (`AWSExpressionProvider`). AWS selection enables the camera
-without an ONNX model. Capture, Haar detection, geometric selection and square
+`expression.provider` in `config/phos.json` selects `local` (existing ONNX
+settings) or `aws` (`AWSExpressionProvider`). With `expression.enabled=true`,
+either selection enables the camera; AWS needs no ONNX file. The canonical file
+disables expressions and standalone face tracking until explicitly enabled. Capture, Haar detection, geometric selection and square
 cropping remain local. Only the selected crop is JPEG encoded in memory, capped
 at 512 pixels on its longest side, and sent to Rekognition `DetectFaces` with
 `Attributes=["EMOTIONS"]`. AWS always includes some default face attributes;
@@ -396,7 +400,7 @@ counter/backoff. Rekognition accuracy, network behavior and Pi performance have
 not been verified on physical hardware by the unit tests.
 
 At startup look for `Expression provider: aws` or `local`. With
-`--expression-debug`, rate-limited cloud policy logs show requested, cache,
+`logging.expression_diagnostics=true`, rate-limited cloud policy logs show requested, cache,
 unchanged, cooldown/backoff, stable-face-pending or session-limit reasons,
 latency, neutral labels/confidence, discarded results and session attempt count.
 Existing local selection debug logs remain per detection; disable debug for
@@ -404,4 +408,4 @@ normal operation. No request occurs without an eligible crop, so missing-face
 reasons are visible in local selection diagnostics.
 
 Operator commands and credentials: [installation](installation.md#optional-aws-expression-mode).
-All settings and defaults: [development configuration](development.md#expression-configuration).
+All settings and authoritative defaults: [development configuration](development.md#configuration).

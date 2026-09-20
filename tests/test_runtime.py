@@ -123,10 +123,12 @@ def test_face_tracking_config_builds_camera_pipeline_without_expression_model():
     assert runtime._vision_pipeline._expression_provider is None
 
 
-def test_ferplus_runtime_configuration_builds_a_grayscale_expression_provider():
+def test_ferplus_runtime_configuration_builds_a_grayscale_expression_provider(tmp_path):
+    model = tmp_path / "test.onnx"
+    model.write_bytes(b"model-file-placeholder")
     runtime = build_runtime(
         config=RuntimeConfig(
-            expression_model_path=Path("models/expression/emotion-ferplus-8.onnx"),
+            expression_model_path=model,
             expression_labels=(
                 "neutral",
                 "happiness",
@@ -139,6 +141,7 @@ def test_ferplus_runtime_configuration_builds_a_grayscale_expression_provider():
             ),
             expression_input_size=(64, 64),
             expression_scale=1.0,
+            expression_mean=(0.0, 0.0, 0.0),
             expression_swap_rb=False,
             expression_grayscale=True,
         ),

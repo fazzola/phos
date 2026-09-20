@@ -163,7 +163,17 @@ Cached `ExpressionObservation.sampled_at` preserves provenance so reads cannot
 manufacture temporal confirmation. Local observations retain their existing
 cadence and semantics. See [Vision](vision.md#selectable-local--aws-expressions).
 
-`RuntimeConfig`, including nested cloud policy, is the validated settings
-boundary shared by Python composition, JSON and CLI overrides. A future web UI
-must edit this same ordinary configuration and keep credentials external in the
-AWS SDK credential chain. No web interface or live reconfiguration is implemented.
+`config/phos.json` is the canonical source of normal runtime settings. The
+provider-neutral `robot.config` module validates its required sections and maps
+them to `RuntimeConfig` and `CloudExpressionConfig`, with no hardware, SDK or
+argparse dependencies. The runtime passes only relevant typed values to each
+subsystem. Startup validates before constructing any camera/display components;
+paths are relative to the configuration file. Existing constructor fallback
+values are not consulted by application composition.
+
+The same file/dict validation, serialization and atomic persistence must be used
+by a future web configuration interface. Credentials stay in the external AWS
+SDK chain and are never fields in application settings. New ordinary settings
+must extend this central model/file, not standalone CLI arguments. Existing CLI
+settings are deprecated explicit overrides during migration. There is no web
+interface or live reload. See [configuration reference](development.md#configuration).

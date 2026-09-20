@@ -6,49 +6,13 @@ import logging
 import math
 import os
 import time
-from dataclasses import dataclass
 from typing import Any, Callable, Optional
+
+from robot.config import CloudExpressionConfig
 
 from .provider import ExpressionObservation, ExpressionProvider
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class CloudExpressionConfig:
-    region: Optional[str] = None
-    cooldown_seconds: float = 30.0
-    stable_seconds: float = 1.0
-    cache_ttl_seconds: float = 90.0
-    refresh_seconds: float = 60.0
-    max_requests_per_minute: float = 2.0
-    max_requests_per_session: int = 0  # zero means unlimited
-    change_threshold: float = 0.08
-    minimum_face_confidence: float = 0.90
-    retry_initial_seconds: float = 60.0
-    retry_max_seconds: float = 600.0
-    connect_timeout_seconds: float = 3.0
-    read_timeout_seconds: float = 5.0
-
-    def __post_init__(self) -> None:
-        for name in ("cooldown_seconds", "stable_seconds", "cache_ttl_seconds", "refresh_seconds", "max_requests_per_minute",
-                     "retry_initial_seconds", "retry_max_seconds", "connect_timeout_seconds",
-                     "read_timeout_seconds"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value <= 0:
-                raise ValueError(f"{name} must be positive and finite")
-        for name in ("change_threshold", "minimum_face_confidence"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not 0 <= value <= 1:
-                raise ValueError(f"{name} must be between zero and one")
-        if type(self.max_requests_per_session) is not int or self.max_requests_per_session < 0:
-            raise ValueError("max_requests_per_session must be a nonnegative integer")
-        if self.refresh_seconds >= self.cache_ttl_seconds:
-            raise ValueError("refresh_seconds must be less than cache_ttl_seconds")
-        if self.retry_max_seconds < self.retry_initial_seconds:
-            raise ValueError("retry_max_seconds must be at least retry_initial_seconds")
-        if self.region is not None and (not isinstance(self.region, str) or not self.region.strip()):
-            raise ValueError("region must be a nonempty string or null")
 
 
 def map_response(response: dict, minimum_face_confidence: float) -> Optional[ExpressionObservation]:
