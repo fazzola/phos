@@ -65,7 +65,10 @@ The former expression-specific JSON files are replaced by `config/phos.json`.
 
 The [configuration reference](docs/development.md#configuration) documents every
 field, precedence and migration. The same typed validation and atomic persistence
-are reusable by a future web interface; no web UI or live reload is implemented.
+are reused by the optional [web administration interface](docs/web-administration.md).
+It provides authenticated section-based editing, local/AWS selection and password
+management. Web access is disabled by default; enable it only on a trusted LAN.
+All saved changes require restart; no live reload is implemented.
 
 ## Eye demo
 

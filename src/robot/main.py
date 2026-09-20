@@ -141,7 +141,11 @@ def main() -> None:
     if arguments:
         logger.warning("Individual runtime CLI flags are deprecated; edit %s instead", config_path)
     logger.info("PHOS configuration loaded: %s", config_path.resolve())
-    asyncio.run(async_main(config=config))
+    # The optional web worker is isolated from camera/rendering and is stopped
+    # even when runtime startup or execution fails.
+    from robot.web.server import WebServer
+    with WebServer(config_path, config):
+        asyncio.run(async_main(config=config))
 
 
 

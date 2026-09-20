@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PHOS administration</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+  <script src="{{ url_for('static', filename='admin.js') }}" defer></script>
+</head>
+<body><main>
+<header><h1>PHOS <small>Administration</small></h1>
+{% if session.get('sid') %}
+<nav aria-label="Account"><a href="{{ url_for('configuration') }}">Configuration</a><a href="{{ url_for('password') }}">Change password</a>
+<form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Log out</button></form></nav>
+{% endif %}</header>
+{% if session.get('sid') %}
+<nav class="domain-nav" aria-label="Configuration areas">
+{% for key, domain in domains.items() %}
+<a href="{{ url_for('configuration', area=key) }}" {% if area is defined and area == key %}aria-current="page"{% endif %}>{{ domain.title }}</a>
+{% endfor %}
+</nav>
+{% endif %}
+{% for message in get_flashed_messages() %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% block content %}{% endblock %}
+<footer>Trusted local network only. HTTP traffic is not encrypted. AWS credentials stay outside PHOS configuration.</footer>
+</main></body></html>

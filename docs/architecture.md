@@ -172,8 +172,22 @@ paths are relative to the configuration file. Existing constructor fallback
 values are not consulted by application composition.
 
 The same file/dict validation, serialization and atomic persistence must be used
-by a future web configuration interface. Credentials stay in the external AWS
+by the optional web configuration interface. Credentials stay in the external AWS
 SDK chain and are never fields in application settings. New ordinary settings
 must extend this central model/file, not standalone CLI arguments. Existing CLI
-settings are deprecated explicit overrides during migration. There is no web
-interface or live reload. See [configuration reference](development.md#configuration).
+settings are deprecated explicit overrides during migration. There is no live reload. See [configuration reference](development.md#configuration).
+
+## Administration adapter
+
+`robot.web` wraps the canonical configuration service with a server-rendered
+Flask editor. Waitress runs in a separate process owned by the main startup
+lifecycle, independent of rendering/Vision. The worker receives the startup
+settings for a saved-versus-startup comparison, not live status monitoring.
+Its password-storage service is separate from runtime JSON; Flask sessions and
+Flask-WTF protect administration actions. Core, providers and the renderer have
+no web-framework dependency. See the [web manual](web-administration.md).
+
+Administration domains select canonical field paths for presentation only. Each
+page merges its submitted fields into the complete document and calls the same
+validation/persistence boundary. System / Status is read-only; password changes
+use the separate credential service. See the manual for the domain-to-field map.

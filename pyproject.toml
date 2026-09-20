@@ -5,6 +5,7 @@ description = "Modular personal robot for Raspberry Pi"
 requires-python = ">=3.9"
 
 [project.optional-dependencies]
+web = ["Flask>=3.1,<4", "Flask-WTF>=1.2,<2", "Werkzeug>=3.1,<4", "waitress>=3.0.2,<4"]
 aws = ["boto3>=1.34"]
 vision = [
     "opencv-python-headless>=4.8",
@@ -18,3 +19,6 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.setuptools.package-data]
+"robot.web" = ["templates/*.html", "static/*.css", "static/*.js"]
