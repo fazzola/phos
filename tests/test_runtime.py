@@ -1,10 +1,11 @@
 import asyncio
+from pathlib import Path
 
 import pytest
 
 from robot.core import RobotState
 from robot.runtime import RuntimeConfig, build_runtime
-from robot.ui import FaceExpression, MemoryEyeDisplay
+from robot.ui import FaceExpression, MemoryEyeDisplay, VisualAccent
 from robot.vision import ExpressionObservation, ExpressionSmoother, FaceRegion, VisionPipeline
 
 
@@ -74,7 +75,7 @@ def make_vision(events, camera, *, faces=None, observation=None):
     return VisionPipeline(
         camera,
         FakeFaceDetector([FaceRegion(100, 100, 120, 120)] if faces is None else faces),
-        FakeExpressionProvider(observation or ExpressionObservation("happy", 0.9)),
+        FakeExpressionProvider(observation or ExpressionObservation("happy", 0.9, (("happy", 0.9), ("neutral", 0.1)))),
         ExpressionSmoother(minimum_observations=1),
         events=events,
         capture_interval_seconds=0.002,
@@ -122,6 +123,35 @@ def test_face_tracking_config_builds_camera_pipeline_without_expression_model():
     assert runtime._vision_pipeline._expression_provider is None
 
 
+def test_ferplus_runtime_configuration_builds_a_grayscale_expression_provider():
+    runtime = build_runtime(
+        config=RuntimeConfig(
+            expression_model_path=Path("models/expression/emotion-ferplus-8.onnx"),
+            expression_labels=(
+                "neutral",
+                "happiness",
+                "surprise",
+                "sadness",
+                "anger",
+                "disgust",
+                "fear",
+                "contempt",
+            ),
+            expression_input_size=(64, 64),
+            expression_scale=1.0,
+            expression_swap_rb=False,
+            expression_grayscale=True,
+        ),
+        eye_display=MemoryEyeDisplay(),
+    )
+
+    provider = runtime._vision_pipeline._expression_provider
+    assert provider._input_size == (64, 64)
+    assert provider._scale == 1.0
+    assert provider._swap_rb is False
+    assert provider._grayscale is True
+
+
 def test_stable_vision_observation_reaches_behavior_engine_and_renderer():
     async def exercise():
         display = MemoryEyeDisplay()
@@ -130,14 +160,15 @@ def test_stable_vision_observation_reaches_behavior_engine_and_renderer():
             vision_factory=lambda events: make_vision(events, FakeCamera()),
         )
         await runtime.start()
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.9)
         state = runtime._behavior_engine.face_state
         await runtime.stop()
         return state, display
 
     state, display = asyncio.run(exercise())
     assert state.expression is FaceExpression.HAPPY
-    assert state.reaction_strength == 0.9
+    assert state.accent is VisualAccent.WARM
+    assert 0.0 < state.reaction_strength <= 0.90
     assert len(display.frames) >= 2
 
 
@@ -235,3 +266,15 @@ def test_display_startup_failure_closes_display_and_rolls_back_core():
     runtime, display = asyncio.run(exercise())
     assert display.closed
     assert not runtime.core.is_running
+
+
+def test_runtime_passes_configurable_margin_to_vision_pipeline():
+    runtime = build_runtime(config=RuntimeConfig(face_tracking_enabled=True, expression_crop_margin=0.2),
+                            eye_display=MemoryEyeDisplay())
+    assert runtime._vision_pipeline._crop_margin == 0.2
+
+
+@pytest.mark.parametrize('margin', [-0.1, 0.6, float('nan'), float('inf')])
+def test_runtime_rejects_invalid_crop_margin(margin):
+    with pytest.raises(ValueError, match='expression_crop_margin'):
+        RuntimeConfig(expression_crop_margin=margin)

@@ -60,6 +60,45 @@ The face-rendering frequency is independent from Vision timing so the display ca
 
 `BehaviorEngine` currently lives under `src/robot/core/`, because behavior is part of Core orchestration in the checked-out implementation.
 
+### Visual reaction semantics
+
+Vision classifies an uncertain **visible facial expression**, not a person's
+internal emotional state. `BehaviorEngine` gives PHOS its own response and
+produces the UI-neutral `FaceState`; Vision never selects renderer geometry or
+colors directly.
+
+| Stable visible-expression observation | PHOS behavior | `FaceExpression` | `VisualAccent` |
+| --- | --- | --- | --- |
+| neutral | calm acknowledgement | neutral | neutral |
+| happiness / happy | warm, friendly response | happy | warm |
+| surprise / surprised | alert, open response | surprised | alert |
+| unknown (including rejected/negative FER classes) | preserve and decay to baseline | unchanged, then neutral | unchanged, then neutral |
+
+Vision publishes semantic evidence, not individual negative FER labels.
+UNKNOWN is an explicit absence of accepted evidence. It is distinct from a
+positively confirmed neutral observation; current uncalibrated models abstain
+on neutral. See `docs/vision.md` for thresholds and temporal rules.
+
+`FaceState` carries the expression, semantic `VisualAccent`, and
+`reaction_strength` independently. The renderer maps accents to its own color
+palette: neutral light cyan/white, warm turquoise, curious cyan/blue, alert
+amber, sleepy muted violet, and error red. Strength blends the neutral and
+accent colors, as well as the existing eye-shape profile. Eye, pupil, and
+background color transitions interpolate at render cadence rather than jumping
+at Vision inference cadence.
+
+Robot state remains higher priority than Vision: listening/thinking use a
+curious accent, speaking uses warm, sleeping uses sleepy, and error uses red.
+Happy reactions refresh only from confirmed observations and decay smoothly
+back to neutral when evidence stops. Surprise is temporary, cannot refresh from
+a sustained pose, and needs confirmed alternative evidence plus a cooldown
+to rearm. UNKNOWN allows normal decay. Face tracking and blink timing
+remain independent from expression inference.
+
+`VisualAccent` is deliberately provider-neutral. A future WS2812B LED-ring
+adapter may consume the same semantic state, but no LED integration or hardware
+control belongs in the current display/Vision path.
+
 ## Runtime
 
 `PhosRuntime` is the current application coordinator. It supervises Core/UI and optional Vision tasks and handles lifecycle/failure boundaries.
@@ -111,3 +150,20 @@ Use lightweight processing appropriate for Raspberry Pi 3. Expression classifica
 ## Home Assistant relationship
 
 Home Assistant is an integration/tool surface, not PHOS's brain. Commands may use REST, state/events may use WebSocket, and MQTT may later expose PHOS entities. AI access must be mediated by explicit tools/services and allowlists; sensitive actions require explicit policy.
+
+### Local/cloud expression boundary
+
+Camera -> local detector/selector/square crop -> `ExpressionProvider`
+(`OpenCVExpressionProvider` or optional `AWSExpressionProvider`) -> existing
+`ExpressionSmoother` semantics -> Vision events -> `BehaviorEngine` -> `FaceState`.
+AWS SDK objects remain in its adapter. Cloud requests use a single background
+asyncio task plus `to_thread`, independent of capture/tracking/render cadence.
+Provider lifecycle invalidation discards evidence across tracking discontinuity.
+Cached `ExpressionObservation.sampled_at` preserves provenance so reads cannot
+manufacture temporal confirmation. Local observations retain their existing
+cadence and semantics. See [Vision](vision.md#selectable-local--aws-expressions).
+
+`RuntimeConfig`, including nested cloud policy, is the validated settings
+boundary shared by Python composition, JSON and CLI overrides. A future web UI
+must edit this same ordinary configuration and keep credentials external in the
+AWS SDK credential chain. No web interface or live reconfiguration is implemented.

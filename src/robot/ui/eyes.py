@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from .state import BlinkPhase, FaceExpression, FaceState
+from .state import BlinkPhase, FaceExpression, FaceState, VisualAccent
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,8 @@ class EyeFrame:
     width: int
     height: int
     background: str
+    eye_color: str
+    pupil_color: str
     eyes: Tuple[EyeGeometry, EyeGeometry]
 
 
@@ -36,6 +38,9 @@ class _AnimatedValues:
     squint: float
     pupil_x: float
     pupil_y: float
+    background: Tuple[int, int, int]
+    eye_color: Tuple[int, int, int]
+    pupil_color: Tuple[int, int, int]
 
 
 class EyeRenderer:
@@ -64,7 +69,9 @@ class EyeRenderer:
         return EyeFrame(
             width=self._width,
             height=self._height,
-            background=state.background,
+            background=_hex_color(self._values.background),
+            eye_color=_hex_color(self._values.eye_color),
+            pupil_color=_hex_color(self._values.pupil_color),
             eyes=(
                 self._make_eye(True, blink_amount, self._values),
                 self._make_eye(False, blink_amount, self._values),
@@ -102,22 +109,26 @@ def _target_values(state: FaceState) -> _AnimatedValues:
     strength = state.reaction_strength
     base_open = _blend(state.eye_open, profile[0], strength)
     asymmetry = profile[1] * strength
+    eye_color, pupil_color = _accent_colors(state)
     return _AnimatedValues(
         eye_open_left=max(0.0, base_open - asymmetry),
         eye_open_right=max(0.0, base_open + asymmetry),
         squint=_blend(state.squint, profile[2], strength),
         pupil_x=_clamp_unit(state.pupil_x + profile[3] * strength),
         pupil_y=_clamp_unit(state.pupil_y + profile[4] * strength),
+        background=_rgb_color(state.background),
+        eye_color=eye_color,
+        pupil_color=pupil_color,
     )
 
 
 def _expression_profile(expression: FaceExpression) -> Tuple[float, float, float, float, float]:
     if expression is FaceExpression.HAPPY:
-        return (0.90, 0.0, 0.30, 0.0, 0.10)
+        return (0.82, 0.0, 0.45, 0.0, 0.10)
     if expression is FaceExpression.CURIOUS:
-        return (1.0, 0.10, 0.08, 0.12, -0.08)
+        return (1.03, 0.12, 0.15, 0.14, -0.10)
     if expression is FaceExpression.SURPRISED:
-        return (1.18, 0.0, 0.0, 0.0, -0.04)
+        return (1.25, 0.02, 0.0, 0.0, -0.06)
     if expression is FaceExpression.SLEEPY:
         return (0.38, 0.0, 0.36, 0.0, 0.10)
     if expression is FaceExpression.WORRIED:
@@ -132,6 +143,9 @@ def _interpolate(current: _AnimatedValues, target: _AnimatedValues, amount: floa
         squint=_blend(current.squint, target.squint, amount),
         pupil_x=_blend(current.pupil_x, target.pupil_x, amount),
         pupil_y=_blend(current.pupil_y, target.pupil_y, amount),
+        background=_blend_color(current.background, target.background, amount),
+        eye_color=_blend_color(current.eye_color, target.eye_color, amount),
+        pupil_color=_blend_color(current.pupil_color, target.pupil_color, amount),
     )
 
 
@@ -151,3 +165,34 @@ def _blend(start: float, end: float, amount: float) -> float:
 
 def _clamp_unit(value: float) -> float:
     return max(-1.0, min(value, 1.0))
+
+
+def _accent_colors(state: FaceState) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
+    neutral_eye = (234, 251, 255)
+    neutral_pupil = (20, 32, 45)
+    accent_eye, accent_pupil = {
+        VisualAccent.NEUTRAL: (neutral_eye, neutral_pupil),
+        VisualAccent.WARM: ((40, 224, 176), (6, 59, 61)),
+        VisualAccent.CURIOUS: ((53, 189, 242), (8, 43, 66)),
+        VisualAccent.ALERT: ((255, 200, 87), (68, 44, 8)),
+        VisualAccent.SLEEPY: ((167, 139, 250), (35, 25, 73)),
+        VisualAccent.ERROR: ((255, 92, 108), (78, 15, 25)),
+    }[state.accent]
+    return (
+        _blend_color(neutral_eye, accent_eye, state.reaction_strength),
+        _blend_color(neutral_pupil, accent_pupil, state.reaction_strength),
+    )
+
+
+def _rgb_color(value: str) -> Tuple[int, int, int]:
+    return tuple(int(value[index : index + 2], 16) for index in (1, 3, 5))
+
+
+def _hex_color(value: Tuple[int, int, int]) -> str:
+    return "#" + "".join(f"{channel:02X}" for channel in value)
+
+
+def _blend_color(
+    start: Tuple[int, int, int], end: Tuple[int, int, int], amount: float
+) -> Tuple[int, int, int]:
+    return tuple(round(_blend(first, second, amount)) for first, second in zip(start, end))

@@ -16,15 +16,15 @@ if str(SOURCE_DIRECTORY) not in sys.path:
 
 from robot.ui.display import TkEyeDisplay
 from robot.ui.eyes import EyeRenderer
-from robot.ui.state import FaceExpression, FaceState
+from robot.ui.state import FaceExpression, FaceState, VisualAccent
 
 
-_EXPRESSIONS = {
-    "1": FaceExpression.NEUTRAL,
-    "2": FaceExpression.HAPPY,
-    "3": FaceExpression.CURIOUS,
-    "4": FaceExpression.SURPRISED,
-    "5": FaceExpression.SLEEPY,
+_VISUAL_STATES = {
+    "1": (FaceExpression.NEUTRAL, VisualAccent.NEUTRAL),
+    "2": (FaceExpression.HAPPY, VisualAccent.WARM),
+    "3": (FaceExpression.CURIOUS, VisualAccent.CURIOUS),
+    "4": (FaceExpression.SURPRISED, VisualAccent.ALERT),
+    "5": (FaceExpression.SLEEPY, VisualAccent.SLEEPY),
 }
 
 
@@ -38,8 +38,9 @@ def main() -> None:
             for key in display.poll_keys():
                 if key.lower() == "q":
                     return
-                if key in _EXPRESSIONS:
-                    state = replace(state, expression=_EXPRESSIONS[key], reaction_strength=1.0)
+                if key in _VISUAL_STATES:
+                    expression, accent = _VISUAL_STATES[key]
+                    state = replace(state, expression=expression, accent=accent, reaction_strength=1.0)
                 elif key == "Left":
                     state = replace(state, pupil_x=state.pupil_x - 0.15)
                 elif key == "Right":
