@@ -37,6 +37,15 @@ More specific nested `AGENTS.md` guidance overrides general guidance for its dir
 
 If documentation, tests and implementation materially disagree, report the inconsistency instead of silently redesigning PHOS.
 
+## Runtime configuration
+
+New non-secret PHOS runtime configuration must be added to the canonical
+`RuntimeConfig` model in `src/robot/config.py` and `config/phos.json`.
+Do not introduce new standalone CLI configuration unless explicitly required.
+Use the reusable loading/validation/persistence boundary for future configuration
+interfaces; keep secrets external. See `docs/development.md` for the schema and
+migration policy. Do not duplicate schema/defaults in AGENTS files.
+
 ## Architecture boundaries
 - `core/`: lifecycle, state, events, orchestration and behavior decisions.
 - `hardware/`: physical-device adapters and GPIO-facing implementation.

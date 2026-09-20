@@ -85,9 +85,22 @@ At the time this governance merge was prepared, the repository test suite had 30
 Local ONNX remains the default; optional AWS Rekognition is implemented behind
 ExpressionProvider, with local tracking/cropping, bounded background requests,
 cache expiry, change gating, stability gating and failure backoff. JSON settings
-feed RuntimeConfig and can be overridden by CLI. Cloud cached samples retain
+now come from the complete canonical `config/phos.json` and can be overridden
+by deprecated CLI settings. Cloud cached samples retain
 capture timestamps and do not advance semantic confirmation. See Vision and
 installation for policy, privacy, exact commands and external credentials.
 Mocked tests cover cloud behavior without credentials/network/cost. Physical
 Pi/AWS validation, expression accuracy and cloud threshold calibration remain
 outstanding. No web UI, automatic fallback or additional milestone is implemented.
+
+## Canonical configuration
+
+`robot.config` owns RuntimeConfig/CloudExpressionConfig, strict full-file schema
+validation, config-relative paths and reusable atomic save. Runtime composition
+passes JSON values for display, behavior, detector, Vision, expression smoothing,
+local/AWS providers and logging. The default file enables only eyes. The old
+expression-specific partial JSON files are removed; migrate existing deployments
+using `docs/development.md`. No secrets are part of the model. `run_pi.sh` seeds
+configuration without overwriting existing Pi settings. A future web interface
+must reuse this model; it is not implemented. Startup flags remain deprecated
+overrides pending a separately announced removal after consumers migrate.

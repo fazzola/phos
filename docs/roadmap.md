@@ -51,8 +51,8 @@ Existing foundation:
 - [x] stable-expression and face-lost event integration present
 - [x] BehaviorEngine maps stable observations to subtle reactions, with smooth
   decay and RobotState priority
-- [x] runtime command-line configuration for external ONNX model/labels/input
-  preprocessing
+- [x] canonical JSON configuration for display/behavior/Vision, local/AWS providers and logging
+- [x] early typed validation and reusable persistence; legacy CLI overrides deprecated
 
 Remaining:
 - [x] select and configure ONNX Model Zoo `emotion-ferplus-8.onnx`

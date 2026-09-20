@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import sys
 from types import SimpleNamespace
@@ -242,7 +243,10 @@ def test_invalid_cloud_config(settings):
 
 def test_provider_selection_and_json_config(tmp_path):
     path = tmp_path / "settings.json"
-    path.write_text('{"expression_provider":"aws","cloud_expression":{"region":"eu-west-1","cooldown_seconds":45}}')
+    document = RuntimeConfig().to_dict()
+    document["expression"].update(provider="aws", enabled=True)
+    document["expression"]["aws"].update(region="eu-west-1", cooldown_seconds=45)
+    path.write_text(json.dumps(document))
     config = RuntimeConfig.from_file(path)
     runtime = build_runtime(config=config, eye_display=MemoryEyeDisplay())
     assert isinstance(runtime._vision_pipeline._expression_provider, AWSExpressionProvider)
@@ -274,7 +278,10 @@ def test_sdk_uses_external_credentials_emotions_only_and_no_hidden_retries(fake_
 def test_cli_overrides_file_without_losing_cloud_policy(tmp_path, monkeypatch):
     from robot import main
     path = tmp_path / "config.json"
-    path.write_text('{"expression_provider":"aws","cloud_expression":{"cooldown_seconds":45}}')
+    document = RuntimeConfig().to_dict()
+    document["expression"].update(provider="aws", enabled=True)
+    document["expression"]["aws"]["cooldown_seconds"] = 45
+    path.write_text(json.dumps(document))
     seen = []
     async def run(*, config):
         seen.append(config)

@@ -24,83 +24,48 @@ Personal modular robot project targeting Raspberry Pi 3.
 
 The `src/` tree is intentionally lightweight at the beginning. Add modules only when the feature requires them.
 
-## Run the current robot runtime
+## Run PHOS
 
-From the repository root, run:
-
-```bash
-python3 src/robot/main.py
-```
-
-The current runtime starts the Core, `BehaviorEngine`, and a 30 FPS eye render
-loop in a fullscreen Tkinter window on the HDMI display. Press `Ctrl+C` to
-shut PHOS down cleanly; press `Escape` to leave fullscreen mode. Run it from a
-graphical Raspberry Pi OS desktop session.
-
-Enable the completed face-tracking milestone with the Pi Camera connected:
+From the repository root in a graphical Raspberry Pi OS desktop session:
 
 ```bash
-python3 src/robot/main.py --face-tracking
+python3 src/robot/main.py --config config/phos.json
 ```
 
-This uses Picamera2 plus the OpenCV Haar detector at 640×480 and moves the
-pupils toward the largest detected face. It does not require or run an ONNX
-expression model. Follow [the Raspberry Pi installation guide](docs/installation.md)
-to install the camera and OpenCV dependencies. Without `--face-tracking`,
-PHOS runs without camera access.
+[config/phos.json](config/phos.json) is the single, editable configuration and
+complete default example. It starts the fullscreen animated eyes with camera
+and expression processing disabled. Omitting `--config` loads this same file
+from the checkout. Press Ctrl+C to stop and Escape to leave fullscreen.
 
-## Expression reactions
+Edit the file, then restart using the same command:
 
-Expression reactions use the same camera/face tracking path and the ONNX Model
-Zoo FER+ model downloaded during installation. It expects 1×1×64×64 grayscale
-input and produces eight labels in a fixed order.
+- **Face tracking only:** set `vision.face_tracking_enabled` to `true`, keeping
+  `expression.enabled` false. Install the camera/OpenCV dependencies first.
+- **Local expressions:** set `expression.enabled` to `true` and
+  `expression.provider` to `"local"`. The included `expression.local` settings
+  describe MobileFaceNet; download the model following
+  [installation](docs/installation.md). Images remain on the Pi.
+- **AWS expressions:** set `expression.enabled` to `true` and
+  `expression.provider` to `"aws"`. Install boto3 and configure external
+  credentials/region using [AWS setup](docs/installation.md#optional-aws-expression-mode).
+  **Selected face crops leave the Pi and are sent to AWS.**
 
-```bash
-python3 src/robot/main.py \
-  --expression-model models/expression/emotion-ferplus-8.onnx \
-  --expression-labels neutral,happiness,surprise,sadness,anger,disgust,fear,contempt \
-  --expression-input-size 64x64 \
-  --expression-grayscale \
-  --expression-scale 1 \
-  --expression-mean 0,0,0 \
-  --expression-no-swap-rb
-```
+Expressions automatically enable local tracking. For diagnosis set
+`logging.expression_diagnostics` to `true`; check `PHOS configuration loaded`
+and `Expression provider` in the logs. Cloud requests run independently of gaze
+and rendering, with cache, rate limits and failure backoff. See
+[Vision policy](docs/vision.md#cloud-request-and-evidence-policy) for cost and
+confirmation timing. Both modes observe facial cues, not true internal emotions.
 
-The command converts the RGB camera crop to grayscale and supplies unscaled
-pixels (`scale=1`), zero mean, and no channel swap, as required by this model.
-It enables camera face tracking as well. See [Vision](docs/vision.md) for the
-stable-observation policy and supported reaction behavior.
+Malformed settings or missing active local model files fail before camera or
+display startup. Paths inside JSON are relative to that JSON file's directory.
+AWS credentials never belong in JSON. The old individual setting flags remain
+only as deprecated overrides; migrate scripts to the command above.
+The former expression-specific JSON files are replaced by `config/phos.json`.
 
-## Choose local or cloud expressions
-
-Local mode keeps facial images on the Raspberry Pi. After installing the
-MobileFaceNet model as described in [installation](docs/installation.md), run:
-
-```bash
-python3 src/robot/main.py --config config/expression-local.json
-```
-
-AWS mode sends only selected face crops to AWS Rekognition. Install boto3 and
-supply external AWS credentials/region using the
-[operator setup guide](docs/installation.md#optional-aws-expression-mode), then run:
-
-```bash
-python3 src/robot/main.py --expression-provider aws --expression-debug
-```
-
-Check `Expression provider: aws` in the startup log. Eyes and local tracking
-continue while cloud requests run. Defaults allow roughly 60 requests/hour for
-similar crops, at most 120/hour for changing crops, with a 90-second cache.
-Expression confirmation requires three separate results and can take about two
-minutes. Service failures give UNKNOWN observations with delayed retries;
-PHOS never silently switches providers. Stop with Ctrl+C and restart in local
-mode to keep images local. Remove `--expression-debug` after checking operation.
-
-Edit `config/expression-aws.json` and launch with `--config` to change request
-policy or add a session cap. See [configuration keys](docs/development.md#expression-configuration).
-Restart to apply changes. These ordinary settings are prepared for a future web
-configuration UI; no web UI exists yet, and AWS secrets must remain outside
-PHOS settings. Both providers observe visual cues, not a person's true emotions.
+The [configuration reference](docs/development.md#configuration) documents every
+field, precedence and migration. The same typed validation and atomic persistence
+are reusable by a future web interface; no web UI or live reload is implemented.
 
 ## Eye demo
 

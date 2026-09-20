@@ -124,3 +124,21 @@ ADR-007's local baseline without replacing it. See Vision for policy and privacy
 Normal settings belong to RuntimeConfig and must be reusable by a future web
 configuration layer. Secrets stay outside application settings in standard AWS
 credential resolution. No web interface is part of this change.
+
+## ADR-015 — One canonical runtime configuration
+
+**Status:** Accepted (explicit user-requested configuration centralization).
+
+Use `config/phos.json` for all current non-secret application settings. Required
+sections map to the existing typed RuntimeConfig surface in `robot.config`;
+CloudExpressionConfig remains a typed provider subset. Validate types, ranges,
+relationships and active paths before building subsystems. CLI defaults and
+provider-specific JSON files are replaced by this file. Existing setting flags
+remain deprecated explicit overrides for a separately announced migration.
+
+The committed file safely starts only eyes; camera/expression processing is
+opt-in. Keep geometric/semantic safeguards and renderer implementation constants
+in their subsystems. New normal runtime settings extend the central schema/file.
+Reusable loading, validation, serialization and atomic persistence are independent
+of CLI and available for the future web milestone. Secrets remain external;
+no web UI or live reload is part of this change.
