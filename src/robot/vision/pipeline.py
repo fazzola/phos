@@ -112,7 +112,13 @@ class VisionPipeline(Behavior):
                 # must still release the camera after such a failure.
                 pass
             self._task = None
-        await self._camera.stop()
+        try:
+            if self._expression_provider is not None:
+                close = getattr(self._expression_provider, "close", None)
+                if close is not None:
+                    await close()
+        finally:
+            await self._camera.stop()
 
     async def wait(self) -> None:
         """Wait for the background pipeline task; used by the runtime supervisor."""
@@ -136,6 +142,10 @@ class VisionPipeline(Behavior):
                 "Face selection: detected=%s selected=%s reason=%s rejected=%s expression_ready=%s",
                 faces, face, selection.reason, selection.rejected, selection.expression_ready,
             )
+        if selection.new_track or not selection.expression_ready:
+            invalidate = getattr(self._expression_provider, "invalidate", None)
+            if invalidate is not None:
+                invalidate()
         if selection.new_track and self._smoother is not None:
             self._smoother.reset()
         if face is None:
@@ -169,6 +179,9 @@ class VisionPipeline(Behavior):
             logger.info("Face crop: region=%s margin=%.3f smoothed_size=%s",
                         region, self._crop_margin, selection.crop_size)
         if face_crop is None:
+            invalidate = getattr(self._expression_provider, "invalidate", None)
+            if invalidate is not None:
+                invalidate()
             self._smoother.reset()
             self._reset_expression_log()
             return VisionResult(VisionStatus.NO_FACE)

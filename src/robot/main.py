@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import argparse
+from dataclasses import replace
 import logging
-import math
 import signal
 import sys
 from pathlib import Path
@@ -45,7 +45,11 @@ async def async_main(*, config: RuntimeConfig = RuntimeConfig()) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Start the PHOS robot runtime.")
+    parser = argparse.ArgumentParser(description="Start the PHOS robot runtime.",
+                                     argument_default=argparse.SUPPRESS)
+    parser.add_argument("--config", type=Path, help="JSON file containing RuntimeConfig settings")
+    parser.add_argument("--expression-provider", choices=("local", "aws"))
+    parser.add_argument("--aws-region", help="override cloud_expression.region")
     parser.add_argument(
         "--face-tracking",
         action="store_true",
@@ -62,18 +66,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--expression-input-size",
-        default="64x64",
         help="ONNX model input size as WIDTHxHEIGHT (default: 64x64)",
     )
     parser.add_argument(
         "--expression-scale",
         type=float,
-        default=1.0 / 255.0,
         help="OpenCV DNN image scale for the expression model (default: 1/255)",
     )
     parser.add_argument(
         "--expression-mean",
-        default="0,0,0",
         help="three OpenCV DNN image-mean values (default: 0,0,0)",
     )
     parser.add_argument(
@@ -92,28 +93,32 @@ def main() -> None:
         help="log in-memory face-crop, blob, output, and smoothing diagnostics; no images are saved",
     )
     parser.add_argument(
-        "--expression-crop-margin", type=float, default=0.10,
+        "--expression-crop-margin", type=float,
         help="square face crop margin per side, as a face-size fraction (0 to 0.5; default: 0.10)",
     )
-    arguments = parser.parse_args()
-    if not math.isfinite(arguments.expression_crop_margin) or not 0 <= arguments.expression_crop_margin <= 0.5:
-        parser.error("--expression-crop-margin must be between zero and 0.5")
-    if (arguments.expression_model is None) != (arguments.expression_labels is None):
-        parser.error("--expression-model and --expression-labels must be provided together")
+    # Only explicitly supplied arguments override the file/dataclass defaults.
+    arguments = vars(parser.parse_args())
     try:
-        width, height = (int(value) for value in arguments.expression_input_size.lower().split("x", 1))
-        input_size = (width, height)
-    except ValueError:
-        parser.error("--expression-input-size must be WIDTHxHEIGHT")
-    try:
-        mean = tuple(float(value) for value in arguments.expression_mean.split(","))
-    except ValueError:
-        parser.error("--expression-mean must be three comma-separated numbers")
-    if len(mean) != 3:
-        parser.error("--expression-mean must be three comma-separated numbers")
-    labels = tuple(label.strip() for label in (arguments.expression_labels or "").split(",") if label.strip())
-    if arguments.expression_model is not None and not labels:
-        parser.error("--expression-labels must contain at least one label")
+        config_path = arguments.pop("config", None)
+        config = RuntimeConfig.from_file(config_path) if config_path else RuntimeConfig()
+        aliases = {"face_tracking": "face_tracking_enabled", "expression_model": "expression_model_path",
+                   "expression_debug": "expression_diagnostics"}
+        overrides = {aliases.get(name, name): value for name, value in arguments.items()}
+        if "expression_labels" in overrides:
+            overrides["expression_labels"] = tuple(v.strip() for v in overrides["expression_labels"].split(",") if v.strip())
+        if "expression_input_size" in overrides:
+            overrides["expression_input_size"] = tuple(int(v) for v in overrides["expression_input_size"].lower().split("x"))
+            if len(overrides["expression_input_size"]) != 2 or min(overrides["expression_input_size"]) <= 0:
+                raise ValueError("--expression-input-size must be positive WIDTHxHEIGHT")
+        if "expression_mean" in overrides:
+            overrides["expression_mean"] = tuple(float(v) for v in overrides["expression_mean"].split(","))
+        if "expression_no_swap_rb" in overrides:
+            overrides["expression_swap_rb"] = not overrides.pop("expression_no_swap_rb")
+        if "aws_region" in overrides:
+            overrides["cloud_expression"] = replace(config.cloud_expression, region=overrides.pop("aws_region"))
+        config = replace(config, **overrides)
+    except (ValueError, TypeError, OSError) as error:
+        parser.error(str(error))
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
@@ -122,22 +127,7 @@ def main() -> None:
             logging.FileHandler("phos.log", encoding="utf-8"),
         ],
     )
-    asyncio.run(
-        async_main(
-            config=RuntimeConfig(
-                face_tracking_enabled=arguments.face_tracking,
-                expression_model_path=arguments.expression_model,
-                expression_labels=labels,
-                expression_input_size=input_size,
-                expression_scale=arguments.expression_scale,
-                expression_mean=mean,
-                expression_swap_rb=not arguments.expression_no_swap_rb,
-                expression_grayscale=arguments.expression_grayscale,
-                expression_diagnostics=arguments.expression_debug,
-                expression_crop_margin=arguments.expression_crop_margin,
-            )
-        )
-    )
+    asyncio.run(async_main(config=config))
 
 
 if __name__ == "__main__":

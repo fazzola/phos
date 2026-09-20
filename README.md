@@ -71,6 +71,37 @@ pixels (`scale=1`), zero mean, and no channel swap, as required by this model.
 It enables camera face tracking as well. See [Vision](docs/vision.md) for the
 stable-observation policy and supported reaction behavior.
 
+## Choose local or cloud expressions
+
+Local mode keeps facial images on the Raspberry Pi. After installing the
+MobileFaceNet model as described in [installation](docs/installation.md), run:
+
+```bash
+python3 src/robot/main.py --config config/expression-local.json
+```
+
+AWS mode sends only selected face crops to AWS Rekognition. Install boto3 and
+supply external AWS credentials/region using the
+[operator setup guide](docs/installation.md#optional-aws-expression-mode), then run:
+
+```bash
+python3 src/robot/main.py --expression-provider aws --expression-debug
+```
+
+Check `Expression provider: aws` in the startup log. Eyes and local tracking
+continue while cloud requests run. Defaults allow roughly 60 requests/hour for
+similar crops, at most 120/hour for changing crops, with a 90-second cache.
+Expression confirmation requires three separate results and can take about two
+minutes. Service failures give UNKNOWN observations with delayed retries;
+PHOS never silently switches providers. Stop with Ctrl+C and restart in local
+mode to keep images local. Remove `--expression-debug` after checking operation.
+
+Edit `config/expression-aws.json` and launch with `--config` to change request
+policy or add a session cap. See [configuration keys](docs/development.md#expression-configuration).
+Restart to apply changes. These ordinary settings are prepared for a future web
+configuration UI; no web UI exists yet, and AWS secrets must remain outside
+PHOS settings. Both providers observe visual cues, not a person's true emotions.
+
 ## Eye demo
 
 Preview eyes independently from Vision:

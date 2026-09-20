@@ -79,3 +79,15 @@ requires calibration, not just a high softmax score.
 ## Known verification note
 
 At the time this governance merge was prepared, the repository test suite had 30 tests, with 28 passing and 2 Vision tests failing only on exact floating-point equality around an averaged confidence value (`0.8` vs floating-point representations such as `0.8000000000000002`). This is an existing code/test issue, not introduced by governance files. Re-run the suite in the actual working checkout before relying on this note.
+
+## Selectable expression providers
+
+Local ONNX remains the default; optional AWS Rekognition is implemented behind
+ExpressionProvider, with local tracking/cropping, bounded background requests,
+cache expiry, change gating, stability gating and failure backoff. JSON settings
+feed RuntimeConfig and can be overridden by CLI. Cloud cached samples retain
+capture timestamps and do not advance semantic confirmation. See Vision and
+installation for policy, privacy, exact commands and external credentials.
+Mocked tests cover cloud behavior without credentials/network/cost. Physical
+Pi/AWS validation, expression accuracy and cloud threshold calibration remain
+outstanding. No web UI, automatic fallback or additional milestone is implemented.

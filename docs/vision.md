@@ -329,3 +329,79 @@ the existing detector and FER+ baseline so results compare against current PHOS;
 it does not silently change the camera contract. A future correction must update
 camera, detector and expression configurations together and repeat the baseline.
 See the [Picamera2 format mapping](https://github.com/raspberrypi/picamera2/blob/main/picamera2/request.py).
+
+## Selectable local / AWS expressions
+
+`RuntimeConfig.expression_provider` selects `local` (default, existing ONNX
+settings) or `aws` (`AWSExpressionProvider`). AWS selection enables the camera
+without an ONNX model. Capture, Haar detection, geometric selection and square
+cropping remain local. Only the selected crop is JPEG encoded in memory, capped
+at 512 pixels on its longest side, and sent to Rekognition `DetectFaces` with
+`Attributes=["EMOTIONS"]`. AWS always includes some default face attributes;
+PHOS ignores these except face confidence. Multiple returned faces cause
+abstention, not remote target selection. No S3, video streaming, identity
+recognition, image files or biometric database is used.
+
+**Privacy:** selecting AWS sends cropped facial images off the Raspberry Pi to
+AWS for processing. Choose local mode to keep these images on the Pi. Neither
+mode can establish a person's actual emotional state.
+
+The adapter translates HAPPY/SURPRISED/CALM to happy/surprised/neutral; all other
+categories contribute to unknown. AWS confidences are not assumed to be a
+softmax distribution: missing mass becomes unknown and totals above one are
+scaled down. Weak confidence is never amplified. These are conservative adapter
+scores, not calibrated probabilities. The existing semantic thresholds still
+apply, including neutral abstention. AWS types and labels never leave the adapter.
+See the official [DetectFaces contract](https://docs.aws.amazon.com/rekognition/latest/APIReference/API_DetectFaces.html).
+
+### Cloud request and evidence policy
+
+- Two matching local detections plus one further second of uninterrupted eligible
+  crops are required. Loss, reacquisition, invalid crops or a new geometric track
+  invalidate cache and pending evidence. This is geometric stability, not identity.
+- At most one background request exists. `asyncio.to_thread` runs SDK work;
+  `classify` polls without awaiting the network, keeping local tracking/rendering
+  independent. An invalidated in-flight response is discarded. Shutdown drains
+  the worker; SDK connect/read timeouts apply, though credential resolution can
+  add delay and an already transmitted request cannot be recalled.
+- Requests start at least 30 seconds apart (also capped at two per minute through
+  minimum spacing). No automatic SDK retries are enabled, preventing hidden
+  billable retries. Counters include attempted requests, even preparation failures.
+- A 16×16 grayscale crop comparison skips substantially identical crops before
+  the 60-second refresh deadline. Mean absolute pixel change must exceed 0.08
+  on a 0–1 scale to request earlier, still respecting cooldown. This is a cheap
+  image-change heuristic, not expression or person recognition.
+- Cached evidence expires 90 seconds after sampling, not after network completion.
+  Similar input refreshes at 60 seconds, allowing overlap while waiting. Changed
+  input may refresh after 30 seconds. An optional session cap defaults to zero
+  (unlimited); expiry still produces UNKNOWN once the cap is exhausted.
+- Three **distinct successful samples** with consistent accepted semantics are
+  needed for confirmation. Cached reads do not increment counts or duration.
+  Cloud evidence permits a maximum sample gap equal to its TTL; the local
+  1.5-second rule is unchanged. With similar crops, first confirmation takes
+  approximately two minutes, and is evidence from sparse samples, not proof
+  of a continuously held expression. Confirmed cached evidence remains usable
+  only within TTL. Gaps/expiry/loss/rejection reset confirmation.
+- Failures clear current evidence and return UNKNOWN, logging only exception
+  type (never SDK error text, credentials or images). Retry delay doubles from
+  60 seconds to a 600-second cap; normal cooldown also applies. There is no
+  automatic provider fallback. Missing SDK, credentials, region or permission
+  is handled through the same bounded failure path.
+
+For one hour of uninterrupted eligible face presence, similar crops produce
+about **60 requests**; sufficiently changing crops can produce at most **120**
+with defaults. Loss, failures and session caps reduce calls. These are attempt
+bounds for a running session, not AWS price estimates. Restarting resets the
+counter/backoff. Rekognition accuracy, network behavior and Pi performance have
+not been verified on physical hardware by the unit tests.
+
+At startup look for `Expression provider: aws` or `local`. With
+`--expression-debug`, rate-limited cloud policy logs show requested, cache,
+unchanged, cooldown/backoff, stable-face-pending or session-limit reasons,
+latency, neutral labels/confidence, discarded results and session attempt count.
+Existing local selection debug logs remain per detection; disable debug for
+normal operation. No request occurs without an eligible crop, so missing-face
+reasons are visible in local selection diagnostics.
+
+Operator commands and credentials: [installation](installation.md#optional-aws-expression-mode).
+All settings and defaults: [development configuration](development.md#expression-configuration).

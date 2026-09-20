@@ -164,3 +164,78 @@ camera stack and recommends installation through `apt`: [Camera software
 documentation](https://www.raspberrypi.com/documentation/computers/camera_software.html).
 Its camera documentation covers physical camera installation and setup:
 [Raspberry Pi Camera documentation](https://www.raspberrypi.com/documentation/accessories/camera.html).
+
+## Optional AWS expression mode
+
+Keep the camera/OpenCV packages from step 2. Local ONNX mode needs no AWS
+package, account, credentials or network connection. For AWS mode on system
+Python, additionally install:
+
+```bash
+sudo apt install -y python3-boto3
+```
+
+Alternatively, in an existing virtual environment with access to the Pi system
+camera packages and a full repository checkout, use `python3 -m pip install
+'.[aws]'` (optional `boto3>=1.34` extra). Do not install this extra into the
+managed system Python using pip. boto3 brings botocore; no new ML runtime is
+needed. An AWS account, working network, a supported Rekognition region and
+permission for `rekognition:DetectFaces` are required. No S3 access is needed.
+
+Use the [standard SDK credential chain](https://docs.aws.amazon.com/boto3/latest/guide/credentials.html):
+external shared profiles/roles work without credential environment variables.
+For environment credentials, replace placeholders in your external shell/session:
+
+```bash
+export AWS_ACCESS_KEY_ID='<access-key-id>'
+export AWS_SECRET_ACCESS_KEY='<secret-access-key>'
+export AWS_SESSION_TOKEN='<session-token-if-using-temporary-credentials>'
+export AWS_DEFAULT_REGION='eu-west-1'
+```
+
+Omit `AWS_SESSION_TOKEN` for long-lived credentials; temporary credentials require
+it. `AWS_REGION` is also supported. Region precedence is PHOS configuration/CLI,
+then `AWS_REGION`, then the SDK (`AWS_DEFAULT_REGION` or profile). Credentials
+are never read manually or stored in PHOS JSON. Do not put secrets in committed
+files or issue/debug logs. PHOS does not use or create a `.env` file.
+
+Start from a graphical Pi desktop session at the repository root:
+
+```bash
+python3 src/robot/main.py --expression-provider aws --expression-debug
+```
+
+**This sends selected cropped facial images to AWS.** No ONNX model is needed.
+Only locally stable selected crops are sent, with default 30-second minimum
+spacing, 60-second refresh and 90-second result lifetime. Similar crops cost
+about 60 analysis requests/hour; changing crops can reach 120/hour. Check AWS
+pricing for your region before prolonged operation. To stop cloud processing,
+stop PHOS with Ctrl+C and restart in local mode:
+
+```bash
+python3 src/robot/main.py --config config/expression-local.json
+```
+
+This uses the MobileFaceNet file downloaded in step 5. The existing explicit
+ONNX CLI command also remains valid; add `--expression-provider local` if desired.
+For configurable AWS policy:
+
+```bash
+python3 src/robot/main.py --config config/expression-aws.json --expression-debug
+```
+
+The source sync script copies only `src/`. Copy `config/` separately to
+`/home/pi/phos/config/` if using these JSON examples; alternatively use the CLI
+commands above or create a settings file following [development](development.md#expression-configuration).
+
+Verify the startup `Expression provider:` log, then hold a well-lit face in view.
+Cloud diagnostics show attempts, cached reads, skips and latency. The existing
+semantic policy requires three distinct accepted samples: a consistent pose
+may take about two minutes to confirm with default refresh. Tracking should
+continue smoothly during cloud work. Leave/re-enter to verify stale results
+are discarded. Remove debug after verification. If AWS fails, the log reports
+an exception type, expressions become UNKNOWN and retries back off from 60 to
+600 seconds. Tracking/eyes continue; there is no silent local fallback. Check
+boto3 installation, region, external credentials, IAM permission and network.
+These instructions describe a physical verification path; automated tests do
+not contact AWS or verify recognition quality on the Pi.

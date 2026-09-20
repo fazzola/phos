@@ -44,6 +44,8 @@ Do not require expression classification to complete this milestone.
 
 Existing foundation:
 - [x] expression provider abstraction
+- [x] selectable local/AWS adapter with JSON configuration, bounded background cloud work and mock tests
+- [ ] verify AWS crop processing, latency and semantic usefulness on Pi (explicit opt-in cloud mode)
 - [x] OpenCV DNN/ONNX provider implementation present
 - [x] temporal smoothing present
 - [x] stable-expression and face-lost event integration present

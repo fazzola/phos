@@ -150,3 +150,20 @@ Use lightweight processing appropriate for Raspberry Pi 3. Expression classifica
 ## Home Assistant relationship
 
 Home Assistant is an integration/tool surface, not PHOS's brain. Commands may use REST, state/events may use WebSocket, and MQTT may later expose PHOS entities. AI access must be mediated by explicit tools/services and allowlists; sensitive actions require explicit policy.
+
+### Local/cloud expression boundary
+
+Camera -> local detector/selector/square crop -> `ExpressionProvider`
+(`OpenCVExpressionProvider` or optional `AWSExpressionProvider`) -> existing
+`ExpressionSmoother` semantics -> Vision events -> `BehaviorEngine` -> `FaceState`.
+AWS SDK objects remain in its adapter. Cloud requests use a single background
+asyncio task plus `to_thread`, independent of capture/tracking/render cadence.
+Provider lifecycle invalidation discards evidence across tracking discontinuity.
+Cached `ExpressionObservation.sampled_at` preserves provenance so reads cannot
+manufacture temporal confirmation. Local observations retain their existing
+cadence and semantics. See [Vision](vision.md#selectable-local--aws-expressions).
+
+`RuntimeConfig`, including nested cloud policy, is the validated settings
+boundary shared by Python composition, JSON and CLI overrides. A future web UI
+must edit this same ordinary configuration and keep credentials external in the
+AWS SDK credential chain. No web interface or live reconfiguration is implemented.

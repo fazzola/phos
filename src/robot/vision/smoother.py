@@ -75,6 +75,18 @@ class ExpressionSmoother:
     def observe(
         self, observation: Optional[ExpressionObservation], *, timestamp: Optional[float] = None
     ) -> Optional[VisualExpression]:
+        if observation is not None and observation.sampled_at is not None:
+            if observation.sampled_at == self._cached_sample:
+                return self._cached_result
+            result = self._observe(observation, timestamp=observation.sampled_at)
+            self._cached_sample = observation.sampled_at
+            self._cached_result = result
+            return result
+        return self._observe(observation, timestamp=timestamp)
+
+    def _observe(
+        self, observation: Optional[ExpressionObservation], *, timestamp: Optional[float] = None
+    ) -> Optional[VisualExpression]:
         now = time.monotonic() if timestamp is None else timestamp
         decision = self.decide(observation)
         if not math.isfinite(now):
@@ -110,6 +122,8 @@ class ExpressionSmoother:
                 "confirmed": self.decision.reason == "confirmed"}
 
     def reset(self) -> None:
+        self._cached_sample: Optional[float] = None
+        self._cached_result: Optional[VisualExpression] = None
         self._label: Optional[str] = None
         self._started_at: Optional[float] = None
         self._last_at: Optional[float] = None

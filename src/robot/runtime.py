@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
@@ -19,6 +20,8 @@ from robot.vision import (
     Picamera2CameraProvider,
     VisionPipeline,
 )
+
+from robot.vision.aws_expression import AWSExpressionProvider, CloudExpressionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,9 @@ class RuntimeConfig:
     vision_capture_fps: float = 15.0
     face_detection_fps: float = 4.0
     expression_inference_fps: float = 3.0
+    expression_provider: str = "local"
+    cloud_expression: CloudExpressionConfig = field(default_factory=CloudExpressionConfig)
+    expression_minimum_confidence: float = 0.60
     expression_model_path: Optional[Path] = None
     expression_labels: Tuple[str, ...] = ()
     expression_input_size: Tuple[int, int] = (64, 64)
@@ -45,24 +51,54 @@ class RuntimeConfig:
     expression_crop_margin: float = 0.10
 
     def __post_init__(self) -> None:
+        if self.expression_provider not in {"local", "aws"}:
+            raise ValueError("expression_provider must be local or aws")
+        if not isinstance(self.cloud_expression, CloudExpressionConfig):
+            raise ValueError("cloud_expression must be CloudExpressionConfig")
+        if not math.isfinite(self.expression_minimum_confidence) or not 0 <= self.expression_minimum_confidence <= 1:
+            raise ValueError("expression_minimum_confidence must be between zero and one")
         if not math.isfinite(self.expression_crop_margin) or not 0 <= self.expression_crop_margin <= 0.5:
             raise ValueError("expression_crop_margin must be between zero and 0.5.")
-        if self.display_fps <= 0:
-            raise ValueError("display_fps must be positive.")
-        if self.camera_resolution[0] <= 0 or self.camera_resolution[1] <= 0:
-            raise ValueError("camera_resolution values must be positive.")
-        if min(self.vision_capture_fps, self.face_detection_fps, self.expression_inference_fps) <= 0:
-            raise ValueError("Vision frequencies must be positive.")
+        for name in ("display_fps", "vision_capture_fps", "face_detection_fps", "expression_inference_fps"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be positive and finite")
+        for name in ("camera_resolution", "expression_input_size"):
+            values = getattr(self, name)
+            if len(values) != 2 or any(type(v) is not int or v <= 0 for v in values):
+                raise ValueError(f"{name} must contain two positive integers")
+        for name in ("fullscreen", "face_tracking_enabled", "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
         if self.expression_model_path is None and self.expression_labels:
             raise ValueError("expression_labels require expression_model_path.")
         if self.expression_model_path is not None and not self.expression_labels:
             raise ValueError("expression_model_path requires configured expression_labels.")
-        if len(self.expression_mean) != 3:
-            raise ValueError("expression_mean must contain three channel values.")
+        if any(not isinstance(label, str) or not label.strip() for label in self.expression_labels):
+            raise ValueError("expression_labels must contain nonempty strings")
+        if len(self.expression_mean) != 3 or any(not math.isfinite(v) for v in self.expression_mean):
+            raise ValueError("expression_mean must contain three finite channel values.")
+        if not math.isfinite(self.expression_scale):
+            raise ValueError("expression_scale must be finite")
+
+    @classmethod
+    def from_file(cls, path: Path) -> RuntimeConfig:
+        """Load ordinary settings into the existing typed configuration boundary."""
+        values = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(values, dict):
+            raise ValueError("Runtime configuration must be a JSON object")
+        if "cloud_expression" in values:
+            values["cloud_expression"] = CloudExpressionConfig(**values["cloud_expression"])
+        if values.get("expression_model_path") is not None:
+            values["expression_model_path"] = Path(values["expression_model_path"])
+        for name in ("camera_resolution", "expression_labels", "expression_input_size", "expression_mean"):
+            if name in values:
+                values[name] = tuple(values[name])
+        return cls(**values)
 
     @property
     def vision_enabled(self) -> bool:
-        return self.face_tracking_enabled or self.expression_model_path is not None
+        return self.face_tracking_enabled or self.expression_model_path is not None or self.expression_provider == "aws"
 
 
 class PhosRuntime:
@@ -196,7 +232,13 @@ def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optiona
         return None
     expression_provider = None
     smoother = None
-    if config.expression_model_path is not None:
+    if config.expression_provider == "aws":
+        expression_provider = AWSExpressionProvider(config.cloud_expression, diagnostics=config.expression_diagnostics)
+        smoother = ExpressionSmoother(
+            minimum_confidence=config.expression_minimum_confidence,
+            maximum_gap_seconds=config.cloud_expression.cache_ttl_seconds,
+        )
+    elif config.expression_model_path is not None:
         expression_provider = OpenCVExpressionProvider(
             config.expression_model_path,
             config.expression_labels,
@@ -207,7 +249,8 @@ def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optiona
             grayscale=config.expression_grayscale,
             diagnostics=config.expression_diagnostics,
         )
-        smoother = ExpressionSmoother()
+        smoother = ExpressionSmoother(minimum_confidence=config.expression_minimum_confidence)
+    logger.info("Expression provider: %s", config.expression_provider if expression_provider else "disabled")
     return VisionPipeline(
         Picamera2CameraProvider(config.camera_resolution),
         OpenCVFaceDetector(),
