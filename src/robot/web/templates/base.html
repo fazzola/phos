@@ -9,7 +9,7 @@
 <body><main>
 <header><h1>PHOS <small>Administration</small></h1>
 {% if session.get('sid') %}
-<nav aria-label="Account"><a href="{{ url_for('configuration') }}">Configuration</a><a href="{{ url_for('password') }}">Change password</a>
+<nav aria-label="Account"><a href="{{ url_for('configuration') }}">Configuration</a><a href="{{ url_for('password') }}">Change password</a><a href="{{ url_for('system') }}">System actions</a>
 <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Log out</button></form></nav>
 {% endif %}</header>
 {% if session.get('sid') %}

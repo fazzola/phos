@@ -108,11 +108,14 @@ responsive domain pages with shared navigation, per-page merges through full
 configuration validation/atomic saves, provider
 selection, bootstrap password rotation, hashed local credentials, expiring
 revocable sessions, CSRF and global password attempt throttling. Startup owns
-worker cleanup and exposes the startup snapshot on a separate read-only Status
-page. General provides navigation; Network, Display & Appearance, Vision,
+worker cleanup and exposes parent-owned active configuration metadata on a
+separate read-only Status page. General provides navigation; Network, Display & Appearance, Vision,
 Expression Recognition, Logging and Web Administration / Security expose only
 implemented fields. Password management stays separate.
-No live reload, AWS credential probe, automatic backup or Internet deployment.
+Only logging level is live-reloadable after full canonical validation. Confirmed
+PHOS restart uses the supplied user systemd service; manual launches reject
+browser restart. No OS reboot, AWS credential probe, automatic backup or Internet
+deployment.
 See [user manual](web-administration.md) for installation and recovery. Tests are
 hardware-free; Pi resource usage and LAN browser verification remain required.
 
@@ -125,7 +128,7 @@ Camera failure/partial-start and cancellation cleanup are hardened. Source sync
 ships metadata, docs and the pinned web dependency snapshot while preserving
 deployed settings/credentials. Packaged installs include the canonical JSON.
 
-Release verification in this audit (Python 3.11.6):
+Initial release verification before the lifecycle addition (Python 3.11.6):
 - Relevant lifecycle/core/UI/configuration tests: 103 passed.
 - Release metadata/packaged-config tests: 2 passed.
 - Full suite: **242 passed, 1 skipped** in 123.66 seconds. The skipped OpenCV
@@ -141,3 +144,41 @@ Release verification in this audit (Python 3.11.6):
   source deployment path, sdist contents and installed-config lookup were checked.
 Physical Pi regression and AWS service verification were not performed during
 this source audit. Expression quality remains unproven as documented above.
+
+
+## Validated reload and managed restart
+
+`robot.lifecycle.LifecycleService` owns the active snapshot, load timestamp and
+fixed status/reload/restart policy. The web worker uses a local process channel;
+it cannot submit commands or paths. Reload validates the entire saved file and
+applies only logging level, preserving AWS SDK log suppression. Other changed
+fields are listed as restart-required. Authenticated restart requires CSRF and
+one-use explicit confirmation, then graceful runtime shutdown and exit 75.
+`deploy/phos.service` performs process replacement under the desktop user with
+no sudo/polkit or shell endpoint. Source sync includes the unit but never enables
+it. System actions remain separate from ordinary config forms. OS reboot and all
+previously deferred roadmap capabilities remain deferred.
+
+Final verification including this addition (Python 3.11.6):
+- Full suite: **258 passed, 1 skipped** in 187.15 seconds.
+- The only skip is the OpenCV preprocessing test at
+  `tests/vision/test_expression.py:105`: `cv2` is unavailable.
+- Focused lifecycle tests: 12 passed; focused web lifecycle tests: 4 passed.
+  The real HTTP-worker-to-parent logging reload test also passed separately.
+- Final service ordering/exit-code deployment contract: 1 passed, 11 deselected.
+- Source distribution metadata, canonical JSON, web assets, lifecycle modules,
+  dependency snapshot and service unit verified.
+- Python compilation, dependency consistency, shell syntax and diff whitespace
+  checks passed. No hardware, cloud or deployment commands were executed.
+Actual systemd/display-session integration on the Raspberry Pi remains unverified
+in this macOS environment; this is a deployment acceptance requirement.
+
+
+## Eye appearance refinement
+
+Display & Appearance now validates and exposes `display.iris_color` in the
+canonical JSON. EyeRenderer receives this theme at startup and layers lightweight
+Canvas eye-body, iris, pupil and highlight geometry. FaceState continues to
+supply semantic reaction intent; expression labels/providers do not control
+rendering. Theme changes require restart. Raspberry Pi frame-rate impact awaits
+target hardware verification.

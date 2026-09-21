@@ -1,4 +1,6 @@
-from robot.ui import BlinkPhase, EyeRenderer, FaceExpression, FaceState, VisualAccent
+from types import SimpleNamespace
+
+from robot.ui import BlinkPhase, EyeRenderer, FaceExpression, FaceState, TkEyeDisplay, VisualAccent
 
 
 def render(state, timestamp=0.0):
@@ -106,3 +108,59 @@ def test_invalid_face_state_values_are_safely_normalized():
     assert state.reaction_strength == 1.0
     assert state.accent is VisualAccent.NEUTRAL
     assert state.blink_progress == 0.0
+
+
+def test_configured_iris_theme_changes_stylized_iris_color():
+    cyan = EyeRenderer(iris_color="cyan").render(FaceState(), timestamp=0)
+    violet = EyeRenderer(iris_color="violet").render(FaceState(), timestamp=0)
+
+    assert cyan.iris_color == "#28CEEB"
+    assert violet.iris_color == "#A670F5"
+    assert cyan.eyes[0].iris_radius > cyan.eyes[0].pupil_radius
+
+
+def test_semantic_iris_tint_interpolates_from_face_state():
+    renderer = EyeRenderer(iris_color="blue", transition_seconds=.2)
+    neutral = renderer.render(FaceState(), timestamp=0)
+    partial = renderer.render(
+        FaceState(accent=VisualAccent.ALERT, reaction_strength=1), timestamp=.1
+    )
+    settled = renderer.render(
+        FaceState(accent=VisualAccent.ALERT, reaction_strength=1), timestamp=.3
+    )
+
+    assert neutral.iris_color != partial.iris_color != settled.iris_color
+    assert settled.iris_color != "#A670F5"
+
+
+def test_expression_states_remain_face_state_driven():
+    renderer = EyeRenderer()
+    neutral = renderer.render(FaceState(), timestamp=0)
+    curious = renderer.render(
+        FaceState(expression=FaceExpression.CURIOUS, reaction_strength=1), timestamp=1
+    )
+    surprised = renderer.render(
+        FaceState(expression=FaceExpression.SURPRISED, reaction_strength=1), timestamp=2
+    )
+
+    assert curious.eyes[0].radius_y != curious.eyes[1].radius_y
+    assert surprised.eyes[0].radius_y > neutral.eyes[0].radius_y
+
+
+def test_tk_draws_separate_eye_body_iris_pupil_and_highlights():
+    frame = EyeRenderer(iris_color="amber").render(FaceState(), timestamp=0)
+    display = object.__new__(TkEyeDisplay)
+    calls = []
+    display._canvas = SimpleNamespace(
+        create_oval=lambda *args, **kwargs: calls.append(kwargs),
+        create_arc=lambda *args, **kwargs: calls.append(kwargs),
+    )
+    display._tk = SimpleNamespace(ARC="arc")
+
+    display._draw_eye(frame.eyes[0], frame)
+
+    fills = [call.get("fill") for call in calls]
+    assert len(calls) == 8
+    assert frame.iris_color in fills
+    assert frame.pupil_color in fills
+    assert "#071522" in fills

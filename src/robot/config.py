@@ -109,7 +109,8 @@ class CloudExpressionConfig:
 _SCHEMA = {
     "web": {"enabled": "web_enabled", "host": "web_host", "port": "web_port"},
     "display": {"width": "display_width", "height": "display_height", "fps": "display_fps",
-                "fullscreen": "fullscreen", "transition_seconds": "display_transition_seconds"},
+                "fullscreen": "fullscreen", "transition_seconds": "display_transition_seconds",
+                "iris_color": "iris_color"},
     "behavior": {"blink_interval_seconds": "blink_interval_seconds", "gaze_interval_seconds": "gaze_interval_seconds",
                  "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second"},
     "vision": {"face_tracking_enabled": "face_tracking_enabled", "camera_resolution": "camera_resolution",
@@ -176,6 +177,7 @@ class RuntimeConfig:
     display_fps: int
     fullscreen: bool
     display_transition_seconds: float
+    iris_color: str
     blink_interval_seconds: Tuple[float, float]
     gaze_interval_seconds: Tuple[float, float]
     face_gaze_smoothing: float
@@ -348,6 +350,10 @@ class RuntimeConfig:
                 raise ConfigurationError(f"{name} must contain two positive ascending numbers")
         if not isinstance(self.expression_provider, str) or self.expression_provider not in {"local", "aws"}:
             raise ConfigurationError("expression.provider must be local or aws")
+        if not isinstance(self.iris_color, str) or self.iris_color not in {
+            "cyan", "blue", "green", "turquoise", "amber", "violet", "white"
+        }:
+            raise ConfigurationError("display.iris_color must be cyan, blue, green, turquoise, amber, violet or white")
         if not isinstance(self.cloud_expression, CloudExpressionConfig):
             raise ConfigurationError("expression.aws must be CloudExpressionConfig")
         if not isinstance(self.log_level, str) or self.log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+{% if requested %}
+<h2>Restart requested</h2><p class="notice" role="status">Restart requested. PHOS will reload the configuration on startup.</p>
+<p>Web access will disconnect briefly. Wait a few seconds, then reopen administration and log in again. If you changed the bind address or port, use the new URL; disabling web administration makes it unavailable after restart.</p>
+{% else %}
+<h2>Confirm Restart PHOS</h2>
+<p>This stops the robot application, closes its camera/display and ends web sessions. Systemd will start it again using saved configuration. The Raspberry Pi itself will not reboot.</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="confirmation" value="{{ session.restart_confirmation }}">
+<label><input type="checkbox" name="confirm" value="restart" required> I confirm restarting PHOS and temporarily losing web access.</label>
+<button>Restart PHOS</button> <a href="{{ url_for('system') }}">Cancel</a></form>
+{% endif %}
+{% endblock %}

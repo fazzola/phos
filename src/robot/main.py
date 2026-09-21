@@ -21,6 +21,7 @@ if str(SOURCE_DIRECTORY) not in sys.path:
 from robot import __version__
 from robot.config import DEFAULT_CONFIG_PATH, ConfigurationError, RuntimeConfig, load_document
 from robot.runtime import PhosRuntime, build_runtime
+from robot.lifecycle import RESTART_EXIT_CODE
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,22 @@ def _install_shutdown_handlers(loop: asyncio.AbstractEventLoop, stop_event: asyn
             pass
 
 
-async def async_main(*, config: RuntimeConfig | None = None) -> None:
+async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None) -> None:
     stop_event = asyncio.Event()
     _install_shutdown_handlers(asyncio.get_running_loop(), stop_event)
-    await build_application(config=config).run(stop_event)
+    async def watch_restart():
+        while not stop_event.is_set():
+            if lifecycle is not None and lifecycle.restart_due:
+                stop_event.set()
+                return
+            await asyncio.sleep(.1)
+    watcher = asyncio.create_task(watch_restart()) if lifecycle is not None else None
+    try:
+        await build_application(config=config).run(stop_event)
+    finally:
+        if watcher is not None:
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
 
 
 def main() -> None:
@@ -146,8 +159,10 @@ def main() -> None:
     # The optional web worker is isolated from camera/rendering and is stopped
     # even when runtime startup or execution fails.
     from robot.web.server import WebServer
-    with WebServer(config_path, config):
-        asyncio.run(async_main(config=config))
+    with WebServer(config_path, config) as web:
+        asyncio.run(async_main(config=config, lifecycle=web.lifecycle))
+    if web.lifecycle.restart_at is not None:
+        raise SystemExit(RESTART_EXIT_CODE)
 
 
 

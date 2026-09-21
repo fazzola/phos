@@ -9,6 +9,8 @@ use that same value. Versioning is not runtime configuration.
 
 - Raspberry Pi 3 runtime with an 800×600 animated face, independent render and
   Vision cadence, blink/gaze behavior, visual accents and state priority.
+- Layered, lightweight eye rendering with named cyan, blue, green, turquoise,
+  amber, violet or white iris themes in canonical display configuration.
 - Local camera face selection/tracking and gaze; uncertain visible-expression
   observations mediated by BehaviorEngine, including abstention and decay.
 - Explicit local ONNX or optional AWS Rekognition expression provider; cloud
@@ -21,6 +23,8 @@ use that same value. Versioning is not runtime configuration.
   Web Administration / Security and read-only System / Status pages.
 - Bootstrap password `phos`, mandatory rotation, salted password hashes outside
   configuration, expiring/revocable sessions, logout, CSRF and attempt limits.
+- Validated reload of logging level and confirmed PHOS restart through a user
+  systemd service, using a reusable lifecycle boundary; no OS reboot.
 - AWS credentials remain external in the SDK chain. There are no credential
   fields or credential values in configuration/status pages.
 
@@ -59,8 +63,8 @@ Face tracking without expressions uses `vision.face_tracking_enabled: true` and
 
 AWS mode uses `expression.aws` region/timeouts/limits and external credentials.
 It needs no local ONNX file; selected face crops leave the Pi. Set
-`expression.enabled` false to disable expression processing. Restart after every
-configuration change; password changes take effect immediately.
+`expression.enabled` false to disable expression processing. Reload logging level or restart for all other configuration changes; password
+changes take effect immediately.
 
 ## Hardening in this release
 
@@ -78,7 +82,8 @@ Packaged installs carry the canonical JSON as data rather than recreating defaul
 Automated tests cover lifecycle rollback/cancellation, eye geometry and behavior,
 tracking, expression semantics, local/AWS selection using mocks, configuration
 validation/persistence, authentication, bootstrap rotation, CSRF, revocation,
-domain isolation and a real local web-worker socket/shutdown test. The full suite completed with **242 passed, 1 skipped** (OpenCV unavailable).
+domain isolation, validated reload, restart confirmation and a real local web-worker
+socket/shutdown test.
 Detailed verification evidence and environment gaps are recorded in
 [the implementation handoff](current-state.md#phos-100-finalization).
 
@@ -95,7 +100,9 @@ deployment acceptance, run these checks on the target:
    connectivity failure and continued local eye/tracking behavior.
 6. Test first login, password change/logout, all domain pages from phone/tablet/
    desktop, valid/invalid saves and restart application of saved settings.
-7. Repeat start/stop, including SIGTERM, and check camera and port release plus
+7. Install the user service; test logging-level reload, invalid reload rejection
+   and confirmed browser restart with temporary web loss and changed network settings.
+8. Repeat start/stop, including SIGTERM, and check camera and port release plus
    Pi CPU/RAM use while logging in and running Vision.
 
 Known limitations:
@@ -105,9 +112,9 @@ Known limitations:
   [model evaluation](vision-model-evaluation.md); no new accuracy claim is made.
 - HTTP is unencrypted and trusted-LAN-only. No TLS/public Internet deployment,
   multi-user administration or remote password reset is included.
-- Status reports a startup snapshot, not live health. AWS credentials are not
+- Status reports parent-owned active configuration, not live health. AWS credentials are not
   probed. A crashed web worker requires PHOS restart.
-- All configuration edits require restart; no automatic backup or cross-process
+- Only logging level is reloadable; other configuration changes require restart; no automatic backup or cross-process
   file locking. Use one PHOS process per configuration/credential store.
 - Raspberry Pi OS/camera packages are installed by apt and are platform-specific;
   the Python web snapshot is pinned but this is not a byte-reproducible OS image.

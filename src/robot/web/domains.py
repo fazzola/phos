@@ -15,7 +15,7 @@ DOMAINS = {
     "expression": {"title": "Expression Recognition", "description": "Select a provider and configure observations, model preprocessing and cloud request limits."},
     "logging": {"title": "Logging", "description": "Log level, destination and expression diagnostics. SDK credential/request debug output remains suppressed; no credential or payload logging controls are provided."},
     "security": {"title": "Web Administration / Security", "description": "Enable administration and manage your administrator password separately from runtime settings."},
-    "status": {"title": "System / Status", "description": "Read-only startup information and saved configuration status. This page does not monitor live robot health."},
+    "status": {"title": "System / Status", "description": "Read-only active configuration metadata and saved configuration status. Lifecycle actions are on a separate System actions page; robot health is not monitored."},
 }
 
 # Paths select fields that already exist in the canonical document. A trailing

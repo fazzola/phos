@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>System actions</h2>
+<p><a href="{{ url_for('configuration', area='status') }}">View read-only status</a></p>
+{% if not state.ok %}<p class="error" role="alert">{{ state.error }}</p>
+{% else %}
+<section class="status"><h3>Configuration in use</h3>
+<p><code>{{ state.config_path }}</code></p>
+<p>Last successful startup/reload (UTC): {{ state.loaded_at }}</p>
+<p>Saved configuration {{ 'differs from' if state.changed else 'matches' }} active configuration.</p>
+<p>Restart required for: {{ state.restart_required | join(', ') or 'None' }}.</p>
+<p>Reload available for: {{ state.reloadable | join(', ') or 'None' }}.</p>
+{% if reloaded %}<p class="notice" role="status">Configuration validated. Applied: {{ state.applied | join(', ') or 'No changes' }}.</p>{% endif %}
+</section>
+{% if state.restart_requested %}<p class="notice">Restart requested. PHOS will reload the configuration on startup.</p>
+{% else %}
+<section><h3>Reload configuration</h3>
+<p>Validate the entire saved file and apply only logging level. Other changed settings require restart. Invalid configuration is never applied.</p>
+<form action="{{ url_for('reload_configuration') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Reload configuration</button></form></section>
+<section class="account"><h3>Restart PHOS</h3>
+<p>Stop and restart the PHOS application, briefly interrupting eyes, Vision and web access. This does not reboot the Raspberry Pi.</p>
+{% if state.restart_supported %}<a href="{{ url_for('restart_phos') }}">Review and confirm restart</a>
+{% else %}<p>Unavailable for this launch. Install and start the documented user systemd service, or stop and start PHOS from the terminal.</p>{% endif %}</section>
+{% endif %}
+<p>Reboot Raspberry Pi is not supported in PHOS 1.0.0.</p>
+{% endif %}
+{% endblock %}

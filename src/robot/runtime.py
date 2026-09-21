@@ -147,7 +147,7 @@ def build_runtime(
     )
     eye_render_loop = EyeRenderLoop(
         EyeRenderer(width=config.display_width, height=config.display_height,
-                    transition_seconds=config.display_transition_seconds),
+                    transition_seconds=config.display_transition_seconds, iris_color=config.iris_color),
         eye_display or TkEyeDisplay(),
         lambda: behavior_engine.face_state,
         fps=config.display_fps,

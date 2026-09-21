@@ -2,3 +2,4 @@ include AGENTS.md run_pi.sh requirements.txt requirements-web.txt
 recursive-include docs *.md
 recursive-include src AGENTS.md
 recursive-include tests *.py
+recursive-include deploy *.service

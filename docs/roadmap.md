@@ -12,6 +12,8 @@ The current implemented feature set is the complete 1.0.0 scope; see the
 - [x] Authenticated web administration, mandatory bootstrap password change and external secrets
 - [x] Eight configuration domains with isolated page saves and read-only status
 - [x] Release version, installation/user documentation and hardware-free regression tests
+- [x] Validated logging-level reload and confirmed supervisor-owned PHOS restart
+- [ ] Verify user systemd restart and display-session environment on the actual Pi
 - [ ] Repeat the complete release acceptance sequence on the Pi after these changes
 - [ ] Establish expression accuracy and calibrate neutral reactions on actual hardware
 - [ ] Verify optional AWS behavior/latency and mobile/tablet LAN administration on the Pi
@@ -27,6 +29,7 @@ separate from that prior evidence. See the release record for exact checks.
 | Environmental/inertial sensors | BME280, CCS811 and GY-521/MPU-6050 adapters, observations and designed behavior; CCS811 eCO2 must not be labeled direct CO2. |
 | LED ring | WS2812B electrical verification, adapter and behavior mapping. |
 | Remote-control API | Authenticated service-mediated control, authorization and documented contracts. |
+| Advanced OS administration | Raspberry Pi reboot, if a future safe permission boundary is approved. |
 | MCP server | Service-mediated tools; no direct hardware or subsystem-internal access. |
 | STT | Microphone capture, VAD and speech recognition. |
 | TTS | Provider-neutral synthesis, playback and speaker verification. |
