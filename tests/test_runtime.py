@@ -183,9 +183,16 @@ def test_face_tracking_reaches_behavior_engine_without_expression_reactions():
             vision_factory=lambda events: make_face_tracking(events, FakeCamera()),
         )
         await runtime.start()
-        await asyncio.sleep(0.05)
-        state = runtime._behavior_engine.face_state
-        await runtime.stop()
+        async def wait_for_gaze():
+            while True:
+                state = runtime._behavior_engine.face_state
+                if state.pupil_x > 0.3 and state.pupil_y < -0.1 and len(display.frames) >= 2:
+                    return state
+                await asyncio.sleep(.01)
+        try:
+            state = await asyncio.wait_for(wait_for_gaze(), timeout=1)
+        finally:
+            await runtime.stop()
         return state, display
 
     state, display = asyncio.run(exercise())

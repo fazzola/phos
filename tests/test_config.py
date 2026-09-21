@@ -31,7 +31,8 @@ def test_canonical_config_is_complete_safe_and_round_trips(document):
 
 
 def test_loaded_values_reach_subsystems(document, tmp_path):
-    document["display"].update(width=640, height=480, fps=17, fullscreen=False, transition_seconds=.3)
+    document["display"].update(width=640, height=480, fps=17, fullscreen=False,
+                               transition_seconds=.3, iris_color="violet")
     document["behavior"].update(face_gaze_smoothing=.7, reaction_decay_per_second=.2)
     document["vision"]["face_tracking_enabled"] = True
     document["vision"]["capture_fps"] = 12
@@ -43,6 +44,7 @@ def test_loaded_values_reach_subsystems(document, tmp_path):
     assert runtime._vision_pipeline._face_detector._scale_factor == 1.2
     assert runtime._vision_pipeline._face_detector._min_neighbors == 7
     assert runtime._eye_render_loop._renderer._width == 640
+    assert runtime._eye_render_loop._renderer._iris_color == "violet"
 
 
 def test_loaded_configuration_runs_headless(document, tmp_path):
@@ -89,6 +91,7 @@ def test_missing_required_fields_fail_with_path(document, tmp_path, route):
     ("expression.smoothing.minimum_observations", 0),
     ("expression.aws.cooldown_seconds", 0), ("expression.aws.cache_ttl_seconds", 10),
     ("expression.aws.max_requests_per_session", -1), ("logging.level", "TRACE"),
+    ("display.iris_color", "chartreuse"), ("display.iris_color", "#00FFFF"),
 ])
 def test_invalid_values_fail_before_start(document, tmp_path, route, value):
     keys, section = route.split("."), document
@@ -203,7 +206,7 @@ def test_cli_config_only_and_overrides_use_same_validation(document, tmp_path, m
     document["display"]["fps"] = 19
     path = write_config(tmp_path, document)
     seen = []
-    async def run(*, config):
+    async def run(*, config, lifecycle=None):
         seen.append(config)
     monkeypatch.setattr(main, "async_main", run)
     monkeypatch.setattr(main.logging, "basicConfig", lambda **kw: None)

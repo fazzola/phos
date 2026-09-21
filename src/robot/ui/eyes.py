@@ -8,6 +8,25 @@ from typing import Optional, Tuple
 from .state import BlinkPhase, FaceExpression, FaceState, VisualAccent
 
 
+_IRIS_COLORS = {
+    "cyan": (40, 206, 235),
+    "blue": (73, 133, 255),
+    "green": (65, 205, 125),
+    "turquoise": (35, 200, 175),
+    "amber": (244, 171, 61),
+    "violet": (166, 112, 245),
+    "white": (218, 236, 246),
+}
+_IRIS_ACCENTS = {
+    VisualAccent.NEUTRAL: None,
+    VisualAccent.WARM: (48, 226, 178),
+    VisualAccent.CURIOUS: (79, 195, 248),
+    VisualAccent.ALERT: (255, 191, 72),
+    VisualAccent.SLEEPY: (173, 145, 248),
+    VisualAccent.ERROR: (255, 93, 111),
+}
+
+
 @dataclass(frozen=True)
 class EyeGeometry:
     center_x: float
@@ -16,6 +35,7 @@ class EyeGeometry:
     radius_y: float
     pupil_x: float
     pupil_y: float
+    iris_radius: float
     pupil_radius: float
     squint: float
     closed: bool
@@ -28,6 +48,7 @@ class EyeFrame:
     background: str
     eye_color: str
     pupil_color: str
+    iris_color: str
     eyes: Tuple[EyeGeometry, EyeGeometry]
 
 
@@ -41,23 +62,28 @@ class _AnimatedValues:
     background: Tuple[int, int, int]
     eye_color: Tuple[int, int, int]
     pupil_color: Tuple[int, int, int]
+    iris_color: Tuple[int, int, int]
 
 
 class EyeRenderer:
     """Convert only ``FaceState`` into smoothly animated eye geometry."""
 
-    def __init__(self, *, width: int = 800, height: int = 600, transition_seconds: float = 0.18) -> None:
+    def __init__(self, *, width: int = 800, height: int = 600, transition_seconds: float = 0.18,
+                 iris_color: str = "cyan") -> None:
         if width <= 0 or height <= 0 or transition_seconds <= 0:
             raise ValueError("Eye renderer dimensions and transition duration must be positive.")
         self._width = width
         self._height = height
+        if iris_color not in _IRIS_COLORS:
+            raise ValueError(f"Unsupported iris color: {iris_color}")
         self._transition_seconds = transition_seconds
+        self._iris_color = iris_color
         self._values: Optional[_AnimatedValues] = None
         self._last_timestamp: Optional[float] = None
 
     def render(self, face_state: FaceState, *, timestamp: float) -> EyeFrame:
         state = face_state.normalized()
-        target = _target_values(state)
+        target = _target_values(state, self._iris_color)
         if self._values is None:
             self._values = target
         else:
@@ -72,6 +98,7 @@ class EyeRenderer:
             background=_hex_color(self._values.background),
             eye_color=_hex_color(self._values.eye_color),
             pupil_color=_hex_color(self._values.pupil_color),
+            iris_color=_hex_color(self._values.iris_color),
             eyes=(
                 self._make_eye(True, blink_amount, self._values),
                 self._make_eye(False, blink_amount, self._values),
@@ -88,9 +115,10 @@ class EyeRenderer:
         openness = values.eye_open_left if left else values.eye_open_right
         visible_open = max(0.0, openness * (1.0 - values.squint * 0.40) * blink_amount)
         radius_y = max(2.0, base_height * visible_open / 2)
-        pupil_radius = max(7.0, min(radius_x, radius_y) * 0.26)
-        max_pupil_x = max(0.0, radius_x * 0.52 - pupil_radius)
-        max_pupil_y = max(0.0, radius_y * 0.52 - pupil_radius)
+        iris_radius = max(1.0, min(radius_x * 0.35, radius_y * 0.62))
+        pupil_radius = iris_radius * 0.52
+        max_pupil_x = max(0.0, radius_x * 0.52 - iris_radius)
+        max_pupil_y = max(0.0, radius_y * 0.48 - iris_radius)
         return EyeGeometry(
             center_x=center_x,
             center_y=center_y,
@@ -98,18 +126,20 @@ class EyeRenderer:
             radius_y=radius_y,
             pupil_x=center_x + values.pupil_x * max_pupil_x,
             pupil_y=center_y + values.pupil_y * max_pupil_y,
+            iris_radius=iris_radius,
             pupil_radius=pupil_radius,
             squint=values.squint,
             closed=blink_amount <= 0.02,
         )
 
 
-def _target_values(state: FaceState) -> _AnimatedValues:
+def _target_values(state: FaceState, iris_color: str = "cyan") -> _AnimatedValues:
     profile = _expression_profile(state.expression)
     strength = state.reaction_strength
     base_open = _blend(state.eye_open, profile[0], strength)
     asymmetry = profile[1] * strength
     eye_color, pupil_color = _accent_colors(state)
+    iris_color = _iris_target(_IRIS_COLORS[iris_color], state)
     return _AnimatedValues(
         eye_open_left=max(0.0, base_open - asymmetry),
         eye_open_right=max(0.0, base_open + asymmetry),
@@ -119,6 +149,7 @@ def _target_values(state: FaceState) -> _AnimatedValues:
         background=_rgb_color(state.background),
         eye_color=eye_color,
         pupil_color=pupil_color,
+        iris_color=iris_color,
     )
 
 
@@ -146,6 +177,7 @@ def _interpolate(current: _AnimatedValues, target: _AnimatedValues, amount: floa
         background=_blend_color(current.background, target.background, amount),
         eye_color=_blend_color(current.eye_color, target.eye_color, amount),
         pupil_color=_blend_color(current.pupil_color, target.pupil_color, amount),
+        iris_color=_blend_color(current.iris_color, target.iris_color, amount),
     )
 
 
@@ -182,6 +214,13 @@ def _accent_colors(state: FaceState) -> Tuple[Tuple[int, int, int], Tuple[int, i
         _blend_color(neutral_eye, accent_eye, state.reaction_strength),
         _blend_color(neutral_pupil, accent_pupil, state.reaction_strength),
     )
+
+
+def _iris_target(base: Tuple[int, int, int], state: FaceState) -> Tuple[int, int, int]:
+    accent = _IRIS_ACCENTS[state.accent]
+    # Preserve the selected theme while allowing semantic reactions to gently
+    # tint the iris; all intent still arrives through FaceState.
+    return base if accent is None else _blend_color(base, accent, state.reaction_strength * 0.45)
 
 
 def _rgb_color(value: str) -> Tuple[int, int, int]:

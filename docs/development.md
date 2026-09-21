@@ -37,7 +37,7 @@ must be finite; booleans must be JSON booleans, not strings or numbers.
 | Section | Fields and purpose |
 | --- | --- |
 | `web` | `enabled`: start the administration worker; `host`: IPv4/IPv6 bind address; `port`: integer 1–65535. See the [web manual](web-administration.md). |
-| `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration. |
+| `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration; `iris_color`: one of cyan, blue, green, turquoise, amber, violet or white. Iris theme is a renderer style choice and requires restart. |
 | `behavior` | `blink_interval_seconds`, `gaze_interval_seconds`: positive ascending `[minimum, maximum]` timing ranges; `face_gaze_smoothing`: gaze smoothing coefficient in (0,1]; `reaction_decay_per_second`: positive visual reaction decay. |
 | `vision` | `face_tracking_enabled`: camera/tracking without expression inference; `camera_resolution`: positive integer `[width,height]`; `capture_fps`, `detection_fps`: positive capture/detection cadences. |
 | `vision.detector` | `cascade_path`: custom readable Haar file or null for existing platform discovery; `scale_factor`: pyramid scale greater than 1; `min_neighbors`: nonnegative integer detection support; `min_size`: positive pixel pair no larger than the camera resolution. |
@@ -159,7 +159,8 @@ starts. New application code should use full-file/dict loading instead.
 The optional [web administration adapter](web-administration.md) reuses this
 read/edit/validate/save boundary. It never accepts/stores/displays AWS credentials
 as normal settings. Its separate password store is not runtime configuration.
-There is no live reload; restart to apply persisted edits.
+Save does not apply settings. The lifecycle service can reload logging level;
+all other persisted changes require restart.
 The editor may call `from_dict(..., check_paths=False)` to repair a removed model
 path; schema/types/ranges are still validated. Startup and saves always validate
 active paths.
@@ -204,3 +205,12 @@ under the environment's `share/phos/config/` data directory. Explicit `--config`
 remains the supported deployment boundary; no alternate schema is introduced.
 The pinned Python 3.11+ web snapshot is `requirements-web.txt`; platform camera
 dependencies remain managed by Raspberry Pi OS. See the release record.
+
+
+`robot.lifecycle` is the reusable lifecycle policy boundary. Its fixed operations
+are status/reload/restart; it never accepts arbitrary commands or configuration
+paths from callers. The web worker uses `robot.lifecycle_channel` to reach the
+parent-owned service. Confirmation/authentication remain adapter responsibilities;
+validation and restart capability policy are shared. Test both the service and
+adapter guards. Infrastructure service markers are deployment metadata, not
+ordinary JSON settings. No new runtime configuration section is needed.

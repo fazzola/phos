@@ -283,7 +283,7 @@ def test_cli_overrides_file_without_losing_cloud_policy(tmp_path, monkeypatch):
     document["expression"]["aws"]["cooldown_seconds"] = 45
     path.write_text(json.dumps(document))
     seen = []
-    async def run(*, config):
+    async def run(*, config, lifecycle=None):
         seen.append(config)
     monkeypatch.setattr(main, "async_main", run)
     monkeypatch.setattr(main.logging, "basicConfig", lambda **kwargs: None)

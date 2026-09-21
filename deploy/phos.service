@@ -1,0 +1,22 @@
+[Unit]
+Description=PHOS robot runtime and administration
+# Order after session preparation, not after the target that wants this unit.
+After=graphical-session-pre.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=%h/phos
+ExecStart=%h/phos/.venv/bin/python %h/phos/src/robot/main.py --config %h/phos/config/phos.json
+Environment=PHOS_SERVICE_MANAGED=1
+Restart=on-failure
+RestartForceExitStatus=75
+RestartSec=3
+TimeoutStopSec=20
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

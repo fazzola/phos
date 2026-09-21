@@ -175,7 +175,7 @@ The same file/dict validation, serialization and atomic persistence must be used
 by the optional web configuration interface. Credentials stay in the external AWS
 SDK chain and are never fields in application settings. New ordinary settings
 must extend this central model/file, not standalone CLI arguments. Existing CLI
-settings are deprecated explicit overrides during migration. There is no live reload. See [configuration reference](development.md#configuration).
+settings are deprecated explicit overrides during migration. Only logging level can be reloaded through the lifecycle service; subsystem changes require restart. See [configuration reference](development.md#configuration).
 
 ## Administration adapter
 
@@ -201,3 +201,30 @@ provider objects, renderer state or other subsystem internals. Add an applicatio
 service when an approved capability needs one, rather than duplicating behavior
 in each surface. The current configuration service is the implemented example;
 remote-control/API/MCP/Voice services remain deferred after 1.0.0.
+
+
+## Application lifecycle boundary
+
+`robot.lifecycle.LifecycleService` owns the active-configuration snapshot and
+allowed status/reload/restart operations. Reload validates the full canonical
+file before applying only the logging-level setter. All other changes remain
+pending. The parent process serves a bounded local process channel to the web
+worker; adapters cannot submit shell commands, paths or arbitrary configuration
+payloads. Future API/MCP surfaces must use the same policy service.
+
+The supplied user systemd service owns process replacement. A confirmed restart
+requests graceful runtime shutdown and exit code 75; systemd restarts the same
+entry point. The web adapter neither runs OS commands nor spawns replacements.
+Manual launches reject browser restart. OS reboot and general remote control
+remain out of scope. See installation for display-session environment and service
+permissions. Status reflects configured values, not a new health-monitoring layer.
+
+
+## Eye appearance
+
+The Display & Appearance configuration supplies the validated named iris theme
+to EyeRenderer at startup. EyeRenderer still consumes only FaceState and renderer
+style configuration; expression/provider labels never reach the renderer.
+Semantic visual accents continue to pass through BehaviorEngine and FaceState.
+Tk draws layered eye-body, iris, pupil and highlight primitives without a
+raster-processing pipeline. Appearance changes currently require PHOS restart.

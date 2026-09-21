@@ -67,10 +67,11 @@ class ConfigurationService:
 
 # Presentation hints only. Field structure and validation belong to robot.config.
 CHOICES = {"expression.provider": ("local", "aws"),
-           "logging.level": ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")}
+           "logging.level": ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+           "display.iris_color": ("cyan", "blue", "green", "turquoise", "amber", "violet", "white")}
 HELP = {
     "web": "Disabled by default. Use the Pi's LAN IP or 0.0.0.0 for trusted LAN access. Restart after changing these settings.",
-    "display": "Display dimensions are pixels; fps controls animation cadence.",
+    "display": "Display dimensions are pixels; fps controls animation cadence. Iris color is a named eye theme. Display and appearance changes require PHOS restart.",
     "behavior": "Timing pairs are minimum, maximum in seconds. Smoothing controls gaze response.",
     "vision": "Tracking uses the local camera. Resolution is width, height in pixels.",
     "vision.detector": "Leave cascade path blank for platform discovery. Minimum size is width, height in pixels.",

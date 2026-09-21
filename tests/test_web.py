@@ -170,7 +170,7 @@ def test_configuration_controls_switch_both_providers_and_persist(setup):
         assert config.expression_provider == provider and config.expression_enabled
         assert config.display_fps == 30
         page = client.get("/configuration/expression").get_data(as_text=True)
-        assert "Configuration saved. Restart PHOS to apply changes." in page
+        assert "Configuration saved. Use System actions to reload supported settings or restart PHOS." in page
         status = client.get("/configuration/status").get_data(as_text=True)
         assert "Saved configuration differs" in status
         assert "<dt>Startup expression provider</dt><dd>local" in status
@@ -193,6 +193,18 @@ def test_invalid_form_preserves_file_and_input(setup, field, value):
     assert response.status_code == 400
     assert path.read_bytes() == old
     assert f'value="{entered}"' in response.get_data(as_text=True)
+
+
+def test_display_appearance_theme_is_selectable_and_saved_canonically(setup):
+    app, path, _ = setup
+    client = authorize(app)
+    data = form(client, "display")
+    page = client.get("/configuration/display").get_data(as_text=True)
+    assert 'name="display.iris_color"' in page
+    assert all(color in page for color in ("cyan", "turquoise", "amber", "violet"))
+    data["display.iris_color"] = "violet"
+    assert client.post("/configuration/display", data=data).status_code == 302
+    assert RuntimeConfig.from_file(path).iris_color == "violet"
 
 
 def test_stale_form_cannot_overwrite_new_save(setup):
@@ -323,11 +335,13 @@ def test_main_owns_enabled_worker_and_cleans_up_on_runtime_failure(setup, monkey
     class Worker:
         def __init__(self, config_path, config):
             assert config_path == path and config.web_enabled
+            self.lifecycle = None
         def __enter__(self):
             seen.append("start")
+            return self
         def __exit__(self, *args):
             seen.append("stop")
-    async def fail(*, config):
+    async def fail(*, config, lifecycle=None):
         assert seen == ["start"]
         raise RuntimeError("runtime failed")
     monkeypatch.setattr("robot.web.server.WebServer", Worker)
@@ -481,3 +495,118 @@ def test_domain_error_hints_match_fields_without_matching_unrelated_words():
     assert error_domain(document, "expression.local.model_path: readable file required") == ("expression", "local")
     assert error_domain(document, "expression.aws: refresh_seconds must be less than cache_ttl_seconds") == ("expression", "cloud-limits")
     assert error_domain(document, "Check local filesystem permissions.") == (None, None)
+
+
+@pytest.fixture
+def lifecycle_setup(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    service = LifecycleService(path, RuntimeConfig.from_file(path), restart_supported=True,
+                               log_level_setter=lambda level: None)
+    app = create_app(path, lifecycle=service)
+    app.testing = True
+    return app, path, service
+
+
+def test_lifecycle_routes_require_authentication_and_rotation(lifecycle_setup):
+    app, _, service = lifecycle_setup
+    client = app.test_client()
+    for route in ("/system", "/system/restart"):
+        assert client.get(route).location == "/login"
+    token = csrf(client.get("/login"))
+    for route in ("/system/reload", "/system/restart"):
+        assert client.post(route, data={"csrf_token": token}).location == "/login"
+    login(client)
+    assert client.get("/system").location == "/password"
+    token = csrf(client.get("/password"))
+    assert client.post("/system/reload", data={"csrf_token": token}).location == "/password"
+    assert service.restart_at is None
+
+
+def test_restart_confirmation_and_csrf(lifecycle_setup):
+    app, _, service = lifecycle_setup
+    client = authorize(app)
+    assert client.get("/system").status_code == 200
+    assert client.post("/system/restart", data={}).status_code == 400
+    token = csrf(client.get("/system"))
+    assert client.post("/system/restart", data={"csrf_token": token, "confirm": "restart"}).status_code == 400
+    page = client.get("/system/restart")
+    parser = FormParser()
+    parser.feed(page.get_data(as_text=True))
+    data = parser.values
+    assert service.restart_at is None  # GET never changes lifecycle.
+    assert client.post("/system/restart", data=data).status_code == 400  # Checkbox required.
+    page = client.get("/system/restart")
+    parser = FormParser()
+    parser.feed(page.get_data(as_text=True))
+    data = {**parser.values, "confirm": "restart"}
+    response = client.post("/system/restart", data=data)
+    assert response.status_code == 202 and b"Restart requested" in response.data
+    assert service.restart_at is not None
+    assert client.post("/system/restart", data=data).status_code == 400  # Confirmation consumed.
+
+
+def test_web_reload_reports_active_and_saved_and_rejects_commands(lifecycle_setup):
+    app, path, service = lifecycle_setup
+    client = authorize(app)
+    document = load_document(path)
+    document["logging"]["level"] = "ERROR"
+    document["display"]["fps"] = 22
+    path.write_text(json.dumps(document))
+    token = csrf(client.get("/system"))
+    assert client.post("/system/reload", data={"csrf_token": token, "command": "anything"}).status_code == 400
+    assert service.active["logging"]["level"] == "INFO"
+    assert client.post("/system/reload").status_code == 400
+    response = client.post("/system/reload", data={"csrf_token": token})
+    assert response.status_code == 200
+    assert b"Applied: logging.level" in response.data and b"display.fps" in response.data
+    assert service.active["display"]["fps"] == 30
+    status = client.get("/configuration/status")
+    assert b"Last successful startup/reload" in status.data
+    assert b"Saved configuration differs from active" in status.data
+    document["display"]["fps"] = 0
+    document["logging"]["level"] = "DEBUG"
+    path.write_text(json.dumps(document))
+    response = client.post("/system/reload", data={"csrf_token": token})
+    assert response.status_code == 400
+    assert service.active["logging"]["level"] == "ERROR"
+
+
+def test_real_worker_reload_reaches_parent_application(setup):
+    import http.cookiejar
+    import logging
+    from urllib.parse import urlencode
+    from urllib.request import build_opener, HTTPCookieProcessor, Request
+    app, path, _ = setup
+    app.extensions["phos_passwords"].change("phos", PASSWORD, PASSWORD)
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    document = load_document(path)
+    document["web"].update(enabled=True, port=port)
+    path.write_text(json.dumps(document))
+    worker = WebServer(path, RuntimeConfig.from_file(path))
+    browser = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    base = f"http://127.0.0.1:{port}"
+    def get(route):
+        with browser.open(base + route, timeout=5) as response:
+            return response.read().decode()
+    def token(page):
+        return re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    def send(route, values):
+        with browser.open(Request(base + route, data=urlencode(values).encode()), timeout=5) as response:
+            return response.read().decode()
+    original_level = logging.getLogger().level
+    try:
+        with worker:
+            send("/login", {"csrf_token": token(get("/login")), "password": PASSWORD})
+            page = get("/system")
+            assert "System actions" in page
+            document["logging"]["level"] = "ERROR"
+            path.write_text(json.dumps(document))
+            response = send("/system/reload", {"csrf_token": token(page)})
+            assert "Applied: logging.level" in response
+            assert worker.lifecycle.active["logging"]["level"] == "ERROR"
+            assert logging.getLogger().level == logging.ERROR
+    finally:
+        logging.getLogger().setLevel(original_level)

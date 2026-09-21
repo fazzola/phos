@@ -175,3 +175,29 @@ Future Web/API/MCP/Voice control surfaces must reuse application services and
 must not access hardware or subsystem internals. Shared validation, authorization
 and behavior semantics belong in those services, not in duplicated adapters.
 See the release record and roadmap for scope and deferred capabilities.
+
+
+## ADR-018 — Validated reload and supervisor-owned restart
+
+**Status:** Accepted (explicit requested addition to 1.0.0 finalization).
+
+Extend ADR-016/017 only with shared lifecycle operations. Saving and active state
+are separate. Validate the complete canonical file before reload; only logging
+level has an existing safe live apply boundary. Other settings require restart.
+A user systemd service owns application replacement after graceful exit status
+75. No adapter executes arbitrary OS commands or self-spawns a replacement.
+Manual launches do not offer browser restart. Confirmation and CSRF protect
+restart, and status/reload/restart require completed administrator bootstrap.
+Web/API/MCP/Voice must reuse application services; OS reboot is deferred.
+
+
+## ADR-019 — Configurable lightweight eye appearance
+
+**Status:** Accepted (explicit eye-system improvement request).
+
+Keep rendering within BehaviorEngine → FaceState → EyeRenderer → display.
+A canonical, named `display.iris_color` selects the base iris theme; semantic
+accent tint remains derived from FaceState. The Tk display uses inexpensive
+layered Canvas primitives for eye-body depth, iris/pupil separation and
+reflections. No image pipeline, graphics dependency or provider-specific visual
+logic is introduced. Display changes require PHOS restart.

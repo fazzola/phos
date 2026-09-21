@@ -69,6 +69,9 @@ Additional boundaries:
 - Future Web/API/MCP/Voice control surfaces must reuse PHOS application services;
   they must not access hardware, drivers or subsystem internals directly. Extend
   the shared services for approved capabilities instead of duplicating control logic.
+- Reload/restart must use the shared lifecycle service and validate canonical
+  configuration; adapters must never execute arbitrary OS commands. Process
+  replacement belongs to the deployment supervisor, not a self-spawning web handler.
 
 ## Milestone discipline
 PHOS is developed as vertical, runnable milestones. Finish, run and verify one capability before deliberately expanding the next major subsystem.

@@ -51,7 +51,7 @@ class AuthenticationState:
         return token
 
 
-def create_app(config_path: Path, *, active_document=None, password_store=None, clock=time.monotonic):
+def create_app(config_path: Path, *, active_document=None, password_store=None, clock=time.monotonic, lifecycle=None):
     app = Flask(__name__)
     app.config.update(SECRET_KEY=secrets.token_bytes(32), MAX_CONTENT_LENGTH=64 * 1024,
                       MAX_FORM_MEMORY_SIZE=64 * 1024, MAX_FORM_PARTS=256,
@@ -162,12 +162,14 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
                 except OSError:
                     error, status = "Configuration could not be saved. Check local filesystem permissions.", 503
                 else:
-                    flash("Configuration saved. Restart PHOS to apply changes.")
+                    flash("Configuration saved. Use System actions to reload supported settings or restart PHOS.")
                     return redirect(url_for("configuration", area=area))
         try:
             document = config.read()
         except (ConfigurationError, OSError):
             return render_template("error.html", error="Cannot load configuration. Repair the JSON file locally and reload."), 503
+        runtime_state = lifecycle.execute("status") if area == "status" and lifecycle is not None else None
+        current = runtime_state["active"] if runtime_state and runtime_state["ok"] else active_document
         related_area, error_group = error_domain(document, error) if error else (None, None)
         return render_template("configuration.html", sections=domain_sections(document, area),
                                area=area, page=DOMAINS[area], related_area=related_area,
@@ -175,8 +177,53 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
                                revision=request.form.get("revision", config.revision(document)),
                                submitted=request.form if request.method == "POST" else None,
                                error=error, config_path=config.path, document=document,
-                               active=active_document,
-                               pending=active_document is not None and document != active_document), status
+                               active=current, runtime_state=runtime_state,
+                               pending=current is not None and document != current), status
+
+    @app.route("/system", methods=["GET"])
+    def system():
+        state = lifecycle.execute("status") if lifecycle is not None else {
+            "ok": False, "error": "Runtime lifecycle service is unavailable in this standalone administration instance."}
+        return render_template("system.html", state=state, error=None), 200 if state["ok"] else 503
+
+    @app.post("/system/reload")
+    def reload_configuration():
+        with auth.lock:
+            if not auth.valid(session.get("sid")) or passwords.must_change:
+                return redirect(url_for("login"))
+            if set(request.form) - {"csrf_token"}:
+                abort(400)
+            if lifecycle is None:
+                return render_template("error.html", error="Runtime lifecycle service is unavailable."), 503
+            result = lifecycle.execute("reload")
+            if not result["ok"]:
+                return render_template("error.html", error=result["error"]), 400
+            return render_template("system.html", state=result, reloaded=True, error=None)
+
+    @app.route("/system/restart", methods=["GET", "POST"])
+    def restart_phos():
+        with auth.lock:
+            if not auth.valid(session.get("sid")) or passwords.must_change:
+                return redirect(url_for("login"))
+            if lifecycle is None:
+                return render_template("error.html", error="Runtime lifecycle service is unavailable."), 503
+            if request.method == "GET":
+                state = lifecycle.execute("status")
+                if not state["ok"]:
+                    return render_template("error.html", error=state["error"]), 400
+                if not state["restart_supported"]:
+                    return render_template("error.html", error="Restart PHOS requires the documented user systemd service."), 409
+                session["restart_confirmation"] = secrets.token_urlsafe(32)
+                return render_template("restart.html", error=None)
+            token = session.pop("restart_confirmation", None)
+            if (set(request.form) - {"csrf_token", "confirmation", "confirm"}
+                    or not token or request.form.get("confirmation") != token
+                    or request.form.get("confirm") != "restart"):
+                return render_template("error.html", error="Open Restart PHOS and explicitly confirm the restart."), 400
+            result = lifecycle.execute("restart")
+            if not result["ok"]:
+                return render_template("error.html", error=result["error"]), 400
+            return render_template("restart.html", requested=True, error=None), 202
 
     @app.errorhandler(CSRFError)
     def csrf_error(error):

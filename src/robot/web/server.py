@@ -2,15 +2,21 @@
 from __future__ import annotations
 
 import multiprocessing
+import os
+from threading import Event, Thread
+
+from robot.lifecycle import LifecycleService
+from robot.lifecycle_channel import LifecycleClient, serve_lifecycle
 from pathlib import Path
 
 
-def _serve(path, active, connection):
+def _serve(path, active, connection, lifecycle_connection):
     server = None
     try:
         from waitress import create_server
         from robot.web.app import create_app
-        app = create_app(Path(path), active_document=active)
+        app = create_app(Path(path), active_document=active,
+                         lifecycle=LifecycleClient(lifecycle_connection))
         server = create_server(app, host=active["web"]["host"], port=active["web"]["port"],
                                threads=2, connection_limit=32, channel_timeout=30,
                                max_request_body_size=64 * 1024, max_request_header_size=8192,
@@ -25,6 +31,7 @@ def _serve(path, active, connection):
         except (OSError, EOFError):
             pass
     finally:
+        lifecycle_connection.close()
         connection.close()
         if server is not None:
             server.close()
@@ -40,16 +47,27 @@ class WebServer:
         self.path = str(Path(config_path).resolve())
         self.config = config
         self.process = None
+        self.lifecycle = LifecycleService(
+            self.path, config, restart_supported=(
+                os.environ.get("PHOS_SERVICE_MANAGED") == "1" and bool(os.environ.get("INVOCATION_ID"))))
+        self._stop = Event()
+        self._thread = None
+        self._channel = None
 
     def __enter__(self):
         if not self.config.web_enabled:
             return self
         context = multiprocessing.get_context("spawn")
         reader, writer = context.Pipe(duplex=False)
-        self.process = context.Process(target=_serve, args=(self.path, self.config.to_dict(), writer),
+        self._channel, worker_channel = context.Pipe()
+        self.process = context.Process(target=_serve, args=(self.path, self.config.to_dict(), writer, worker_channel),
                                        name="phos-admin", daemon=True)
         try:
             self.process.start()
+            worker_channel.close()
+            self._thread = Thread(target=serve_lifecycle, args=(self._channel, self.lifecycle, self._stop),
+                                  name="phos-lifecycle", daemon=True)
+            self._thread.start()
             writer.close()
             if not reader.poll(30):
                 raise RuntimeError("Web administration startup timed out")
@@ -62,9 +80,11 @@ class WebServer:
         finally:
             reader.close()
             writer.close()
+            worker_channel.close()
         return self
 
     def __exit__(self, *_):
+        self._stop.set()
         if self.process is not None and self.process.pid is not None:
             if self.process.is_alive():
                 self.process.terminate()
@@ -74,3 +94,7 @@ class WebServer:
                 self.process.join(timeout=5)
             self.process.close()
             self.process = None
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+        if self._channel is not None and (self._thread is None or not self._thread.is_alive()):
+            self._channel.close()

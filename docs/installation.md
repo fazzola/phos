@@ -283,6 +283,73 @@ recognition quality or cloud service availability on physical hardware.
 Follow the [web administration user manual](web-administration.md) to install
 the web extra, add/enable the canonical `web` section and access the editor.
 It documents LAN URLs, first login with `phos`, mandatory password change, local
-recovery and HTTP security limits. Configuration edits use the existing model
-and require restart; AWS credentials remain external. Existing deployments must
+recovery and HTTP security limits. Configuration edits use the existing model. Logging level can be reloaded;
+other settings require restart. AWS credentials remain external. Existing deployments must
 add the required `web` section from the canonical file when upgrading.
+
+## Managed startup and browser restart
+
+The optional **user systemd service** in `deploy/phos.service` enables the browser's
+Restart PHOS action. It runs under the desktop user's existing hardware/file
+permissions, with no root service, sudo, polkit rule or remote shell endpoint.
+`run_pi.sh` copies the unit but never installs/enables it automatically.
+
+After the normal dependency installation, open a terminal **in the Pi graphical
+desktop as the same user who runs PHOS**, stop any manually running PHOS, then:
+
+```bash
+cd /home/pi/phos
+mkdir -p ~/.config/systemd/user
+cp deploy/phos.service ~/.config/systemd/user/phos.service
+systemctl --user import-environment DISPLAY
+if [ -n "${XAUTHORITY:-}" ]; then
+  systemctl --user import-environment XAUTHORITY
+fi
+systemctl --user daemon-reload
+systemctl --user enable --now phos.service
+systemctl --user status phos.service
+```
+
+The unit uses `%h/phos` and `%h/phos/config/phos.json`; if your installation is
+elsewhere, adjust WorkingDirectory/ExecStart locally before enabling it. It
+starts the same `.venv/bin/python src/robot/main.py --config config/phos.json`
+application. PHOS/Tk requires a usable DISPLAY (including XWayland on Wayland).
+Do not enable user lingering/headless boot for this display application. Automatic
+start on login depends on the desktop activating `graphical-session.target`;
+if that desktop does not, import its display environment and run
+`systemctl --user start phos.service` from the desktop session. Check the journal
+for Tk/display errors; do not hard-code another user's display authorization.
+
+Terminal administration:
+
+```bash
+systemctl --user restart phos.service
+systemctl --user stop phos.service
+journalctl --user -u phos.service -n 100 --no-pager
+```
+
+The unit allows up to three starts within 60 seconds to bound failure loops.
+If startup fails repeatedly, fix the config/dependencies/display, then run
+`systemctl --user reset-failed phos.service` and `systemctl --user start phos.service`.
+Avoid repeated browser restarts within that interval.
+
+The service environment is not your interactive shell environment. Prefer the
+standard AWS SDK shared profile/role chain for the service user. If using AWS
+environment variables, explicitly import the relevant existing variable names
+into the user manager before starting/restarting the service; never put their
+values in `phos.json`, the web UI or a committed unit. The web worker does not
+probe or display those values.
+
+Restart is enabled only when systemd's `INVOCATION_ID` and the supplied unit's
+`PHOS_SERVICE_MANAGED=1` marker are present. This marker is deployment metadata,
+not a second runtime-configuration mechanism; do not set it in a manual launch.
+The reusable lifecycle service requests graceful runtime shutdown with exit code
+75, and the unit's `RestartForceExitStatus=75` starts a fresh process after three
+seconds. The web adapter never invokes systemctl, a shell or another executable.
+The unit also restarts unexpected nonzero exits; `systemctl stop` does not restart
+it. These semantics follow the [systemd service documentation](https://github.com/systemd/systemd/blob/main/man/systemd.service.xml).
+
+Browser restart may disconnect briefly while the old worker closes. Sessions
+are invalidated. Reconnect and log in at the saved host/port; disabling the web
+service intentionally removes browser access after restart. This restarts only
+PHOS, never the Raspberry Pi. OS reboot remains deferred.

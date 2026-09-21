@@ -17,17 +17,26 @@ Your edits on this page have not been saved.</p>
 <section class="status" aria-label="Read-only system information">
 <dl><dt>PHOS version</dt><dd>{{ phos_version }}</dd>
 <dt>Configuration file in use</dt><dd><code>{{ config_path }}</code></dd>
+{% if runtime_state %}
+{% if runtime_state.ok %}
+<dt>Last successful startup/reload (UTC)</dt><dd>{{ runtime_state.loaded_at }}</dd>
+<dt>Changes requiring restart</dt><dd>{{ runtime_state.restart_required | join(', ') or 'None' }}</dd>
+<dt>Changes available to reload</dt><dd>{{ runtime_state.reloadable | join(', ') or 'None' }}</dd>
+{% else %}<dt>Live configuration metadata</dt><dd>{{ runtime_state.error }} Showing startup snapshot only.</dd>{% endif %}
+{% endif %}
 <dt>Runtime state</dt><dd>Not monitored by the administration worker.</dd>
 <dt>Startup expression provider</dt><dd>{{ active.expression.provider if active else 'Unavailable' }}</dd>
 <dt>Expressions at startup</dt><dd>{{ ('Enabled' if active.expression.enabled else 'Disabled') if active else 'Unavailable' }}</dd>
 <dt>Saved expression provider</dt><dd>{{ document.expression.provider }}</dd>
 <dt>AWS credential availability</dt><dd>Not checked. Credentials remain in the external AWS SDK chain.</dd>
 </dl>
-{% if active %}<p>{{ 'Saved configuration differs from startup settings. Restart PHOS to apply changes.' if pending else 'Saved configuration matches startup settings.' }}</p>
+{% if runtime_state and not runtime_state.ok %}<p>Saved-versus-active comparison is unavailable until the lifecycle service responds.</p>
+{% elif active %}<p>{{ 'Saved configuration differs from active settings. Open System actions to reload or restart.' if pending else 'Saved configuration matches active settings.' }}</p>
 {% else %}<p>Active runtime settings are unavailable.</p>{% endif %}
 </section>
+<p><a href="{{ url_for('system') }}">System actions: reload configuration or restart PHOS</a></p>
 {% else %}
-<p class="notice">Editing saved settings. Restart PHOS after saving to apply changes.</p>
+<p class="notice">Editing saved settings. Save does not apply changes. Use System actions to reload logging level or restart PHOS.</p>
 {% if area == 'security' %}
 <section class="account"><h3>Administrator password</h3>
 <p>Password changes take effect immediately and end all sessions. Passwords are stored separately from runtime configuration.</p>

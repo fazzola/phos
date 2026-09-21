@@ -119,28 +119,77 @@ class TkEyeDisplay(EyeDisplay):
                 width=12,
             )
             return
+        # A compact stack of Canvas primitives gives the eye body and iris
+        # depth without raster assets, per-frame filters, or external graphics.
+        self._canvas.create_oval(
+            eye.center_x - eye.radius_x,
+            eye.center_y - eye.radius_y + 7,
+            eye.center_x + eye.radius_x,
+            eye.center_y + eye.radius_y + 7,
+            fill="#071522",
+            outline="",
+        )
         self._canvas.create_oval(
             eye.center_x - eye.radius_x,
             eye.center_y - eye.radius_y,
             eye.center_x + eye.radius_x,
             eye.center_y + eye.radius_y,
+            fill="#8FA8B8",
+            outline="#526C80",
+            width=3,
+        )
+        inset = 5
+        self._canvas.create_oval(
+            eye.center_x - eye.radius_x + inset,
+            eye.center_y - eye.radius_y + inset,
+            eye.center_x + eye.radius_x - inset,
+            eye.center_y + eye.radius_y - inset,
             fill=frame.eye_color,
             outline="",
         )
+        self._canvas.create_oval(
+            eye.pupil_x - eye.iris_radius,
+            eye.pupil_y - eye.iris_radius,
+            eye.pupil_x + eye.iris_radius,
+            eye.pupil_y + eye.iris_radius,
+            fill="#123246",
+            outline="",
+        )
+        iris_inset = max(1.5, eye.iris_radius * 0.10)
+        self._canvas.create_oval(
+            eye.pupil_x - eye.iris_radius + iris_inset,
+            eye.pupil_y - eye.iris_radius + iris_inset,
+            eye.pupil_x + eye.iris_radius - iris_inset,
+            eye.pupil_y + eye.iris_radius - iris_inset,
+            fill=frame.iris_color,
+            outline="",
+        )
+        # The dark pupil is distinct from the colored iris; small glints sell
+        # a glassy surface without a blur/filter pass.
         self._canvas.create_oval(
             eye.pupil_x - eye.pupil_radius,
             eye.pupil_y - eye.pupil_radius,
             eye.pupil_x + eye.pupil_radius,
             eye.pupil_y + eye.pupil_radius,
             fill=frame.pupil_color,
+            outline="#071522",
+            width=2,
+        )
+        highlight = max(2.0, eye.pupil_radius * 0.24)
+        self._canvas.create_oval(
+            eye.pupil_x - eye.iris_radius * 0.33 - highlight,
+            eye.pupil_y - eye.iris_radius * 0.33 - highlight,
+            eye.pupil_x - eye.iris_radius * 0.33 + highlight,
+            eye.pupil_y - eye.iris_radius * 0.33 + highlight,
+            fill="#FFFFFF",
             outline="",
         )
-        highlight = eye.pupil_radius * 0.25
+        glint = max(1.2, highlight * 0.42)
         self._canvas.create_oval(
-            eye.pupil_x - eye.pupil_radius * 0.28 - highlight,
-            eye.pupil_y - eye.pupil_radius * 0.28 - highlight,
-            eye.pupil_x - eye.pupil_radius * 0.28 + highlight,
-            eye.pupil_y - eye.pupil_radius * 0.28 + highlight,
-            fill="#FFFFFF",
+            eye.pupil_x + eye.iris_radius * 0.30 - glint,
+            eye.pupil_y + eye.iris_radius * 0.28 - glint,
+            eye.pupil_x + eye.iris_radius * 0.30 + glint,
+            eye.pupil_y + eye.iris_radius * 0.28 + glint,
+            fill="#D9FBFF",
             outline="",
         )

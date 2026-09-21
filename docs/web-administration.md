@@ -2,7 +2,8 @@
 
 PHOS includes an optional single-administrator configuration editor. It uses the
 same JSON model and validation as startup, with no camera, AWS or display access
-from the web worker. All changes require restarting PHOS.
+from the web worker. Saving never applies settings. Reload can apply logging level; all other runtime
+changes require restarting PHOS.
 
 ## Install and enable
 
@@ -89,12 +90,12 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Expression Recognition | Provider selection/enabling and observation cadence/crop margin; smoothing; local ONNX model, labels and preprocessing; AWS region/confidence/timeouts; a separate cloud cost/rate-limit group. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
-| System / Status | Read-only PHOS version, configuration path, startup expression provider/enabled state, saved provider and saved-versus-startup comparison. Live robot state is not monitored and AWS credential availability is not probed. |
+| System / Status | Read-only PHOS version, configuration path, active expression provider/enabled state, last successful load/reload time, saved-versus-active comparison and restart-required fields. Live robot state is not monitored and AWS credential availability is not probed. |
 
-Startup information is shown only on **System / Status**, visually separated
+Active-configuration information is shown on **System / Status**, visually separated
 from editable settings. Deprecated CLI overrides, if used, appear in startup
 settings but do not change the saved file. The software version comes from the authoritative `robot.__version__`; live
-health is not inferred from the startup snapshot.
+health is not inferred from the active configuration snapshot.
 
 Every editable page has its own **Save** button. It merges only that page's
 fields into the same canonical JSON file, validates the **complete configuration**,
@@ -136,10 +137,10 @@ paths keep their existing interpretation. Missing active model paths can be
 repaired in the editor while PHOS is already running; malformed JSON or invalid
 schema edited outside the UI requires local repair.
 
-Successful saves show: **Configuration saved. Restart PHOS to apply changes.**
-Nothing is applied live, including web host/port/password-independent settings.
-Stop with Ctrl+C and rerun the same startup command. Turning web off takes effect
-at restart. A page loaded before another save is rejected as stale: reload it
+Successful saves report that configuration is saved and direct you to **System
+ actions**. Save alone does not change running settings. Use Reload for logging
+level, or Restart PHOS for all other changes. Turning web off takes effect at
+restart. A page loaded before another save is rejected as stale: reload it
 before editing again. Do not edit the JSON simultaneously from the terminal.
 
 Saving flushes a temporary file in the same directory, then atomically replaces
@@ -211,7 +212,7 @@ procedure. Do not delete only `password.json` while the server is running.
 - Filesystem access is trusted. The editor can select model/cascade/log paths
   within the privileges of the PHOS OS account. Run as a normal user, not root.
 - Configurations/credentials are atomically replaced, but there is no automatic
-  backup, cross-process edit lock, hot reload or high-availability service.
+  backup, cross-process edit lock, subsystem hot reload or high-availability service.
 
 Implementation uses [Flask security guidance](https://flask.palletsprojects.com/en/stable/web-security/),
 [Flask-WTF CSRF protection](https://flask-wtf.readthedocs.io/en/1.2.x/csrf/),
@@ -238,3 +239,66 @@ address. Old tabs contain tokens invalidated by a restart. If it persists, check
 the terminal for `Administration CSRF rejection`; the reason is logged without
 passwords or token values. Browser favicon/missing-page requests do not clear
 the login session. Update the Pi's source if using the initial implementation.
+
+
+## Save vs Reload vs Restart PHOS
+
+Lifecycle actions are on **System actions**, separate from editable domain forms.
+System / Status remains read-only and links to those actions. Every operation
+requires administrator authentication after mandatory bootstrap rotation;
+state changes also require CSRF protection.
+
+| Operation | Effect |
+| --- | --- |
+| Save on a domain page | Validates and atomically persists the full canonical JSON. Does not change active settings. |
+| Reload configuration | Reads that same file, validates every setting and active path with startup's model, then applies only `logging.level`. Shows applied fields and remaining restart-required fields. |
+| Restart PHOS | Requires the managed service and explicit confirmation. Validates the saved file, requests graceful application shutdown, then systemd starts PHOS again from disk. |
+
+If any setting/path is invalid, Reload applies **nothing**, including logging
+level. Restart is also rejected before shutdown when the saved file is invalid.
+No-op reloads report no changes. SDK logging stays at WARNING or above even when
+PHOS logging is switched to DEBUG. No credentials, tokens or request payloads
+are exposed by this feature.
+
+The **Display & Appearance** page also offers the canonical `display.iris_color`
+choice: cyan, blue, green, turquoise, amber, violet or white. It configures the
+base iris theme; semantic accent tints still come from BehaviorEngine-produced
+FaceState. Save it with the other Display & Appearance fields and restart PHOS
+to activate it. Expression semantics do not enter the renderer directly.
+
+All other implemented settings require restart: web enabled/host/port; display
+and visual behavior; camera/detection; expression enabled/provider, preprocessing,
+smoothing and AWS policy; log destination and expression diagnostics. Switching
+local/AWS is never done live. Password changes use their separate immediate
+session-revoking mechanism, independent of Save/Reload.
+
+The page shows configuration path, last successful startup/reload UTC time,
+whether saved and active settings differ, reloadable differences and fields
+requiring restart. Active settings are tracked by the parent application service,
+not inferred from the saved file. The timestamp does not mean restart-only
+settings were applied: those remain listed as pending. Runtime health and AWS
+credential availability are not monitored.
+
+To reload, open System actions and click **Reload configuration**. To restart,
+click **Review and confirm restart**, read the interruption notice, check the
+confirmation checkbox and press **Restart PHOS**. GET/page navigation never
+restarts anything. A confirmation can be used only once. The acknowledgement is:
+**Restart requested. PHOS will reload the configuration on startup.**
+
+Expect temporary web loss and log in again after a few seconds. A slow connection
+may lose the acknowledgement as shutdown begins; check the service locally before
+retrying. The saved network settings determine the new URL. If web administration
+was disabled, use the Pi terminal to enable it again. Unsaved form edits are lost.
+
+Follow [managed startup](installation.md#managed-startup-and-browser-restart) to
+install the user service. Manual terminal launches support Reload, but browser
+Restart is unavailable; stop and rerun the normal startup command locally. Do
+not run a manual copy beside the service (camera/port contention). No reboot,
+arbitrary command execution, privileged shell or generic service-management API
+is provided. **Reboot Raspberry Pi** is deferred beyond 1.0.0.
+
+Configuration must remain valid until restart completes. Avoid concurrent local
+file edits; a file changed or hardware removed after validation can still cause
+startup to fail. Systemd bounds repeated startup failures; inspect its journal
+and repair locally as described in installation. A lifecycle channel failure
+reports unavailable rather than pretending that settings were applied.
