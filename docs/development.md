@@ -37,9 +37,9 @@ must be finite; booleans must be JSON booleans, not strings or numbers.
 | Section | Fields and purpose |
 | --- | --- |
 | `web` | `enabled`: start the administration worker; `host`: IPv4/IPv6 bind address; `port`: integer 1–65535. See the [web manual](web-administration.md). |
-| `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration; `iris_color`: one of cyan, blue, green, turquoise, amber, violet or white. Iris theme is a renderer style choice and requires restart. |
+| `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration; `iris_color`: one of cyan, blue, green, turquoise, amber, violet or white. Iris theme is a renderer style choice and applies after validated configuration reload. |
 | `behavior` | `blink_interval_seconds`, `gaze_interval_seconds`: positive ascending `[minimum, maximum]` timing ranges; `face_gaze_smoothing`: gaze smoothing coefficient in (0,1]; `reaction_decay_per_second`: positive visual reaction decay. |
-| `vision` | `face_tracking_enabled`: camera/tracking without expression inference; `camera_resolution`: positive integer `[width,height]`; `capture_fps`, `detection_fps`: positive capture/detection cadences. |
+| `vision` | `face_tracking_enabled`: camera/tracking without expression inference; `camera_resolution`: positive integer `[width,height]`; `capture_fps`, `detection_fps`: positive capture/detection cadences. `camera_preview` controls optional display-only picture-in-picture, disabled by default; all its fields (enabled, corner position, scale 0.1–0.4, maximum FPS 1–10 and three diagnostic toggles) are live-reloadable. |
 | `vision.detector` | `cascade_path`: custom readable Haar file or null for existing platform discovery; `scale_factor`: pyramid scale greater than 1; `min_neighbors`: nonnegative integer detection support; `min_size`: positive pixel pair no larger than the camera resolution. |
 | `expression` | `enabled`: expression processing, also enabling local tracking; `provider`: local/aws; `inference_fps`: positive local inference/cloud polling cadence; `crop_margin`: extra square-crop margin per side in [0,0.5]. |
 | `expression.smoothing` | `minimum_confidence`: additional evidence floor in [0,1]; `minimum_observations`: positive integer count of distinct samples; `local_maximum_gap_seconds`: positive maximum gap for local evidence; `neutral_enabled`: enable neutral perception only after calibration. Cloud maximum gap is derived from its TTL. |
@@ -159,8 +159,9 @@ starts. New application code should use full-file/dict loading instead.
 The optional [web administration adapter](web-administration.md) reuses this
 read/edit/validate/save boundary. It never accepts/stores/displays AWS credentials
 as normal settings. Its separate password store is not runtime configuration.
-Save does not apply settings. The lifecycle service can reload logging level;
-all other persisted changes require restart.
+Save does not apply settings. The lifecycle service can reload logging level,
+`display.iris_color` and all `vision.camera_preview` fields through runtime and
+display boundaries; other persisted changes require restart.
 The editor may call `from_dict(..., check_paths=False)` to repair a removed model
 path; schema/types/ranges are still validated. Startup and saves always validate
 active paths.

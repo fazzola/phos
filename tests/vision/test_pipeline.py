@@ -86,6 +86,32 @@ def test_no_face_does_not_call_expression_provider():
     assert expressions.crops == []
 
 
+def test_camera_preview_snapshot_tracks_latest_frame_and_can_be_cleared():
+    async def exercise():
+        camera = FakeCamera()
+        events = EventBus()
+        received = []
+        lost = []
+        events.subscribe(VISION_FACE_POSITION, received.append)
+        events.subscribe(VISION_FACE_LOST, lost.append)
+        pipeline = VisionPipeline(camera, FakeFaceDetector([FaceRegion(4, 5, 20, 18)]), None, None,
+                                  events=events, preview_enabled=True, publish_face_position=False)
+        await pipeline.process_once(timestamp=0)
+        snapshot = pipeline.preview_snapshot
+        pipeline._face_detector.faces = []
+        await pipeline.process_once(timestamp=1.2)
+        cleared_face = pipeline.preview_snapshot.face
+        pipeline.configure_preview(False)
+        return snapshot, cleared_face, pipeline.preview_snapshot, received, lost
+
+    snapshot, cleared_face, cleared, received, lost = asyncio.run(exercise())
+    assert snapshot.frame.shape == (480, 640, 3)
+    assert snapshot.face == FaceRegion(4, 5, 20, 18)
+    assert cleared_face is None
+    assert cleared is None
+    assert received == [] and lost == []
+
+
 def test_largest_face_is_cropped_for_expression_inference():
     async def exercise():
         expressions = FakeExpressionProvider([ExpressionObservation("happy", 0.9)])

@@ -7,7 +7,7 @@
 Your edits on this page have not been saved.</p>
 {% endif %}
 {% if area == 'general' %}
-<p>Each area saves to the same PHOS configuration file. Changes require a restart.</p>
+<p>Each area saves to the same PHOS configuration file. Logging, eye appearance and camera-preview settings can be reloaded; other settings require restart.</p>
 <div class="domain-cards">
 {% for key, domain in domains.items() if key != 'general' %}
 <a class="domain-card" href="{{ url_for('configuration', area=key) }}"><strong>{{ domain.title }}</strong><span>{{ domain.description }}</span></a>
@@ -36,7 +36,7 @@ Your edits on this page have not been saved.</p>
 </section>
 <p><a href="{{ url_for('system') }}">System actions: reload configuration or restart PHOS</a></p>
 {% else %}
-<p class="notice">Editing saved settings. Save does not apply changes. Use System actions to reload logging level or restart PHOS.</p>
+<p class="notice">Editing saved settings. Save does not apply changes. Use System actions to reload logging level, eye appearance and camera preview, or restart PHOS for other changes.</p>
 {% if area == 'security' %}
 <section class="account"><h3>Administrator password</h3>
 <p>Password changes take effect immediately and end all sessions. Passwords are stored separately from runtime configuration.</p>

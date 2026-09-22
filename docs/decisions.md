@@ -182,8 +182,9 @@ See the release record and roadmap for scope and deferred capabilities.
 **Status:** Accepted (explicit requested addition to 1.0.0 finalization).
 
 Extend ADR-016/017 only with shared lifecycle operations. Saving and active state
-are separate. Validate the complete canonical file before reload; only logging
-level has an existing safe live apply boundary. Other settings require restart.
+are separate. Validate the complete canonical file before reload; logging level
+has a safe live apply boundary. Other settings require restart unless separately
+approved.
 A user systemd service owns application replacement after graceful exit status
 75. No adapter executes arbitrary OS commands or self-spawns a replacement.
 Manual launches do not offer browser restart. Confirmation and CSRF protect
@@ -200,4 +201,31 @@ A canonical, named `display.iris_color` selects the base iris theme; semantic
 accent tint remains derived from FaceState. The Tk display uses inexpensive
 layered Canvas primitives for eye-body depth, iris/pupil separation and
 reflections. No image pipeline, graphics dependency or provider-specific visual
-logic is introduced. Display changes require PHOS restart.
+logic is introduced. Unsafe display geometry/backend changes require PHOS restart.
+
+
+## ADR-020 — Live application of named eye appearance
+
+**Status:** Accepted (explicit runtime reload requirement).
+
+This decision extends ADR-018's reloadability classification: canonical
+`display.iris_color` joins logging level in the safe reloadable field allowlist.
+The lifecycle service validates the entire file and sends typed settings through
+the runtime service to the render-loop queue. The queue applies the theme on the
+display event loop, where EyeRenderer smoothly interpolates its current iris
+color. No subsystem restarts. Mixed reloads apply logging and appearance while
+retaining pending restart-required fields. Web adapters cannot access renderer
+state directly.
+
+## ADR-021 — Local diagnostic camera preview composition
+
+**Status:** Accepted (explicit optional preview request).
+
+Keep one Picamera2/Vision pipeline owner. When enabled, retain only the latest
+captured frame and existing selected-face/expression diagnostics in memory, then
+pass a UI-neutral value through PhosRuntime to a bounded, low-rate display
+composition layer. EyeRenderer remains Vision-agnostic. Preview is disabled by
+default, local to the PHOS display, never persisted or served over the network,
+and is live-reloadable without restarting PHOS or an already-running camera and
+Vision pipeline. Enabling preview may start the dormant existing pipeline;
+disabling it releases the camera only when no other Vision feature uses it.

@@ -50,11 +50,11 @@ Camera
   -> Robot Core
   -> BehaviorEngine
   -> FaceState
-  -> EyeRenderer
-  -> EyeDisplay
+  -> EyeRenderer ────────────────────┐
+  -> latest local preview snapshot ──┴→ EyeDisplay composition
 ```
 
-Vision observes. Behavior interprets observations in the context of PHOS's own `RobotState`. `EyeRenderer` consumes only `FaceState` and handles rendering/animation details.
+Vision observes. Behavior interprets observations in the context of PHOS's own `RobotState`. `EyeRenderer` consumes only `FaceState` and handles rendering/animation details. The display adapter may compose an optional local diagnostic preview from a UI-neutral snapshot supplied by `PhosRuntime`; it never accesses camera or Vision providers.
 
 The face-rendering frequency is independent from Vision timing so the display can remain smooth while detection/inference runs at a lower rate.
 
@@ -175,7 +175,7 @@ The same file/dict validation, serialization and atomic persistence must be used
 by the optional web configuration interface. Credentials stay in the external AWS
 SDK chain and are never fields in application settings. New ordinary settings
 must extend this central model/file, not standalone CLI arguments. Existing CLI
-settings are deprecated explicit overrides during migration. Only logging level can be reloaded through the lifecycle service; subsystem changes require restart. See [configuration reference](development.md#configuration).
+settings are deprecated explicit overrides during migration. Logging level, display iris appearance and camera-preview settings can be reloaded through the lifecycle service; other subsystem changes require restart. See [configuration reference](development.md#configuration).
 
 ## Administration adapter
 
@@ -207,8 +207,8 @@ remote-control/API/MCP/Voice services remain deferred after 1.0.0.
 
 `robot.lifecycle.LifecycleService` owns the active-configuration snapshot and
 allowed status/reload/restart operations. Reload validates the full canonical
-file before applying only the logging-level setter. All other changes remain
-pending. The parent process serves a bounded local process channel to the web
+file before applying logging level and iris appearance through their
+application-service boundaries. Other changes remain pending. The parent process serves a bounded local process channel to the web
 worker; adapters cannot submit shell commands, paths or arbitrary configuration
 payloads. Future API/MCP surfaces must use the same policy service.
 
@@ -227,4 +227,6 @@ to EyeRenderer at startup. EyeRenderer still consumes only FaceState and rendere
 style configuration; expression/provider labels never reach the renderer.
 Semantic visual accents continue to pass through BehaviorEngine and FaceState.
 Tk draws layered eye-body, iris, pupil and highlight primitives without a
-raster-processing pipeline. Appearance changes currently require PHOS restart.
+raster-processing pipeline. Iris appearance can be applied live through the
+configuration lifecycle and render-loop queue; display geometry/backend changes
+still require PHOS restart.

@@ -23,6 +23,15 @@
     "camera_resolution": [640, 480],
     "capture_fps": 15.0,
     "detection_fps": 4.0,
+    "camera_preview": {
+      "enabled": true,
+      "position": "bottom_right",
+      "scale": 0.25,
+      "max_fps": 5,
+      "show_face_box": true,
+      "show_expression": true,
+      "show_confidence": true
+    },
     "detector": {
       "cascade_path": null,
       "scale_factor": 1.1,

@@ -15,7 +15,7 @@
 {% if state.restart_requested %}<p class="notice">Restart requested. PHOS will reload the configuration on startup.</p>
 {% else %}
 <section><h3>Reload configuration</h3>
-<p>Validate the entire saved file and apply only logging level. Other changed settings require restart. Invalid configuration is never applied.</p>
+<p>Validate the entire saved file and apply logging level, eye appearance and camera-preview settings without restarting PHOS. Other changed settings remain pending and require restart. Invalid configuration is never applied.</p>
 <form action="{{ url_for('reload_configuration') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Reload configuration</button></form></section>
 <section class="account"><h3>Restart PHOS</h3>
 <p>Stop and restart the PHOS application, briefly interrupting eyes, Vision and web access. This does not reboot the Raspberry Pi.</p>

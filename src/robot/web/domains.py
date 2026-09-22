@@ -10,8 +10,8 @@ from robot.web.configuration import editor_sections
 DOMAINS = {
     "general": {"title": "General", "description": "Choose an area to manage PHOS. Save changes within each page before navigating away."},
     "network": {"title": "Network", "description": "Choose where web administration listens. Wi-Fi and other operating-system network settings are managed on the Pi."},
-    "display": {"title": "Display & Appearance", "description": "Display size, animation timing and eye behavior."},
-    "vision": {"title": "Vision", "description": "Local camera tracking, capture cadence and face detection."},
+    "display": {"title": "Display & Appearance", "description": "Display size, animation timing and eye appearance; iris theme applies on configuration reload."},
+    "vision": {"title": "Vision", "description": "Local camera tracking, face detection and an optional display-only diagnostic preview."},
     "expression": {"title": "Expression Recognition", "description": "Select a provider and configure observations, model preprocessing and cloud request limits."},
     "logging": {"title": "Logging", "description": "Log level, destination and expression diagnostics. SDK credential/request debug output remains suppressed; no credential or payload logging controls are provided."},
     "security": {"title": "Web Administration / Security", "description": "Enable administration and manage your administrator password separately from runtime settings."},
@@ -25,6 +25,7 @@ GROUPS = {
     "display": [("display", "Display", ("display.",), None),
                 ("behavior", "Eye behavior", ("behavior.",), None)],
     "vision": [("vision", "Camera & tracking", ("vision.face_tracking_enabled", "vision.camera_resolution", "vision.capture_fps", "vision.detection_fps"), None),
+               ("camera-preview", "Camera picture-in-picture preview", ("vision.camera_preview.",), None),
                ("detector", "Face detection", ("vision.detector.",), None)],
     "expression": [
         ("provider", "Provider selection", ("expression.enabled", "expression.provider", "expression.inference_fps", "expression.crop_margin"), None),

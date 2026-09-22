@@ -158,6 +158,21 @@ def test_login_rate_limit_is_global_and_expires(setup):
 def test_configuration_controls_switch_both_providers_and_persist(setup):
     app, path, _ = setup
     client = authorize(app)
+    vision_form = form(client, "vision")
+    assert {"vision.camera_preview.position",
+            "vision.camera_preview.scale", "vision.camera_preview.max_fps",
+            "vision.camera_preview.show_face_box", "vision.camera_preview.show_expression",
+            "vision.camera_preview.show_confidence"} <= vision_form.keys()
+    vision_form.update({"vision.camera_preview.enabled": "on",
+                        "vision.camera_preview.position": "top_left",
+                        "vision.camera_preview.scale": "0.3",
+                        "vision.camera_preview.max_fps": "4"})
+    assert client.post("/", data=vision_form).status_code == 302
+    saved_preview = RuntimeConfig.from_file(path)
+    assert saved_preview.camera_preview_enabled
+    assert saved_preview.camera_preview_position == "top_left"
+    assert saved_preview.camera_preview_scale == 0.3
+    assert saved_preview.camera_preview_max_fps == 4
     model = path.parent / "model.onnx"
     model.write_bytes(b"fake model; never inferred")
     for provider in ("aws", "local"):
@@ -170,7 +185,7 @@ def test_configuration_controls_switch_both_providers_and_persist(setup):
         assert config.expression_provider == provider and config.expression_enabled
         assert config.display_fps == 30
         page = client.get("/configuration/expression").get_data(as_text=True)
-        assert "Configuration saved. Use System actions to reload supported settings or restart PHOS." in page
+        assert "Configuration saved. Use System actions to reload logging, eye appearance and camera preview, or restart PHOS for other settings." in page
         status = client.get("/configuration/status").get_data(as_text=True)
         assert "Saved configuration differs" in status
         assert "<dt>Startup expression provider</dt><dd>local" in status
@@ -544,6 +559,23 @@ def test_restart_confirmation_and_csrf(lifecycle_setup):
     assert response.status_code == 202 and b"Restart requested" in response.data
     assert service.restart_at is not None
     assert client.post("/system/restart", data=data).status_code == 400  # Confirmation consumed.
+
+
+def test_web_saved_iris_theme_applies_only_after_reload(lifecycle_setup):
+    app, path, service = lifecycle_setup
+    client = authorize(app)
+    applied = []
+    service.register_appearance_applier(lambda config: applied.append(config.iris_color))
+    data = form(client, "display")
+    data["display.iris_color"] = "green"
+    assert client.post("/configuration/display", data=data).status_code == 302
+    assert service.active["display"]["iris_color"] == "cyan"
+    token = csrf(client.get("/system"))
+    response = client.post("/system/reload", data={"csrf_token": token})
+    assert response.status_code == 200
+    assert b"Applied: display.iris_color" in response.data
+    assert service.active["display"]["iris_color"] == "green"
+    assert applied == ["green"]
 
 
 def test_web_reload_reports_active_and_saved_and_rejects_commands(lifecycle_setup):

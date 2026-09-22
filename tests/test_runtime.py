@@ -113,6 +113,67 @@ def test_runtime_starts_and_stops_vision_camera_and_display():
     assert display.frames
 
 
+def test_reloading_iris_appearance_updates_running_renderer_without_restarting_runtime(tmp_path):
+    import json
+    from robot.config import load_document
+    from robot.lifecycle import LifecycleService
+
+    class StableVision:
+        def __init__(self):
+            self.started = False
+            self.stopped = False
+            self.release = asyncio.Event()
+
+        async def start(self):
+            self.started = True
+
+        async def stop(self):
+            self.stopped = True
+            self.release.set()
+
+        async def wait(self):
+            await self.release.wait()
+
+        def configure_preview(self, enabled):
+            self.preview_enabled = enabled
+
+    async def exercise():
+        document = load_document()
+        document["display"]["iris_color"] = "cyan"
+        path = tmp_path / "phos.json"
+        path.write_text(json.dumps(document))
+        config = RuntimeConfig.from_file(path)
+        display, vision = MemoryEyeDisplay(), StableVision()
+        runtime = build_runtime(config=config, eye_display=display, vision_pipeline=vision)
+        renderer = runtime._eye_render_loop._renderer
+        behavior = runtime._behavior_engine
+        await runtime.start()
+        service = LifecycleService(path, config, log_level_setter=lambda _level: None)
+        service.register_appearance_applier(runtime.apply_appearance)
+        service.register_camera_preview_applier(runtime.apply_camera_preview)
+        document["display"]["iris_color"] = "violet"
+        document["vision"]["camera_preview"]["position"] = "top_left"
+        path.write_text(json.dumps(document))
+        result = await asyncio.to_thread(service.execute, "reload")
+        await asyncio.sleep(.25)
+        applied = display.frames[-1].iris_color
+        still_running = runtime.core.is_running and vision.started and not vision.stopped
+        same_renderer = runtime._eye_render_loop._renderer is renderer
+        same_behavior = runtime._behavior_engine is behavior
+        same_vision = runtime._vision_pipeline is vision
+        selected_theme = renderer.iris_color
+        selected_preview_position = runtime._eye_render_loop._preview_settings.position
+        await runtime.stop()
+        return result, applied, still_running, same_renderer, same_behavior, same_vision, selected_theme, selected_preview_position
+
+    result, applied, still_running, same_renderer, same_behavior, same_vision, selected_theme, selected_preview_position = asyncio.run(exercise())
+    assert result["applied"] == ["display.iris_color", "vision.camera_preview.position"]
+    assert applied != "#28CEEB"  # Selected violet theme with the current semantic tint.
+    assert selected_theme == "violet"
+    assert selected_preview_position == "top_left"
+    assert still_running and same_renderer and same_behavior and same_vision
+
+
 def test_face_tracking_config_builds_camera_pipeline_without_expression_model():
     runtime = build_runtime(
         config=RuntimeConfig(face_tracking_enabled=True),
