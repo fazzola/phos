@@ -4,9 +4,36 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Deque, List
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
+import logging
+import time
+from typing import Any, Deque, List, Optional
 
 from .eyes import EyeFrame, EyeGeometry
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CameraPreviewView:
+    """UI-neutral, in-memory image and already-produced Vision diagnostics."""
+    frame: Any
+    face_box: Optional[tuple[int, int, int, int]] = None
+    expression: Optional[str] = None
+    confidence: Optional[float] = None
+    semantic_expression: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class CameraPreviewSettings:
+    enabled: bool = False
+    position: str = "bottom_right"
+    scale: float = .25
+    max_fps: int = 5
+    show_face_box: bool = True
+    show_expression: bool = True
+    show_confidence: bool = True
 
 
 class EyeDisplay(ABC):
@@ -17,7 +44,8 @@ class EyeDisplay(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def draw(self, frame: EyeFrame) -> None:
+    def draw(self, frame: EyeFrame, preview: Optional[CameraPreviewView] = None,
+             preview_settings: Optional[CameraPreviewSettings] = None) -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -38,7 +66,8 @@ class MemoryEyeDisplay(EyeDisplay):
     def open(self, width: int, height: int, *, fullscreen: bool) -> None:
         return None
 
-    def draw(self, frame: EyeFrame) -> None:
+    def draw(self, frame: EyeFrame, preview: Optional[CameraPreviewView] = None,
+             preview_settings: Optional[CameraPreviewSettings] = None) -> None:
         self.frames.append(frame)
 
     def poll_keys(self) -> List[str]:
@@ -56,6 +85,13 @@ class TkEyeDisplay(EyeDisplay):
         self._canvas = None
         self._tk = None
         self._keys: Deque[str] = deque()
+        self._preview_executor = None
+        self._preview_future: Optional[Future] = None
+        self._preview_photo = None
+        self._preview_next_at = 0.0
+        self._preview_failed = False
+        self._preview_image_item = None
+        self._preview_overlay_items = []
 
     def open(self, width: int, height: int, *, fullscreen: bool) -> None:
         if self._root is not None:
@@ -78,14 +114,26 @@ class TkEyeDisplay(EyeDisplay):
         self._root = root
         self._canvas = canvas
         self._tk = tk
+        self._preview_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="phos-preview")
 
-    def draw(self, frame: EyeFrame) -> None:
+    def draw(self, frame: EyeFrame, preview: Optional[CameraPreviewView] = None,
+             preview_settings: Optional[CameraPreviewSettings] = None) -> None:
         if self._root is None or self._canvas is None:
             raise RuntimeError("Display has not been opened.")
         self._canvas.delete("all")
         self._canvas.configure(background=frame.background)
         for eye in frame.eyes:
             self._draw_eye(eye, frame)
+        settings = preview_settings or CameraPreviewSettings()
+        if preview is not None and settings.enabled:
+            self._draw_preview(preview, settings, frame.width, frame.height)
+        else:
+            self._preview_photo = None
+            self._preview_image_item = None
+            self._preview_overlay_items = []
+            if self._preview_future is not None:
+                self._preview_future.cancel()
+                self._preview_future = None
 
     def poll_keys(self) -> List[str]:
         if self._root is not None:
@@ -104,6 +152,11 @@ class TkEyeDisplay(EyeDisplay):
         self._root = None
         self._canvas = None
         self._tk = None
+        self._preview_photo = None
+        if self._preview_executor is not None:
+            self._preview_executor.shutdown(wait=False, cancel_futures=True)
+            self._preview_executor = None
+        self._preview_future = None
 
     def _draw_eye(self, eye: EyeGeometry, frame: EyeFrame) -> None:
         if eye.closed:
@@ -193,3 +246,61 @@ class TkEyeDisplay(EyeDisplay):
             fill="#D9FBFF",
             outline="",
         )
+
+    def _draw_preview(self, preview, settings, display_width, display_height):
+        now = time.monotonic()
+        if self._preview_future is not None and self._preview_future.done():
+            try:
+                _width, _height, encoded = self._preview_future.result()
+                self._preview_photo = self._tk.PhotoImage(data=encoded, format="PPM")
+                self._preview_failed = False
+            except Exception:
+                self._preview_photo = None
+                if not self._preview_failed:
+                    logger.exception("Could not render camera preview")
+                self._preview_failed = True
+            self._preview_future = None
+        if self._preview_future is None and now >= self._preview_next_at:
+            shape = getattr(preview.frame, "shape", ())
+            if len(shape) >= 2:
+                target_width = max(80, int(display_width * settings.scale))
+                self._preview_future = self._preview_executor.submit(_encode_preview_ppm, preview.frame, target_width)
+                self._preview_next_at = now + 1.0 / settings.max_fps
+        if self._preview_photo is None:
+            return
+        image_width, image_height = self._preview_photo.width(), self._preview_photo.height()
+        margin = 16
+        x = margin if "left" in settings.position else display_width - image_width - margin
+        y = margin if settings.position.startswith("top") else display_height - image_height - margin
+        self._canvas.create_rectangle(x - 3, y - 3, x + image_width + 3, y + image_height + 3,
+                                      fill="#06111b", outline="#61d8e8", width=2)
+        self._canvas.create_image(x, y, image=self._preview_photo, anchor="nw")
+        shape = getattr(preview.frame, "shape", ())
+        if settings.show_face_box and preview.face_box and len(shape) >= 2:
+            sx, sy = image_width / shape[1], image_height / shape[0]
+            fx, fy, fw, fh = preview.face_box
+            self._canvas.create_rectangle(x + fx * sx, y + fy * sy,
+                x + (fx + fw) * sx, y + (fy + fh) * sy, outline="#ffe66d", width=2)
+        if settings.show_expression:
+            labels = []
+            if preview.expression:
+                label = preview.expression
+                if settings.show_confidence and preview.confidence is not None:
+                    label += f" {preview.confidence:.0%}"
+                labels.append(f"Raw: {label}")
+            if preview.semantic_expression:
+                labels.append(f"PHOS: {preview.semantic_expression}")
+            for index, label in enumerate(labels):
+                self._canvas.create_text(x + 5, y + image_height - 5 - index * 17, text=label,
+                    anchor="sw", fill="white", font=("TkDefaultFont", 9, "bold"))
+
+
+def _encode_preview_ppm(frame, target_width):
+    """Resize and encode off the Tk/display thread; only one job can be pending."""
+    import cv2
+    height, width = frame.shape[:2]
+    target_height = max(1, round(height * target_width / width))
+    small = cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
+    header = f"P6 {target_width} {target_height} 255\n".encode("ascii")
+    # Tk's PPM reader requires raw binary data, not base64 text.
+    return target_width, target_height, header + small.tobytes()

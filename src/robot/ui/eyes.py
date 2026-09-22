@@ -81,6 +81,11 @@ class EyeRenderer:
         self._values: Optional[_AnimatedValues] = None
         self._last_timestamp: Optional[float] = None
 
+    @property
+    def iris_color(self) -> str:
+        """Return the selected named base theme, before semantic tinting."""
+        return self._iris_color
+
     def render(self, face_state: FaceState, *, timestamp: float) -> EyeFrame:
         state = face_state.normalized()
         target = _target_values(state, self._iris_color)
@@ -104,6 +109,12 @@ class EyeRenderer:
                 self._make_eye(False, blink_amount, self._values),
             ),
         )
+
+    def update_appearance(self, *, iris_color: str) -> None:
+        """Change validated renderer style; color blends in subsequent frames."""
+        if iris_color not in _IRIS_COLORS:
+            raise ValueError(f"Unsupported iris color: {iris_color}")
+        self._iris_color = iris_color
 
     def _make_eye(self, left: bool, blink_amount: float, values: _AnimatedValues) -> EyeGeometry:
         eye_width = self._width * 0.27

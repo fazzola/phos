@@ -13,6 +13,8 @@ use that same value. Versioning is not runtime configuration.
   amber, violet or white iris themes in canonical display configuration.
 - Local camera face selection/tracking and gaze; uncertain visible-expression
   observations mediated by BehaviorEngine, including abstention and decay.
+- Optional local-display camera picture-in-picture diagnostics, off by default,
+  using the existing Vision camera owner and latest in-memory frame.
 - Explicit local ONNX or optional AWS Rekognition expression provider; cloud
   work is bounded, cached and rate-limited, without automatic provider fallback.
 - One canonical `config/phos.json`, strict startup/editor validation,
@@ -23,8 +25,9 @@ use that same value. Versioning is not runtime configuration.
   Web Administration / Security and read-only System / Status pages.
 - Bootstrap password `phos`, mandatory rotation, salted password hashes outside
   configuration, expiring/revocable sessions, logout, CSRF and attempt limits.
-- Validated reload of logging level and confirmed PHOS restart through a user
-  systemd service, using a reusable lifecycle boundary; no OS reboot.
+- Validated reload of logging level, eye appearance and camera preview through
+  reusable runtime services, plus confirmed PHOS restart through a user systemd
+  service; no OS reboot.
 - AWS credentials remain external in the SDK chain. There are no credential
   fields or credential values in configuration/status pages.
 
@@ -63,8 +66,9 @@ Face tracking without expressions uses `vision.face_tracking_enabled: true` and
 
 AWS mode uses `expression.aws` region/timeouts/limits and external credentials.
 It needs no local ONNX file; selected face crops leave the Pi. Set
-`expression.enabled` false to disable expression processing. Reload logging level or restart for all other configuration changes; password
-changes take effect immediately.
+`expression.enabled` false to disable expression processing. Reload logging
+level, iris appearance or camera preview; restart for other configuration
+changes. Password changes take effect immediately.
 
 ## Hardening in this release
 
@@ -114,7 +118,7 @@ Known limitations:
   multi-user administration or remote password reset is included.
 - Status reports parent-owned active configuration, not live health. AWS credentials are not
   probed. A crashed web worker requires PHOS restart.
-- Only logging level is reloadable; other configuration changes require restart; no automatic backup or cross-process
+- Logging level, iris color and camera preview are reloadable; other configuration changes require restart; no automatic backup or cross-process
   file locking. Use one PHOS process per configuration/credential store.
 - Raspberry Pi OS/camera packages are installed by apt and are platform-specific;
   the Python web snapshot is pinned but this is not a byte-reproducible OS image.

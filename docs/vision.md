@@ -32,6 +32,31 @@ Default target:
 - Picamera2 hidden behind the provider abstraction
 - capture frequency may be higher than inference frequency
 
+## Local camera picture-in-picture preview
+
+The optional diagnostic preview uses the same `VisionPipeline` camera owner and
+the latest in-memory frame; display code never opens Picamera2 or another
+capture path. It is disabled by default. When enabled, a small (default 25%
+display-width) bordered image appears at the bottom-right of the PHOS display,
+with optional selected face box and already-produced raw/semantic expression
+labels. No image or video is persisted or sent to Web Admin or another network
+service. A single latest-frame reference and one bounded resize/encoding job
+prevent backlog; preview refresh is capped at 5 FPS by default. The resize runs
+off the Tk eye-render thread.
+
+The display passes raw binary PPM data to Tk. Preview encoding or image-loading
+failures are logged as `Could not render camera preview` once per failure streak,
+so a missing overlay can be diagnosed without flooding the log or stopping eyes.
+
+Manage the preview in Web Admin → Vision. Save the canonical configuration and
+use System → Reload configuration to apply enabled state, corner, scale, maximum
+FPS and diagnostic labels without restarting PHOS. If the preview is the only
+Vision feature enabled, reload starts the existing Vision pipeline/camera once;
+disabling it releases that pipeline when face tracking and expression
+recognition are also disabled. Changing preview options while Vision is already
+running does not restart Vision or the camera. Camera/display geometry and
+other Vision settings remain restart-required.
+
 ## FaceDetector
 
 Initial implementation: `OpenCVFaceDetector`.

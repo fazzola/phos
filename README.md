@@ -74,9 +74,9 @@ field, precedence and migration. The same typed validation and atomic persistenc
 are reused by the optional [web administration interface](docs/web-administration.md).
 It provides authenticated section-based editing, local/AWS selection and password
 management. Web access is disabled by default; enable it only on a trusted LAN.
-Save writes configuration; System actions can reload logging level or request a
-confirmed restart through the [user systemd service](docs/installation.md#managed-startup-and-browser-restart).
-All other settings require restart; subsystem hot reload and OS reboot are not implemented.
+Save writes configuration; System actions can reload logging level and eye
+appearance or request a confirmed restart through the [user systemd service](docs/installation.md#managed-startup-and-browser-restart).
+Other settings require restart; camera/provider hot reload and OS reboot are not implemented.
 
 ## Eye demo
 

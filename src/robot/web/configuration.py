@@ -68,12 +68,14 @@ class ConfigurationService:
 # Presentation hints only. Field structure and validation belong to robot.config.
 CHOICES = {"expression.provider": ("local", "aws"),
            "logging.level": ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
-           "display.iris_color": ("cyan", "blue", "green", "turquoise", "amber", "violet", "white")}
+           "display.iris_color": ("cyan", "blue", "green", "turquoise", "amber", "violet", "white"),
+           "vision.camera_preview.position": ("bottom_right", "bottom_left", "top_right", "top_left")}
 HELP = {
     "web": "Disabled by default. Use the Pi's LAN IP or 0.0.0.0 for trusted LAN access. Restart after changing these settings.",
-    "display": "Display dimensions are pixels; fps controls animation cadence. Iris color is a named eye theme. Display and appearance changes require PHOS restart.",
+    "display": "Display dimensions are pixels; fps controls animation cadence. Iris color is a named eye theme and applies after configuration reload. Display geometry and fullscreen changes require restart.",
     "behavior": "Timing pairs are minimum, maximum in seconds. Smoothing controls gaze response.",
-    "vision": "Tracking uses the local camera. Resolution is width, height in pixels.",
+    "vision": "Tracking uses the local camera. Resolution is width, height in pixels. Preview is local to the PHOS display, disabled by default and applies after System → Reload configuration without restarting PHOS.",
+    "vision.camera_preview": "Preview frames stay in memory and appear only on the PHOS display. Scale is a fraction of display width; maximum FPS is capped at 10. Preview changes apply after configuration reload and do not restart Vision unless the camera must be started or stopped for the new enabled state.",
     "vision.detector": "Leave cascade path blank for platform discovery. Minimum size is width, height in pixels.",
     "expression": "Local runs ONNX on the Pi. AWS sends selected face crops to AWS when expressions are enabled. There is no automatic fallback.",
     "expression.local": "Paths are relative to the configuration file. Labels must match model output order; input size is width, height and mean is three channel values.",
