@@ -41,6 +41,16 @@ class VisionResult:
     visual_expression: Optional[VisualExpression] = None
 
 
+@dataclass(frozen=True)
+class VisionPreviewSnapshot:
+    """Latest in-memory frame and diagnostics for the local display only."""
+    frame: Any
+    face: Optional[FaceRegion] = None
+    raw_expression: Optional[str] = None
+    confidence: Optional[float] = None
+    semantic_expression: Optional[str] = None
+
+
 class VisionPipeline(Behavior):
     """Capture, detect, classify, smooth and publish local vision results."""
 
@@ -59,6 +69,8 @@ class VisionPipeline(Behavior):
         expression_interval_seconds: float = 1.0 / 3.0,
         diagnostics: bool = False,
         crop_margin: float = 0.10,
+        preview_enabled: bool = False,
+        publish_face_position: bool = True,
     ) -> None:
         for name, value in (
             ("capture_interval_seconds", capture_interval_seconds),
@@ -72,6 +84,9 @@ class VisionPipeline(Behavior):
         if not math.isfinite(crop_margin) or not 0.0 <= crop_margin <= 0.5:
             raise ValueError("crop_margin must be between zero and 0.5.")
         self._crop_margin = crop_margin
+        self._preview_enabled = preview_enabled
+        self._publish_face_position = publish_face_position
+        self._preview_snapshot: Optional[VisionPreviewSnapshot] = None
         self._face_selector = FaceSelector()
         self._camera = camera
         self._face_detector = face_detector
@@ -130,6 +145,11 @@ class VisionPipeline(Behavior):
         """Capture one frame and perform work only when its rate limit permits."""
         now = time.monotonic() if timestamp is None else timestamp
         frame = await self._camera.capture_frame()
+        if self._preview_enabled:
+            previous = self._preview_snapshot
+            self._preview_snapshot = VisionPreviewSnapshot(frame, previous.face if previous else None,
+                previous.raw_expression if previous else None, previous.confidence if previous else None,
+                previous.semantic_expression if previous else None)
         if now < self._next_detection_at:
             return VisionResult(VisionStatus.NOT_DUE)
         self._next_detection_at = now + self._detection_interval
@@ -137,6 +157,12 @@ class VisionPipeline(Behavior):
         height, width = frame.shape[:2]
         selection = self._face_selector.select(faces, width=width, height=height, timestamp=now)
         face = selection.face
+        if self._preview_enabled:
+            previous = self._preview_snapshot
+            self._preview_snapshot = VisionPreviewSnapshot(frame, face,
+                (previous.raw_expression if previous and face is not None else None),
+                (previous.confidence if previous and face is not None else None),
+                (previous.semantic_expression if previous and face is not None else None))
         if self._diagnostics:
             logger.info(
                 "Face selection: detected=%s selected=%s reason=%s rejected=%s expression_ready=%s",
@@ -152,13 +178,13 @@ class VisionPipeline(Behavior):
             if self._smoother is not None:
                 self._smoother.reset()
             self._reset_expression_log()
-            if self._face_present and self._events is not None:
+            if self._publish_face_position and self._face_present and self._events is not None:
                 await self._events.publish(Event(VISION_FACE_LOST))
             self._face_present = False
             return VisionResult(VisionStatus.NO_FACE)
 
         self._face_present = True
-        if self._events is not None:
+        if self._publish_face_position and self._events is not None:
             position = face_position(frame, face)
             await self._events.publish(
                 Event(VISION_FACE_POSITION, {"face_position": {"x": position.x, "y": position.y}})
@@ -195,11 +221,19 @@ class VisionPipeline(Behavior):
                 getattr(face_crop, "shape", None),
             )
         observation = await self._expression_provider.classify(face_crop)
+        if self._preview_enabled and observation is not None:
+            previous = self._preview_snapshot
+            self._preview_snapshot = VisionPreviewSnapshot(frame, face, observation.label,
+                observation.confidence, previous.semantic_expression if previous else None)
         if observation is not None:
             self._log_expression_observation(observation.label, observation.confidence, now)
         stable = self._smoother.observe(observation, timestamp=now)
         decision = self._smoother.decision
         result = stable or VisualExpression("unknown", 0.0, 0)
+        if self._preview_enabled and stable is not None:
+            self._preview_snapshot = VisionPreviewSnapshot(frame, face,
+                observation.label if observation is not None else None,
+                observation.confidence if observation is not None else None, stable.label)
         if self._diagnostics:
             logger.info(
                 "Expression semantics: top=%s semantic=%s reason=%s temporal=%s",
@@ -224,6 +258,16 @@ class VisionPipeline(Behavior):
             VisionStatus.UNSTABLE if decision.reason == "temporal_pending" else VisionStatus.UNKNOWN
         )
         return VisionResult(status, result)
+
+    @property
+    def preview_snapshot(self) -> Optional[VisionPreviewSnapshot]:
+        """Return one latest-frame reference; no queue, disk or remote transport."""
+        return self._preview_snapshot if self._preview_enabled else None
+
+    def configure_preview(self, enabled: bool) -> None:
+        self._preview_enabled = enabled
+        if not enabled:
+            self._preview_snapshot = None
 
     async def _run(self) -> None:
         while True:

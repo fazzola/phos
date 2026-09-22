@@ -1,8 +1,4 @@
-"""Shared application lifecycle operations, independent of web and hardware.
-
-Only logging.level has a live apply boundary. Restart is a graceful-exit request
-for the documented systemd supervisor, never a shell command or self-spawn.
-"""
+"""Shared validated reload and supervisor-owned restart operations."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -15,7 +11,12 @@ import time
 from robot.config import ConfigurationError, RuntimeConfig
 
 RESTART_EXIT_CODE = 75
-RELOADABLE = frozenset({"logging.level"})
+PREVIEW_RELOADABLE = frozenset({
+    "vision.camera_preview.enabled", "vision.camera_preview.position", "vision.camera_preview.scale",
+    "vision.camera_preview.max_fps", "vision.camera_preview.show_face_box",
+    "vision.camera_preview.show_expression", "vision.camera_preview.show_confidence",
+})
+RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE})
 
 
 def changed_fields(active, saved, prefix=""):
@@ -45,8 +46,20 @@ class LifecycleService:
         self.restart_supported = restart_supported
         self.restart_at = None
         self._set_log_level = log_level_setter
+        self._apply_appearance = None
+        self._apply_camera_preview = None
         self._clock = clock
         self._lock = RLock()
+
+    def register_appearance_applier(self, applier):
+        """Register the running application service's renderer update boundary."""
+        with self._lock:
+            self._apply_appearance = applier
+
+    def register_camera_preview_applier(self, applier):
+        """Register runtime service for applying validated preview settings."""
+        with self._lock:
+            self._apply_camera_preview = applier
 
     @property
     def restart_due(self):
@@ -68,7 +81,8 @@ class LifecycleService:
             if not isinstance(operation, str) or operation not in {"status", "reload", "restart"}:
                 return {"ok": False, "error": "Unsupported lifecycle operation."}
             try:
-                saved = RuntimeConfig.from_file(self.path).to_dict()
+                config = RuntimeConfig.from_file(self.path)
+                saved = config.to_dict()
             except (ConfigurationError, OSError):
                 # Do not echo arbitrary config contents to adapters or logs.
                 return {"ok": False, "error": "Saved configuration is invalid or unavailable. No settings were applied; repair it before reload or restart."}
@@ -83,6 +97,29 @@ class LifecycleService:
             if operation == "reload":
                 if self.restart_at is not None:
                     return {"ok": False, "error": "Restart is already requested. Wait for PHOS to start again."}
+                if (self.active["display"]["iris_color"] != saved["display"]["iris_color"]
+                        and self._apply_appearance is None):
+                    return {"ok": False, "error": "Runtime appearance service is not ready. No settings were applied; retry reload shortly."}
+                preview_changed = any(changed_fields(self.active["vision"]["camera_preview"],
+                    saved["vision"]["camera_preview"], "vision.camera_preview"))
+                preview_paths = changed_fields(self.active["vision"]["camera_preview"],
+                    saved["vision"]["camera_preview"], "vision.camera_preview")
+                if preview_changed and self._apply_camera_preview is None:
+                    return {"ok": False, "error": "Runtime camera preview service is not ready. No settings were applied; retry reload shortly."}
+                if self.active["display"]["iris_color"] != saved["display"]["iris_color"]:
+                    try:
+                        self._apply_appearance(config)
+                    except Exception:
+                        return {"ok": False, "error": "The running display could not accept the appearance update. No active configuration was recorded; retry reload or restart PHOS."}
+                    self.active["display"]["iris_color"] = saved["display"]["iris_color"]
+                    applied.append("display.iris_color")
+                if preview_changed:
+                    try:
+                        self._apply_camera_preview(config)
+                    except Exception:
+                        return {"ok": False, "error": "The running display could not accept camera preview settings. No active configuration was recorded; retry reload."}
+                    self.active["vision"]["camera_preview"] = deepcopy(saved["vision"]["camera_preview"])
+                    applied.extend(preview_paths)
                 if self.active["logging"]["level"] != saved["logging"]["level"]:
                     self._set_log_level(saved["logging"]["level"])
                     self.active["logging"]["level"] = saved["logging"]["level"]

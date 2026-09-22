@@ -51,7 +51,13 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None) -> 
             await asyncio.sleep(.1)
     watcher = asyncio.create_task(watch_restart()) if lifecycle is not None else None
     try:
-        await build_application(config=config).run(stop_event)
+        runtime = build_application(config=config)
+        if lifecycle is not None:
+            lifecycle.register_appearance_applier(runtime.apply_appearance)
+            preview_applier = getattr(runtime, "apply_camera_preview", None)
+            if preview_applier is not None:
+                lifecycle.register_camera_preview_applier(preview_applier)
+        await runtime.run(stop_event)
     finally:
         if watcher is not None:
             watcher.cancel()

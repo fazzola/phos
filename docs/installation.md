@@ -283,8 +283,9 @@ recognition quality or cloud service availability on physical hardware.
 Follow the [web administration user manual](web-administration.md) to install
 the web extra, add/enable the canonical `web` section and access the editor.
 It documents LAN URLs, first login with `phos`, mandatory password change, local
-recovery and HTTP security limits. Configuration edits use the existing model. Logging level can be reloaded;
-other settings require restart. AWS credentials remain external. Existing deployments must
+recovery and HTTP security limits. Configuration edits use the existing model.
+Logging level and iris appearance can be applied through **System actions → Reload
+configuration**; other settings require restart. AWS credentials remain external. Existing deployments must
 add the required `web` section from the canonical file when upgrading.
 
 ## Managed startup and browser restart

@@ -47,6 +47,102 @@ def test_reload_applies_only_safe_changes_and_reports_pending(runtime):
     assert service.execute("reload")["applied"] == []
 
 
+def test_appearance_change_is_reloadable_and_not_restart_required(runtime):
+    path, service, _, _ = runtime
+    applied = []
+    service.register_appearance_applier(lambda config: applied.append(config.iris_color))
+    update(path, lambda d: d["display"].update(iris_color="violet"))
+
+    result = service.execute("reload")
+
+    assert result["ok"] and result["applied"] == ["display.iris_color"]
+    assert applied == ["violet"]
+    assert result["active"]["display"]["iris_color"] == "violet"
+    assert result["reloadable"] == []
+    assert result["restart_required"] == []
+
+
+def test_mixed_appearance_logging_and_provider_changes_keep_restart_pending(runtime):
+    path, service, logs, _ = runtime
+    applied = []
+    service.register_appearance_applier(lambda config: applied.append(config.iris_color))
+    update(path, lambda d: (d["display"].update(iris_color="amber"),
+                            d["logging"].update(level="DEBUG"),
+                            d["expression"].update(provider="aws")))
+
+    result = service.execute("reload")
+
+    assert result["ok"]
+    assert result["applied"] == ["display.iris_color", "logging.level"]
+    assert applied == ["amber"] and logs == ["DEBUG"]
+    assert result["active"]["display"]["iris_color"] == "amber"
+    assert result["active"]["expression"]["provider"] == "local"
+    assert result["restart_required"] == ["expression.provider"]
+
+
+def test_failed_runtime_appearance_update_does_not_commit_active_values(runtime):
+    path, service, logs, _ = runtime
+    def fail(_config):
+        raise RuntimeError("render loop is stopping")
+    service.register_appearance_applier(fail)
+    update(path, lambda d: (d["display"].update(iris_color="violet"),
+                            d["logging"].update(level="ERROR")))
+
+    result = service.execute("reload")
+
+    assert not result["ok"]
+    assert "render loop is stopping" not in result["error"]
+    assert service.active["display"]["iris_color"] == "cyan"
+    assert service.active["logging"]["level"] == "INFO"
+    assert not logs
+
+
+def test_invalid_iris_color_is_rejected_before_any_application(runtime):
+    path, service, logs, _ = runtime
+    applied = []
+    service.register_appearance_applier(lambda config: applied.append(config.iris_color))
+    update(path, lambda d: (d["display"].update(iris_color="#00FFFF"),
+                            d["logging"].update(level="ERROR")))
+
+    result = service.execute("reload")
+
+    assert not result["ok"]
+    assert not applied and not logs
+    assert service.active["display"]["iris_color"] == "cyan"
+    assert service.active["logging"]["level"] == "INFO"
+
+
+def test_camera_preview_changes_reload_and_mixed_provider_change_stays_pending(runtime):
+    path, service, _, _ = runtime
+    applied = []
+    service.register_camera_preview_applier(lambda config: applied.append(config.camera_preview_position))
+    update(path, lambda d: (d["vision"]["camera_preview"].update(enabled=True, position="top_left"),
+                            d["expression"].update(provider="aws")))
+
+    result = service.execute("reload")
+
+    assert result["ok"]
+    assert result["applied"] == ["vision.camera_preview.enabled", "vision.camera_preview.position"]
+    assert result["reloadable"] == []
+    assert result["restart_required"] == ["expression.provider"]
+    assert applied == ["top_left"]
+    assert result["active"]["vision"]["camera_preview"]["enabled"] is True
+    assert result["active"]["expression"]["provider"] == "local"
+
+
+def test_invalid_camera_preview_is_rejected_before_runtime_application(runtime):
+    path, service, _, _ = runtime
+    applied = []
+    service.register_camera_preview_applier(lambda config: applied.append(config))
+    update(path, lambda d: d["vision"]["camera_preview"].update(scale=.5))
+
+    result = service.execute("reload")
+
+    assert not result["ok"]
+    assert not applied
+    assert service.active["vision"]["camera_preview"]["scale"] == .25
+
+
 @pytest.mark.parametrize("bad", ["number", "path", "json", "secret"])
 def test_invalid_configuration_never_partially_applies_or_restarts(runtime, bad):
     path, service, applied, _ = runtime
@@ -137,6 +233,8 @@ def test_restart_request_stops_runtime_through_existing_stop_event(runtime, monk
     now[0] = 2.0
     stopped = []
     class Runtime:
+        def apply_appearance(self, config):
+            pass
         async def run(self, stop):
             await asyncio.wait_for(stop.wait(), timeout=1)
             stopped.append(True)

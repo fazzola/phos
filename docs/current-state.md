@@ -112,7 +112,7 @@ worker cleanup and exposes parent-owned active configuration metadata on a
 separate read-only Status page. General provides navigation; Network, Display & Appearance, Vision,
 Expression Recognition, Logging and Web Administration / Security expose only
 implemented fields. Password management stays separate.
-Only logging level is live-reloadable after full canonical validation. Confirmed
+Logging level and iris appearance are live-reloadable after full canonical validation. Confirmed
 PHOS restart uses the supplied user systemd service; manual launches reject
 browser restart. No OS reboot, AWS credential probe, automatic backup or Internet
 deployment.
@@ -151,15 +151,16 @@ this source audit. Expression quality remains unproven as documented above.
 `robot.lifecycle.LifecycleService` owns the active snapshot, load timestamp and
 fixed status/reload/restart policy. The web worker uses a local process channel;
 it cannot submit commands or paths. Reload validates the entire saved file and
-applies only logging level, preserving AWS SDK log suppression. Other changed
-fields are listed as restart-required. Authenticated restart requires CSRF and
+applies logging level and iris appearance through their application-service
+boundaries, preserving AWS SDK log suppression. Other changed fields are listed
+as restart-required. Authenticated restart requires CSRF and
 one-use explicit confirmation, then graceful runtime shutdown and exit 75.
 `deploy/phos.service` performs process replacement under the desktop user with
 no sudo/polkit or shell endpoint. Source sync includes the unit but never enables
 it. System actions remain separate from ordinary config forms. OS reboot and all
 previously deferred roadmap capabilities remain deferred.
 
-Final verification including this addition (Python 3.11.6):
+Earlier lifecycle verification before eye-appearance reload (Python 3.11.6):
 - Full suite: **258 passed, 1 skipped** in 187.15 seconds.
 - The only skip is the OpenCV preprocessing test at
   `tests/vision/test_expression.py:105`: `cv2` is unavailable.
@@ -180,5 +181,40 @@ Display & Appearance now validates and exposes `display.iris_color` in the
 canonical JSON. EyeRenderer receives this theme at startup and layers lightweight
 Canvas eye-body, iris, pupil and highlight geometry. FaceState continues to
 supply semantic reaction intent; expression labels/providers do not control
-rendering. Theme changes require restart. Raspberry Pi frame-rate impact awaits
+rendering. Theme changes apply after configuration reload without restarting
+Vision or other runtime services. Raspberry Pi frame-rate impact awaits
 target hardware verification.
+
+
+## Local camera picture-in-picture
+
+An optional diagnostic preview is disabled by default. When active it uses the
+existing Vision camera owner, retains only a latest-frame reference in memory,
+and passes a UI-neutral image/diagnostic value through PhosRuntime to the display
+compositor. Web Admin → Vision settings apply through validated configuration
+reload. Frames are neither persisted nor exposed through Web Admin. Enabling the
+preview starts the dormant pipeline if no other Vision feature is running;
+disabling it releases the camera when no other Vision feature needs it.
+
+## Live eye appearance reload verification
+
+Only `display.iris_color` is currently a configurable eye-style setting and is
+live-reloadable. Semantic accents remain BehaviorEngine-produced FaceState and
+need no configuration reload. The lifecycle service validates the whole
+canonical document, then gives the typed RuntimeConfig to PhosRuntime. Its
+display-loop boundary safely queues the iris theme onto the asyncio render
+thread; EyeRenderer interpolates the color on subsequent frames. Reload does not
+rebuild Core, Vision, camera, BehaviorEngine, providers or the renderer object.
+Mixed changes apply logging and iris appearance while retaining all other changed
+fields in `restart_required`. Invalid configuration applies nothing.
+
+Final verification (Python 3.11.6):
+- Full suite: **277 passed, 1 skipped**; two real-worker loopback tests could
+  not bind sockets in the sandbox. Both passed when rerun with loopback access.
+- Combined result: **279 passed, 1 skipped**. The skip is the OpenCV
+  preprocessing test at `tests/vision/test_expression.py:105`; `cv2` is
+  unavailable in this environment.
+- Focused preview configuration, lifecycle reload, latest-frame snapshot,
+  renderer continuity and Web Admin persistence checks passed.
+- Raspberry Pi visual timing, actual camera color/placement and physical display
+  behavior still need target hardware verification.

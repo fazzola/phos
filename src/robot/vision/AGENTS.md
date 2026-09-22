@@ -19,6 +19,7 @@ Preserve the conceptual pipeline:
 - Use confidence/smoothing and handle no-face, low-confidence, face-lost and unstable observations.
 - Do not implement identity recognition or biometric persistence.
 - Do not save frames or face crops by default.
+- An optional local display diagnostic may consume the latest in-memory camera frame and existing Vision diagnostics through the application runtime. Keep at most a latest-frame reference; do not add a second camera owner, recording, or a network frame path.
 
 ## Boundaries
 - Vision must not call the LLM directly.

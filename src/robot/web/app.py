@@ -162,7 +162,7 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
                 except OSError:
                     error, status = "Configuration could not be saved. Check local filesystem permissions.", 503
                 else:
-                    flash("Configuration saved. Use System actions to reload supported settings or restart PHOS.")
+                    flash("Configuration saved. Use System actions to reload logging, eye appearance and camera preview, or restart PHOS for other settings.")
                     return redirect(url_for("configuration", area=area))
         try:
             document = config.read()

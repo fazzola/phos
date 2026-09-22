@@ -115,6 +115,11 @@ _SCHEMA = {
                  "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second"},
     "vision": {"face_tracking_enabled": "face_tracking_enabled", "camera_resolution": "camera_resolution",
                "capture_fps": "vision_capture_fps", "detection_fps": "face_detection_fps",
+               "camera_preview": {"enabled": "camera_preview_enabled", "position": "camera_preview_position",
+                                  "scale": "camera_preview_scale", "max_fps": "camera_preview_max_fps",
+                                  "show_face_box": "camera_preview_show_face_box",
+                                  "show_expression": "camera_preview_show_expression",
+                                  "show_confidence": "camera_preview_show_confidence"},
                "detector": {"cascade_path": "cascade_path", "scale_factor": "detector_scale_factor",
                             "min_neighbors": "detector_min_neighbors", "min_size": "detector_min_size"}},
     "expression": {
@@ -183,6 +188,13 @@ class RuntimeConfig:
     face_gaze_smoothing: float
     reaction_decay_per_second: float
     face_tracking_enabled: bool
+    camera_preview_enabled: bool
+    camera_preview_position: str
+    camera_preview_scale: float
+    camera_preview_max_fps: int
+    camera_preview_show_face_box: bool
+    camera_preview_show_expression: bool
+    camera_preview_show_confidence: bool
     camera_resolution: Tuple[int, int]
     vision_capture_fps: float
     face_detection_fps: float
@@ -302,7 +314,7 @@ class RuntimeConfig:
 
     @property
     def vision_enabled(self) -> bool:
-        return self.face_tracking_enabled or self.expression_enabled
+        return self.face_tracking_enabled or self.expression_enabled or self.camera_preview_enabled
 
     def validate(self) -> None:
         def number(name, *, minimum=0, inclusive=False, maximum=None, integer=False):
@@ -332,7 +344,8 @@ class RuntimeConfig:
         number("face_gaze_smoothing", maximum=1)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("web_enabled", "fullscreen", "face_tracking_enabled", "expression_enabled", "expression_neutral_enabled",
+        for name in ("web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
+                     "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
                      "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(f"{name} must be a boolean")
@@ -354,6 +367,14 @@ class RuntimeConfig:
             "cyan", "blue", "green", "turquoise", "amber", "violet", "white"
         }:
             raise ConfigurationError("display.iris_color must be cyan, blue, green, turquoise, amber, violet or white")
+        if not isinstance(self.camera_preview_position, str) or self.camera_preview_position not in {
+            "top_left", "top_right", "bottom_left", "bottom_right"
+        }:
+            raise ConfigurationError("vision.camera_preview.position must be a supported corner")
+        number("camera_preview_scale", minimum=0, inclusive=True, maximum=.4)
+        if self.camera_preview_scale < .1:
+            raise ConfigurationError("vision.camera_preview.scale must be between 0.1 and 0.4")
+        number("camera_preview_max_fps", integer=True, maximum=10)
         if not isinstance(self.cloud_expression, CloudExpressionConfig):
             raise ConfigurationError("expression.aws must be CloudExpressionConfig")
         if not isinstance(self.log_level, str) or self.log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:

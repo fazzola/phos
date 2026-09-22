@@ -2,8 +2,9 @@
 
 PHOS includes an optional single-administrator configuration editor. It uses the
 same JSON model and validation as startup, with no camera, AWS or display access
-from the web worker. Saving never applies settings. Reload can apply logging level; all other runtime
-changes require restarting PHOS.
+from the web worker. Saving never applies settings. Reload applies logging level,
+supported eye appearance and camera preview settings; other runtime changes
+require restarting PHOS.
 
 ## Install and enable
 
@@ -86,7 +87,7 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | General | Overview and navigation to configuration pages. |
 | Network | Web bind address (`web.host`) and port (`web.port`). Wi-Fi, DNS and other OS networking remain managed on the Pi. |
 | Display & Appearance | Display dimensions, fps, fullscreen and transitions; blink/gaze intervals, gaze smoothing and reaction decay from `behavior`. |
-| Vision | Face tracking, camera resolution, capture/detection cadence and detector cascade, scale, neighbors and minimum size. |
+| Vision | Face tracking, camera resolution/cadence, face detection and optional display-only camera picture-in-picture preview. |
 | Expression Recognition | Provider selection/enabling and observation cadence/crop margin; smoothing; local ONNX model, labels and preprocessing; AWS region/confidence/timeouts; a separate cloud cost/rate-limit group. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
@@ -138,8 +139,9 @@ repaired in the editor while PHOS is already running; malformed JSON or invalid
 schema edited outside the UI requires local repair.
 
 Successful saves report that configuration is saved and direct you to **System
- actions**. Save alone does not change running settings. Use Reload for logging
-level, or Restart PHOS for all other changes. Turning web off takes effect at
+ actions**. Save alone does not change running settings. Use Reload for logging,
+eye appearance and camera preview settings, or Restart PHOS for all other changes.
+Turning web off takes effect at
 restart. A page loaded before another save is rejected as stale: reload it
 before editing again. Do not edit the JSON simultaneously from the terminal.
 
@@ -251,7 +253,7 @@ state changes also require CSRF protection.
 | Operation | Effect |
 | --- | --- |
 | Save on a domain page | Validates and atomically persists the full canonical JSON. Does not change active settings. |
-| Reload configuration | Reads that same file, validates every setting and active path with startup's model, then applies only `logging.level`. Shows applied fields and remaining restart-required fields. |
+| Reload configuration | Reads that same file, validates every setting and active path with startup's model, then applies logging level, iris theme and all `vision.camera_preview` settings through shared runtime services. Shows applied fields and remaining restart-required fields. |
 | Restart PHOS | Requires the managed service and explicit confirmation. Validates the saved file, requests graceful application shutdown, then systemd starts PHOS again from disk. |
 
 If any setting/path is invalid, Reload applies **nothing**, including logging
@@ -263,11 +265,22 @@ are exposed by this feature.
 The **Display & Appearance** page also offers the canonical `display.iris_color`
 choice: cyan, blue, green, turquoise, amber, violet or white. It configures the
 base iris theme; semantic accent tints still come from BehaviorEngine-produced
-FaceState. Save it with the other Display & Appearance fields and restart PHOS
-to activate it. Expression semantics do not enter the renderer directly.
+FaceState. Save it with the other Display & Appearance fields, then use Reload
+configuration. The renderer receives the validated appearance through the
+runtime's display-loop update boundary; the iris color blends smoothly into the
+next frames. PHOS, Vision, camera, BehaviorEngine and providers keep running.
+Expression semantics do not enter the renderer directly.
 
-All other implemented settings require restart: web enabled/host/port; display
-and visual behavior; camera/detection; expression enabled/provider, preprocessing,
+The **Vision** page also manages the optional camera preview on the physical
+PHOS display. It is off by default; choose a corner, scale and maximum preview
+FPS, then select whether to show the current face box and expression diagnostics.
+Save and use Reload configuration to apply these fields immediately. The preview
+uses the existing camera owner and latest in-memory frame, stays on the local
+display, and is neither recorded nor exposed over this administration interface.
+
+Iris color and camera preview settings are reloadable. Display geometry, cadence,
+fullscreen and behavioral timing still require restart. Other implemented settings requiring restart are
+web enabled/host/port; camera resolution/tracking/detection; expression enabled/provider, preprocessing,
 smoothing and AWS policy; log destination and expression diagnostics. Switching
 local/AWS is never done live. Password changes use their separate immediate
 session-revoking mechanism, independent of Save/Reload.
