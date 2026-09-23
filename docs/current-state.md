@@ -69,6 +69,7 @@ This file is an implementation handoff for coding agents. It records what is pre
 
 ## Current development priority
 
+Complete the remaining 1.0.0 release acceptance checks; do not expand scope.
 The expression-reaction implementation needs target-hardware verification with
 a selected lightweight ONNX model. Confirm the model's labels, dimensions and
 preprocessing, then verify semantic happy/surprised confirmation and UNKNOWN
@@ -112,7 +113,7 @@ worker cleanup and exposes parent-owned active configuration metadata on a
 separate read-only Status page. General provides navigation; Network, Display & Appearance, Vision,
 Expression Recognition, Logging and Web Administration / Security expose only
 implemented fields. Password management stays separate.
-Logging level and iris appearance are live-reloadable after full canonical validation. Confirmed
+Logging level, iris appearance and camera-preview settings are live-reloadable after full canonical validation. Confirmed
 PHOS restart uses the supplied user systemd service; manual launches reject
 browser restart. No OS reboot, AWS credential probe, automatic backup or Internet
 deployment.
@@ -128,30 +129,12 @@ Camera failure/partial-start and cancellation cleanup are hardened. Source sync
 ships metadata, docs and the pinned web dependency snapshot while preserving
 deployed settings/credentials. Packaged installs include the canonical JSON.
 
-Initial release verification before the lifecycle addition (Python 3.11.6):
-- Relevant lifecycle/core/UI/configuration tests: 103 passed.
-- Release metadata/packaged-config tests: 2 passed.
-- Full suite: **242 passed, 1 skipped** in 123.66 seconds. The skipped OpenCV
-  preprocessing test at `tests/vision/test_expression.py:105` requires `cv2`,
-  unavailable in this environment. Optional dependency installation was declined.
-- Real loopback web-worker startup/shutdown passed within the full suite;
-  authentication/domain tests made no real AWS calls.
-- Source distribution built with version 1.0.0; canonical JSON, web assets,
-  manuals, dependency snapshot and tests verified in the archive.
-- Pinned web versions match the installed environment; `pip check`, Python
-  compilation, `sh -n run_pi.sh`, startup `--help` and `git diff --check` passed.
-- Fresh wheel installation was not run (wheel/build tools unavailable); the
-  source deployment path, sdist contents and installed-config lookup were checked.
-Physical Pi regression and AWS service verification were not performed during
-this source audit. Expression quality remains unproven as documented above.
-
-
 ## Validated reload and managed restart
 
 `robot.lifecycle.LifecycleService` owns the active snapshot, load timestamp and
 fixed status/reload/restart policy. The web worker uses a local process channel;
 it cannot submit commands or paths. Reload validates the entire saved file and
-applies logging level and iris appearance through their application-service
+applies logging level, iris appearance and camera preview through their application-service
 boundaries, preserving AWS SDK log suppression. Other changed fields are listed
 as restart-required. Authenticated restart requires CSRF and
 one-use explicit confirmation, then graceful runtime shutdown and exit 75.
@@ -159,21 +142,6 @@ one-use explicit confirmation, then graceful runtime shutdown and exit 75.
 no sudo/polkit or shell endpoint. Source sync includes the unit but never enables
 it. System actions remain separate from ordinary config forms. OS reboot and all
 previously deferred roadmap capabilities remain deferred.
-
-Earlier lifecycle verification before eye-appearance reload (Python 3.11.6):
-- Full suite: **258 passed, 1 skipped** in 187.15 seconds.
-- The only skip is the OpenCV preprocessing test at
-  `tests/vision/test_expression.py:105`: `cv2` is unavailable.
-- Focused lifecycle tests: 12 passed; focused web lifecycle tests: 4 passed.
-  The real HTTP-worker-to-parent logging reload test also passed separately.
-- Final service ordering/exit-code deployment contract: 1 passed, 11 deselected.
-- Source distribution metadata, canonical JSON, web assets, lifecycle modules,
-  dependency snapshot and service unit verified.
-- Python compilation, dependency consistency, shell syntax and diff whitespace
-  checks passed. No hardware, cloud or deployment commands were executed.
-Actual systemd/display-session integration on the Raspberry Pi remains unverified
-in this macOS environment; this is a deployment acceptance requirement.
-
 
 ## Eye appearance refinement
 
@@ -205,16 +173,54 @@ canonical document, then gives the typed RuntimeConfig to PhosRuntime. Its
 display-loop boundary safely queues the iris theme onto the asyncio render
 thread; EyeRenderer interpolates the color on subsequent frames. Reload does not
 rebuild Core, Vision, camera, BehaviorEngine, providers or the renderer object.
-Mixed changes apply logging and iris appearance while retaining all other changed
+Mixed changes apply logging, iris appearance and preview while retaining other changed
 fields in `restart_required`. Invalid configuration applies nothing.
 
-Final verification (Python 3.11.6):
-- Full suite: **277 passed, 1 skipped**; two real-worker loopback tests could
-  not bind sockets in the sandbox. Both passed when rerun with loopback access.
-- Combined result: **279 passed, 1 skipped**. The skip is the OpenCV
-  preprocessing test at `tests/vision/test_expression.py:105`; `cv2` is
-  unavailable in this environment.
-- Focused preview configuration, lifecycle reload, latest-frame snapshot,
-  renderer continuity and Web Admin persistence checks passed.
-- Raspberry Pi visual timing, actual camera color/placement and physical display
-  behavior still need target hardware verification.
+## Final release hardening
+
+The source version remains exactly **1.0.0**. Release status is **not ready to tag**
+until the remaining [release checklist](release-1.0.0.md#release-checklist) gates
+are verified. Earlier test counts are superseded by this audit; git history retains
+those historical records.
+
+Implemented fixes: preview defaults off; reload waits for camera lifecycle
+acceptance and preserves configuration-relative paths; failed/cancelled startup
+releases resources; shutdown drains reload tasks and Vision supervisor waiters;
+intentional preview-only camera stop does not trigger a subsystem failure; stopped
+pipelines clear snapshots; rapid toggling cannot build up encoder jobs; preview converts BGR to RGB for Tk
+without altering Vision/model preprocessing. Runtime
+and web-worker failures propagate a nonzero exit so systemd can recover.
+Invalid configuration applies nothing. A later hardware apply failure leaves
+previously successful appearance changes recorded and reports the failure.
+
+Verification (macOS, Python 3.11.6):
+
+- Focused runtime/main/lifecycle/configuration/AWS-mock/worker-cleanup checks:
+  **129 passed**.
+- Full suite rechecked on 2026-09-23: **285 passed, 1 skipped, 2 failed** in 219.08 seconds
+  (`.venv/bin/python -m pytest -q --tb=short -rs`). Both failures are sandbox
+  `PermissionError` binding localhost in `test_real_web_worker_serves_and_releases_port`
+  and `test_real_worker_reload_reaches_parent_application`; permission for an
+  unsandboxed rerun was declined. The skip is `tests/vision/test_expression.py:105`
+  because `cv2` is unavailable. No test was weakened/skipped to hide these failures.
+  Installing OpenCV and wheel and rerunning the localhost tests outside the
+  sandbox were requested again during this verification and declined. These
+  acceptance checks remain blocked; no additional implementation change was needed.
+- Final acknowledgement-path runtime/main/lifecycle/UI checks: **58 passed**
+  after retaining completion acknowledgement across an IPC timeout.
+- No real AWS calls or Pi/display/systemd operations were performed. Mobile/tablet
+  review covered responsive CSS/templates and form tests, not a physical browser.
+- `pip check`, canonical version/config validation, CLI help, shell syntax and
+  diff whitespace checks pass. Source archive built with 1.0.0 metadata and
+  required canonical config, unit, web assets and dependency snapshot verified.
+- Wheel/editable installation unavailable locally (`bdist_wheel` missing).
+  The local venv has an old installed 0.1.0 package; source launch and tests select
+  `src` explicitly. This is not the authoritative release version.
+- Targeted tracked-file scans found no AWS key/private-key patterns or tracked
+  generated artifacts. Functional deprecated CLI overrides, eye demo and paired
+  Vision benchmark are retained; no roadmap scaffolding was removed.
+
+The fresh-install guide now provides one complete path through dependencies,
+configuration, model/SDK selection, credentials and the recommended user service.
+Release documentation owns exact acceptance steps and performance limitations;
+no new Pi performance or recognition-quality claim is made.

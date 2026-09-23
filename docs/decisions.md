@@ -229,3 +229,14 @@ default, local to the PHOS display, never persisted or served over the network,
 and is live-reloadable without restarting PHOS or an already-running camera and
 Vision pipeline. Enabling preview may start the dormant existing pipeline;
 disabling it releases the camera only when no other Vision feature uses it.
+
+### 1.0.0 hardening clarification (ADR-018/021)
+
+Release hardening preserves the existing scope and boundaries. Runtime/worker
+failures must exit nonzero so the documented supervisor can recover. Preview
+reload acknowledges camera lifecycle acceptance before recording active settings;
+failed/cancelled starts release resources. Previously successful appearance
+changes remain recorded if a later hardware application fails. Invalid canonical
+configuration still applies nothing. The committed preview default remains off.
+Deprecated, functional CLI overrides remain during the ADR-015 migration; they
+are not a second persisted configuration or the production launch path.

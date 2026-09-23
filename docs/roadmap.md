@@ -12,7 +12,8 @@ The current implemented feature set is the complete 1.0.0 scope; see the
 - [x] Authenticated web administration, mandatory bootstrap password change and external secrets
 - [x] Eight configuration domains with isolated page saves and read-only status
 - [x] Release version, installation/user documentation and hardware-free regression tests
-- [x] Validated logging-level reload and confirmed supervisor-owned PHOS restart
+- [x] Validated logging-level, iris and camera-preview reload; confirmed supervisor-owned PHOS restart
+- [x] Release hardening for failure propagation, preview lifecycle cleanup and bounded preview work
 - [ ] Verify user systemd restart and display-session environment on the actual Pi
 - [ ] Repeat the complete release acceptance sequence on the Pi after these changes
 - [ ] Establish expression accuracy and calibrate neutral reactions on actual hardware

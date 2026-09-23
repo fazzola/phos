@@ -161,7 +161,13 @@ read/edit/validate/save boundary. It never accepts/stores/displays AWS credentia
 as normal settings. Its separate password store is not runtime configuration.
 Save does not apply settings. The lifecycle service can reload logging level,
 `display.iris_color` and all `vision.camera_preview` fields through runtime and
-display boundaries; other persisted changes require restart.
+display boundaries; other persisted changes require restart. Preview reload
+waits for runtime acceptance and preserves config-relative paths. The IPC client
+bounds its response wait to five seconds; a slow native camera start can finish
+after that timeout, so an unavailable response explicitly reports uncertainty
+and retires the channel until PHOS restarts. A hardware apply failure is reported; earlier successful appearance
+changes remain active and pending fields remain visible. This differs from an
+invalid configuration, which applies nothing.
 The editor may call `from_dict(..., check_paths=False)` to repair a removed model
 path; schema/types/ranges are still validated. Startup and saves always validate
 active paths.

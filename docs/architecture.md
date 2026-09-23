@@ -50,8 +50,9 @@ Camera
   -> Robot Core
   -> BehaviorEngine
   -> FaceState
-  -> EyeRenderer ────────────────────┐
-  -> latest local preview snapshot ──┴→ EyeDisplay composition
+  -> EyeRenderer -> EyeDisplay composition
+
+Vision latest preview snapshot -> PhosRuntime -> EyeDisplay composition
 ```
 
 Vision observes. Behavior interprets observations in the context of PHOS's own `RobotState`. `EyeRenderer` consumes only `FaceState` and handles rendering/animation details. The display adapter may compose an optional local diagnostic preview from a UI-neutral snapshot supplied by `PhosRuntime`; it never accesses camera or Vision providers.
@@ -207,7 +208,7 @@ remote-control/API/MCP/Voice services remain deferred after 1.0.0.
 
 `robot.lifecycle.LifecycleService` owns the active-configuration snapshot and
 allowed status/reload/restart operations. Reload validates the full canonical
-file before applying logging level and iris appearance through their
+file before applying logging level, iris appearance and camera preview through their
 application-service boundaries. Other changes remain pending. The parent process serves a bounded local process channel to the web
 worker; adapters cannot submit shell commands, paths or arbitrary configuration
 payloads. Future API/MCP surfaces must use the same policy service.
@@ -215,7 +216,10 @@ payloads. Future API/MCP surfaces must use the same policy service.
 The supplied user systemd service owns process replacement. A confirmed restart
 requests graceful runtime shutdown and exit code 75; systemd restarts the same
 entry point. The web adapter neither runs OS commands nor spawns replacements.
-Manual launches reject browser restart. OS reboot and general remote control
+Runtime subsystem and web-worker failures propagate as nonzero process exits for
+systemd recovery. Preview reload is acknowledged after camera start/stop acceptance;
+failed starts release partially acquired camera resources, and shutdown drains
+preview tasks and supervisor waiters. Manual launches reject browser restart. OS reboot and general remote control
 remain out of scope. See installation for display-session environment and service
 permissions. Status reflects configured values, not a new health-monitoring layer.
 

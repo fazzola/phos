@@ -356,7 +356,7 @@ def test_main_owns_enabled_worker_and_cleans_up_on_runtime_failure(setup, monkey
             return self
         def __exit__(self, *args):
             seen.append("stop")
-    async def fail(*, config, lifecycle=None):
+    async def fail(*, config, lifecycle=None, web_server=None):
         assert seen == ["start"]
         raise RuntimeError("runtime failed")
     monkeypatch.setattr("robot.web.server.WebServer", Worker)

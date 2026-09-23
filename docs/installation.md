@@ -1,305 +1,133 @@
 # PHOS installation on Raspberry Pi
 
-This guide installs the dependencies required to run PHOS from
-`/home/pi/phos` on a Raspberry Pi 3 with the HDMI display. The project source
-sync script copies `src/` and seeds `config/phos.json` once, so install dependencies separately
-on the Pi.
-
 ## PHOS 1.0.0 reproducible installation
 
-The documented release baseline is Raspberry Pi OS with a graphical desktop,
-Python 3.11+ and apt-provided camera/OpenCV/Tk packages. From your development
-checkout, `./run_pi.sh` copies the source, documentation, package metadata and
-`requirements-web.txt` to `/home/pi/phos`, creates required directories and seeds
-configuration only if it is absent. It does not install dependencies or restart
-PHOS. Review the SSH destination in that script for your Pi. A full checkout at
-`/home/pi/phos` is also supported.
+Use Raspberry Pi OS **with a graphical desktop**, Python 3.11+ and an 800×600
+HDMI display on the Pi 3. Tk needs an active X display (XWayland on a Wayland
+desktop). Raspberry Pi OS Lite alone is insufficient. The recommended production
+launch is the user systemd service below; terminal launch is for diagnostics.
+These instructions use the desktop user's `~/phos` (`/home/pi/phos` for user `pi`).
 
-On the Pi, run once:
+This is a reproducible source/dependency procedure, not a frozen OS image. Record
+`cat /etc/os-release`, `uname -m`, `python3 --version` and apt package versions
+with the release acceptance results. Actual fresh-Pi acceptance is still pending;
+see [release checklist](release-1.0.0.md#release-checklist).
+
+### 1. Install system dependencies and source
+
+On the Pi, as the desktop user:
 
 ```bash
 sudo apt update
-sudo apt install -y python3-venv python3-tk python3-picamera2 python3-opencv opencv-data
-cd /home/pi/phos
+sudo apt install -y git wget ca-certificates python3-venv python3-tk python3-picamera2 python3-opencv opencv-data rpicam-apps
+cd ~
+git clone https://github.com/fazzola/phos.git phos
+cd ~/phos
+git rev-parse HEAD
 python3 -m venv --system-site-packages .venv
 .venv/bin/python -m pip install -r requirements-web.txt
-.venv/bin/python -c "import tkinter, cv2, flask, flask_wtf, waitress; from picamera2 import Picamera2; print('Runtime imports OK')"
+.venv/bin/python -m pip check
+.venv/bin/python -c "import tkinter, cv2, flask, flask_wtf, waitress; from picamera2 import Picamera2; print('Runtime imports OK; OpenCV', cv2.__version__)"
 ```
 
-The web snapshot pins its direct and transitive dependencies to the release-tested
-versions. Hardware libraries stay in apt; do not pip-install the `vision` extra
-on the Pi. Record the Raspberry Pi OS image and apt package versions with your
-deployment: this procedure is not a frozen OS image.
+Use the audited commit when it becomes available; no `v1.0.0` tag is assumed to
+exist yet. The source checkout already contains `config/phos.json`; do not create
+an incomplete JSON file. No package installation is needed to run the source
+entry point. The web dependency snapshot is pinned; camera/OpenCV/Tk come from
+apt and are exposed to the venv by `--system-site-packages`. Do not pip-install
+the `vision` extra on the Pi. OpenCV DNN loads ONNX directly: **onnxruntime,
+TensorFlow and PyTorch are not required**.
 
-For optional AWS mode, also install the platform SDK:
+Alternative source transfer: review the destination in `run_pi.sh` and run it
+from your development checkout. It seeds a missing configuration and preserves
+existing Pi settings/models/administrator data; it neither installs dependencies
+nor restarts PHOS. Upgrades must merge new required fields from the complete
+canonical schema. The script has a site-specific destination, not auto-discovery.
+
+### 2. Check the camera and display
+
+Before starting PHOS, run this from the Pi desktop with the camera connected:
 
 ```bash
-sudo apt install -y python3-boto3
-.venv/bin/python -c "import boto3; print('AWS SDK import OK')"
+rpicam-hello --timeout 5000
+.venv/bin/python src/robot/ui/demo.py
 ```
 
-No AWS API call is made by these import checks. Keep credentials in the standard
-external environment/profile/role chain as described below. The existing
-`.[web]` and `.[aws]` extras remain available for full package installations;
-use `-c requirements-web.txt` when installing `.[web]` on the release baseline.
+Close the camera test before PHOS acquires it. In the eye demo use `1`–`5` for
+expressions, arrows for gaze and `q` to exit. Resolve camera connection/desktop
+permission problems before proceeding. Camera packages and setup follow
+[Raspberry Pi's supported camera documentation](https://www.raspberrypi.com/documentation/computers/camera_software.html).
 
-For local expressions, download and checksum the ONNX model in step 5. With
-expressions/tracking disabled, no model/camera is required to start eyes. Existing
-configurations must include the full canonical schema, including `web`; the sync
-script intentionally does not overwrite them or migrate them silently.
+### 3. Configure PHOS and Web Admin
 
-Start from the Pi's desktop session:
+Edit `~/phos/config/phos.json`. Release defaults start only eyes: tracking,
+expressions, camera preview and Web Admin are disabled. Keep this complete file;
+all six sections (`web`, `display`, `behavior`, `vision`, `expression`, `logging`)
+are required, including inactive provider fields and `vision.camera_preview`.
+Paths inside JSON resolve relative to its directory.
 
-```bash
-cd /home/pi/phos
-.venv/bin/python src/robot/main.py --config config/phos.json
-```
-
-To enable administration, set `web.enabled` true and `web.host` to the Pi LAN IP
-or `0.0.0.0`; the port is 8080 by default. Open `http://<PI-LAN-IP>:8080/`, use
-bootstrap password `phos`, complete the mandatory password change and log in
-again. See the [user manual](web-administration.md) for all eight domain pages.
-Stop with Ctrl+C and use the same command after configuration changes.
-
-## 1. Prepare Raspberry Pi OS
-
-Use a current Raspberry Pi OS image with a graphical desktop session. PHOS
-uses Tkinter for its fullscreen display, and face tracking uses the modern
-`rpicam`/Picamera2 camera stack.
-
-Update package indexes and install the default display runtime dependency:
-
-```bash
-sudo apt update
-sudo apt install -y python3-tk
-```
-
-## 2. Install face-tracking dependencies
-
-With a Raspberry Pi Camera connected, install the Raspberry Pi OS packages:
-
-```bash
-sudo apt install -y python3-picamera2 python3-opencv opencv-data
-```
-
-Use these packages with the system `python3`. They provide `picamera2`,
-`cv2`, and the OpenCV Haar Cascade data used by PHOS. Do not install
-Picamera2 with `pip` into the same system environment: Picamera2 depends on
-the Raspberry Pi camera stack and Raspberry Pi recommends installing it with
-`apt`.
-
-`opencv-python-headless` and `picamera2` are also listed as the project's
-optional `vision` dependencies in `pyproject.toml`, but that pip extra is not
-the recommended setup for the Pi's system Python/camera stack.
-`requirements.txt` contains the same Python dependencies for non-Pi
-development environments.
-
-## 3. Verify the camera and Python modules
-
-First verify that Raspberry Pi OS can access the connected camera:
-
-```bash
-rpicam-hello
-```
-
-Then verify that the same interpreter PHOS uses can import both libraries:
-
-```bash
-python3 -c "import cv2; from picamera2 import Picamera2; print('cv2', cv2.__version__, 'Picamera2 available')"
-```
-
-If either command fails, resolve the camera connection or the package
-installation before starting PHOS. The exact camera model and physical
-availability are recorded in `docs/hardware.md`.
-
-## 4. Copy PHOS to the Pi
-
-From the development machine, run the repository script:
-
-```bash
-./run_pi.sh
-```
-
-It synchronizes local `src/` to `/home/pi/phos/src/` on the host configured
-in `run_pi.sh`, copies release metadata/dependency files and docs, and copies
-`config/phos.json` only if the Pi has no such file.
-Existing Pi settings are not overwritten.
-For a first copy, create the destination directory on the Pi if necessary:
-
-```bash
-mkdir -p /home/pi/phos/src /home/pi/phos/config
-```
-
-## 5. Start PHOS
-
-The selected replacement candidate is OpenCV Zoo MobileFaceNet (FP32 ONNX).
-Pi CPU timings are recorded, but camera accuracy still requires validation in
-[Vision model evaluation](vision-model-evaluation.md) before production promotion.
-Download and verify the published model (no model conversion or new runtime needed):
+For trusted-LAN administration set `web.enabled` to `true` and `web.host` to the
+Pi's LAN address or `0.0.0.0`; default port is 8080. No AWS/password secrets belong
+in JSON. Validate before any camera/display startup:
 
 ```bash
 cd ~/phos
+PYTHONPATH=src .venv/bin/python -c "from pathlib import Path; from robot.config import RuntimeConfig; RuntimeConfig.from_file(Path('config/phos.json')); print('Configuration valid')"
+```
 
+Enable gaze with `vision.face_tracking_enabled: true`. Enable the local display
+picture-in-picture with `vision.camera_preview.enabled: true` (it is **not a web
+video stream**). Keep expressions off until choosing one provider below.
+
+### 4. Select optional expression processing
+
+Skip this step for eyes, tracking or camera preview alone. For AWS follow
+[optional AWS mode](#optional-aws-expression-mode). For local mode, install the
+configured MobileFaceNet candidate:
+
+```bash
+cd ~/phos
 mkdir -p models/expression
-
 wget -O models/expression/facial_expression_recognition_mobilefacenet_2022july.onnx \
-https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/facial_expression_recognition/facial_expression_recognition_mobilefacenet_2022july.onnx
-
+  https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/facial_expression_recognition/facial_expression_recognition_mobilefacenet_2022july.onnx
 echo '4f61307602fc089ce20488a31d4e4614e3c9753a7d6c41578c854858b183e1a9  models/expression/facial_expression_recognition_mobilefacenet_2022july.onnx' | sha256sum -c -
-
 wget -O models/expression/opencv-zoo-LICENSE \
-https://raw.githubusercontent.com/opencv/opencv_zoo/main/LICENSE
+  https://raw.githubusercontent.com/opencv/opencv_zoo/main/LICENSE
 ```
 
-Run from a graphical Raspberry Pi OS desktop session:
+Stop if the checksum differs. Set `expression.enabled: true` and
+`expression.provider: "local"`; retain the supplied model path, labels and
+preprocessing. No AWS dependency is needed. The candidate's recognition quality
+is not established; read [model evaluation](vision-model-evaluation.md).
+Keep neutral reactions disabled until calibrated. Revalidate the JSON.
+
+### 5. Start PHOS
+
+For a first foreground check from the desktop:
 
 ```bash
-cd /home/pi/phos
+cd ~/phos
 .venv/bin/python src/robot/main.py --config config/phos.json
 ```
 
-This same command is used for all modes. The committed configuration starts
-only the animated eyes. Edit `config/phos.json` with your normal text editor:
+Check the startup version is **1.0.0** and the logged configuration path is the
+file you edited. Escape leaves fullscreen; Ctrl+C stops PHOS. Stop this process
+before installing/starting the production service below.
 
-- Set `vision.face_tracking_enabled` true for local gaze tracking only.
-- Set `expression.enabled` true and keep `expression.provider` as `"local"`
-  for MobileFaceNet expression observations. The model/preprocessing fields
-  are already provided under `expression.local`; the downloaded file must exist.
-- Set `logging.expression_diagnostics` true temporarily to inspect detections,
-  inference and semantic decisions, then turn it off after verification.
-
-Restart after changes. Model and log paths resolve relative to the JSON file,
-not your terminal directory. The included model path starts with `../models/`.
-Malformed configuration and missing active model files fail before camera or
-fullscreen display startup. Ctrl+C stops PHOS; Escape leaves fullscreen.
-Do not change the candidate's channel/preprocessing settings without checking
-its model contract. FER+ rollback settings are in [Vision](vision.md).
-
-`config/phos.json` is both the canonical example and the user-editable file;
-there are no separate provider configuration files. You may copy the complete
-file to another location and select it with `--config`; update relative paths
-if moving it manually. See [all fields and validation rules](development.md#configuration).
-The old individual settings flags are deprecated overrides only. For upgrades,
-compare your Pi configuration with the canonical file and add any new required
-fields; the source sync deliberately preserves your settings.
-
-## Troubleshooting
-
-### `ModuleNotFoundError: No module named 'cv2'`
-
-Install OpenCV for the interpreter running PHOS:
-
-```bash
-sudo apt install -y python3-opencv opencv-data
-python3 -c "import cv2; print(cv2.__version__)"
-```
-
-### `ModuleNotFoundError: No module named 'picamera2'`
-
-Install Picamera2 from Raspberry Pi OS packages:
-
-```bash
-sudo apt install -y python3-picamera2
-python3 -c "from picamera2 import Picamera2; print('Picamera2 available')"
-```
-
-### Camera opens but finds no faces
-
-Confirm `rpicam-hello` works, ensure the face is well lit and visible, and
-confirm the camera is oriented correctly. PHOS does not save camera frames or
-face crops.
-
-## Sources
-
-Raspberry Pi documents Picamera2 as the supported Python API for the modern
-camera stack and recommends installation through `apt`: [Camera software
-documentation](https://www.raspberrypi.com/documentation/computers/camera_software.html).
-Its camera documentation covers physical camera installation and setup:
-[Raspberry Pi Camera documentation](https://www.raspberrypi.com/documentation/accessories/camera.html).
-
-## Optional AWS expression mode
-
-Keep the camera/OpenCV packages from step 2. Local ONNX mode needs no AWS
-package, account, credentials or network connection. For AWS mode on system
-Python, additionally install:
-
-```bash
-sudo apt install -y python3-boto3
-```
-
-Alternatively, in an existing virtual environment with access to the Pi system
-camera packages and a full repository checkout, use `python3 -m pip install
-'.[aws]'` (optional `boto3>=1.34` extra). Do not install this extra into the
-managed system Python using pip. boto3 brings botocore; no new ML runtime is
-needed. An AWS account, working network, a supported Rekognition region and
-permission for `rekognition:DetectFaces` are required. No S3 access is needed.
-
-Use the [standard SDK credential chain](https://docs.aws.amazon.com/boto3/latest/guide/credentials.html):
-external shared profiles/roles work without credential environment variables.
-For environment credentials, replace placeholders in your external shell/session:
-
-```bash
-export AWS_ACCESS_KEY_ID='<access-key-id>'
-export AWS_SECRET_ACCESS_KEY='<secret-access-key>'
-export AWS_SESSION_TOKEN='<session-token-if-using-temporary-credentials>'
-export AWS_DEFAULT_REGION='eu-west-1'
-```
-
-Omit `AWS_SESSION_TOKEN` for long-lived credentials; temporary credentials require
-it. `AWS_REGION` is also supported. Region precedence is PHOS configuration/CLI,
-then `AWS_REGION`, then the SDK (`AWS_DEFAULT_REGION` or profile). Credentials
-are never read manually or stored in PHOS JSON. Do not put secrets in committed
-files or issue/debug logs. PHOS does not use or create a `.env` file.
-
-In `config/phos.json`, change `expression.enabled` to true and
-`expression.provider` to `"aws"`. Retain the complete `expression.aws` block and
-edit its request limits/region if needed. Then run:
-
-```bash
-.venv/bin/python src/robot/main.py --config config/phos.json
-```
-
-**AWS mode sends selected cropped facial images to AWS.** No local ONNX file
-is required for this mode. Camera capture, selection and cropping remain local.
-The request/cache/backoff policy is documented in [Vision](vision.md#cloud-request-and-evidence-policy).
-To stop cloud processing, stop PHOS and set `expression.provider` to `"local"`
-with a valid local model, or set `expression.enabled` false; restart with the
-same command. To keep gaze without expression analysis, enable
-`vision.face_tracking_enabled`.
-
-For verification, enable `logging.expression_diagnostics` in JSON. Check
-`PHOS configuration loaded` and `Expression provider: aws`, then hold a well-lit
-face in view. Logs show attempts/cache/skips/latency; tracking should continue
-smoothly during requests. Leave/re-enter to verify stale results are discarded.
-Distinct samples are needed for temporal confirmation; short-term reactions
-are deliberately limited by the conservative cloud policy. Turn diagnostics
-off after testing. If AWS fails, UNKNOWN and bounded retries preserve local
-tracking/eyes without silently selecting another provider. Check boto3, region,
-external credentials, IAM permission and network. Automated tests do not verify
-recognition quality or cloud service availability on physical hardware.
-
-## Optional web administration
-
-Follow the [web administration user manual](web-administration.md) to install
-the web extra, add/enable the canonical `web` section and access the editor.
-It documents LAN URLs, first login with `phos`, mandatory password change, local
-recovery and HTTP security limits. Configuration edits use the existing model.
-Logging level and iris appearance can be applied through **System actions → Reload
-configuration**; other settings require restart. AWS credentials remain external. Existing deployments must
-add the required `web` section from the canonical file when upgrading.
+When web is enabled, open `http://<PI-LAN-IP>:8080/`, enter `phos`, set a different
+12–256 character password, then log in again. There is no username. Password
+changes revoke all sessions. Use the [administration manual](web-administration.md)
+for domain editing, validation, recovery and trusted-LAN HTTP limitations.
 
 ## Managed startup and browser restart
 
-The optional **user systemd service** in `deploy/phos.service` enables the browser's
-Restart PHOS action. It runs under the desktop user's existing hardware/file
-permissions, with no root service, sudo, polkit rule or remote shell endpoint.
-`run_pi.sh` copies the unit but never installs/enables it automatically.
-
-After the normal dependency installation, open a terminal **in the Pi graphical
-desktop as the same user who runs PHOS**, stop any manually running PHOS, then:
+The **recommended production launch** is `deploy/phos.service`, a user systemd
+service running with the desktop user's camera/display/file permissions. No root
+service, sudo endpoint or adapter-owned shell command is involved. From a terminal
+**in that user's Pi graphical desktop**, after stopping any foreground PHOS:
 
 ```bash
-cd /home/pi/phos
+cd ~/phos
 mkdir -p ~/.config/systemd/user
 cp deploy/phos.service ~/.config/systemd/user/phos.service
 systemctl --user import-environment DISPLAY
@@ -309,48 +137,115 @@ fi
 systemctl --user daemon-reload
 systemctl --user enable --now phos.service
 systemctl --user status phos.service
+journalctl --user -u phos.service -n 100 --no-pager
 ```
 
-The unit uses `%h/phos` and `%h/phos/config/phos.json`; if your installation is
-elsewhere, adjust WorkingDirectory/ExecStart locally before enabling it. It
-starts the same `.venv/bin/python src/robot/main.py --config config/phos.json`
-application. PHOS/Tk requires a usable DISPLAY (including XWayland on Wayland).
-Do not enable user lingering/headless boot for this display application. Automatic
-start on login depends on the desktop activating `graphical-session.target`;
-if that desktop does not, import its display environment and run
-`systemctl --user start phos.service` from the desktop session. Check the journal
-for Tk/display errors; do not hard-code another user's display authorization.
+The unit uses `%h/phos`, `.venv/bin/python` and `%h/phos/config/phos.json`. Adjust
+WorkingDirectory/ExecStart locally if installing elsewhere. Tk must have a usable
+DISPLAY and authorization; do not enable lingering/headless boot for this app.
+Login startup depends on the desktop activating `graphical-session.target` and
+importing its display environment. Check `systemctl --user is-active
+graphical-session.target`. If the desktop does not manage that target/environment,
+run the import commands and `systemctl --user start phos.service` at each desktop
+login. Automatic login startup on that desktop remains an acceptance prerequisite.
 
-Terminal administration:
+Operations:
 
 ```bash
 systemctl --user restart phos.service
 systemctl --user stop phos.service
+systemctl --user start phos.service
 journalctl --user -u phos.service -n 100 --no-pager
 ```
 
-The unit allows up to three starts within 60 seconds to bound failure loops.
-If startup fails repeatedly, fix the config/dependencies/display, then run
-`systemctl --user reset-failed phos.service` and `systemctl --user start phos.service`.
-Avoid repeated browser restarts within that interval.
+In Web Admin, **System actions → Reload configuration** applies logging level,
+iris theme and every camera-preview setting. Other changed fields remain listed
+as restart-required. **Restart PHOS** requires confirmation, shuts down the runtime
+and worker, exits with code 75 and lets systemd start the same entry point after
+three seconds. Reconnect at the saved host/port and log in again. Disabling web
+intentionally removes browser access. Manual launches cannot offer browser restart.
+This never reboots the Pi.
 
-The service environment is not your interactive shell environment. Prefer the
-standard AWS SDK shared profile/role chain for the service user. If using AWS
-environment variables, explicitly import the relevant existing variable names
-into the user manager before starting/restarting the service; never put their
-values in `phos.json`, the web UI or a committed unit. The web worker does not
-probe or display those values.
+Unexpected runtime or web-worker failure exits nonzero for systemd recovery.
+The unit limits starts to three per 60 seconds and kills the entire service
+control group on stop (20-second shutdown deadline). An explicit `systemctl stop`
+does not restart it. Fix configuration/dependency/display errors before recovery:
 
-Restart is enabled only when systemd's `INVOCATION_ID` and the supplied unit's
-`PHOS_SERVICE_MANAGED=1` marker are present. This marker is deployment metadata,
-not a second runtime-configuration mechanism; do not set it in a manual launch.
-The reusable lifecycle service requests graceful runtime shutdown with exit code
-75, and the unit's `RestartForceExitStatus=75` starts a fresh process after three
-seconds. The web adapter never invokes systemctl, a shell or another executable.
-The unit also restarts unexpected nonzero exits; `systemctl stop` does not restart
-it. These semantics follow the [systemd service documentation](https://github.com/systemd/systemd/blob/main/man/systemd.service.xml).
+```bash
+systemctl --user reset-failed phos.service
+systemctl --user start phos.service
+```
 
-Browser restart may disconnect briefly while the old worker closes. Sessions
-are invalidated. Reconnect and log in at the saved host/port; disabling the web
-service intentionally removes browser access after restart. This restarts only
-PHOS, never the Raspberry Pi. OS reboot remains deferred.
+The service marker `PHOS_SERVICE_MANAGED=1` plus systemd's `INVOCATION_ID` enables
+browser restart; neither is a normal runtime setting. Do not set the marker in
+manual launches. See [systemd service semantics](https://github.com/systemd/systemd/blob/main/man/systemd.service.xml).
+
+## Optional AWS expression mode
+
+Camera/OpenCV remain required. Install the SDK into the Pi system environment
+which the venv can access:
+
+```bash
+sudo apt install -y python3-boto3
+cd ~/phos
+.venv/bin/python -c "import boto3; print('AWS SDK import OK')"
+```
+
+Configure credentials **outside the repository** using the
+[standard Boto3 credential chain](https://docs.aws.amazon.com/boto3/latest/guide/credentials.html),
+preferably the service user's `~/.aws/credentials` and `~/.aws/config` or a role.
+Protect credential files with owner-only permissions. The default shared profile
+needs no shell environment import. The AWS account must allow
+`rekognition:DetectFaces` in the selected supported region; no S3 access is needed.
+
+For a named profile already configured for this desktop user:
+
+```bash
+export AWS_PROFILE=phos
+systemctl --user import-environment AWS_PROFILE
+systemctl --user restart phos.service
+```
+
+For externally supplied environment credentials, import only the existing names
+needed by your session before service start/restart:
+
+```bash
+systemctl --user import-environment AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION
+# Only when using temporary credentials:
+systemctl --user import-environment AWS_SESSION_TOKEN
+```
+
+Do not put secret values in JSON, unit files, shell history or issue logs. The
+service does not automatically inherit interactive shell variables. Region
+precedence is `expression.aws.region`, `AWS_REGION`, then SDK settings
+(`AWS_DEFAULT_REGION` or profile). PHOS does not load a `.env` file.
+
+Set `expression.enabled: true`, `expression.provider: "aws"` and the non-secret
+`expression.aws` policy. No ONNX model is required. Restart PHOS. **Selected facial
+crops leave the Pi and are sent to AWS**. Import checks and automated tests make
+no AWS calls. Perform live AWS acceptance only with an authorized account.
+
+Requests are single-flight, cached, rate-limited and backed off on error; they do
+not silently switch providers. Diagnostics show sanitized latency/request counts.
+Switching provider or disabling expressions requires restart. See
+[Vision policy](vision.md#cloud-request-and-evidence-policy).
+
+## Troubleshooting
+
+- Missing `cv2`/`picamera2`: use the apt packages and the venv created with
+  `--system-site-packages`; verify imports with `.venv/bin/python`.
+- Missing image: confirm `vision.camera_preview.enabled`, the startup config
+  path, and updated Python source; reload/restart. Check `phos.log` or journal for
+  `Camera preview reload failed` or `Could not render camera preview`.
+- Tk startup failure: launch/import DISPLAY and XAUTHORITY from the actual desktop
+  session; SSH alone does not supply display authorization.
+- No faces: check lighting/framing and `rpicam-hello` with PHOS stopped. Use
+  `logging.expression_diagnostics` temporarily; restart to apply it.
+- Config save/reload rejection: correct the complete schema and active model/log
+  paths. Save alone never changes the running configuration.
+- No browser after restart: use the newly saved address/port, check the journal
+  and service start limit. Restart invalidates sessions.
+
+Deprecated per-setting CLI overrides are still functional for compatibility;
+production uses only `--config`. Supported eye and Vision diagnostic commands
+remain available; no obsolete provider-specific JSON files are required.

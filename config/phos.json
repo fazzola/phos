@@ -24,7 +24,7 @@
     "capture_fps": 15.0,
     "detection_fps": 4.0,
     "camera_preview": {
-      "enabled": true,
+      "enabled": false,
       "position": "bottom_right",
       "scale": 0.25,
       "max_fps": 5,

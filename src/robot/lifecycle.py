@@ -100,10 +100,9 @@ class LifecycleService:
                 if (self.active["display"]["iris_color"] != saved["display"]["iris_color"]
                         and self._apply_appearance is None):
                     return {"ok": False, "error": "Runtime appearance service is not ready. No settings were applied; retry reload shortly."}
-                preview_changed = any(changed_fields(self.active["vision"]["camera_preview"],
-                    saved["vision"]["camera_preview"], "vision.camera_preview"))
                 preview_paths = changed_fields(self.active["vision"]["camera_preview"],
                     saved["vision"]["camera_preview"], "vision.camera_preview")
+                preview_changed = bool(preview_paths)
                 if preview_changed and self._apply_camera_preview is None:
                     return {"ok": False, "error": "Runtime camera preview service is not ready. No settings were applied; retry reload shortly."}
                 if self.active["display"]["iris_color"] != saved["display"]["iris_color"]:
@@ -117,7 +116,9 @@ class LifecycleService:
                     try:
                         self._apply_camera_preview(config)
                     except Exception:
-                        return {"ok": False, "error": "The running display could not accept camera preview settings. No active configuration was recorded; retry reload."}
+                        logging.getLogger(__name__).exception("Camera preview reload failed")
+                        return {"ok": False, **self._snapshot(saved), "applied": applied,
+                                "error": "Camera preview could not be applied. Earlier appearance changes may already be active. Check PHOS logs, then retry reload or restart."}
                     self.active["vision"]["camera_preview"] = deepcopy(saved["vision"]["camera_preview"])
                     applied.extend(preview_paths)
                 if self.active["logging"]["level"] != saved["logging"]["level"]:

@@ -108,6 +108,7 @@ class VisionPipeline(Behavior):
         if self._task is not None:
             raise RuntimeError("Vision pipeline is already running.")
         self._face_selector.reset()
+        self._preview_snapshot = None
         self._next_detection_at = self._next_expression_at = 0.0
         self._face_present = False
         if self._smoother is not None:
@@ -116,6 +117,7 @@ class VisionPipeline(Behavior):
         self._task = asyncio.create_task(self._run(), name="vision-pipeline")
 
     async def stop(self) -> None:
+        self._preview_snapshot = None
         if self._task is not None:
             self._task.cancel()
             try:

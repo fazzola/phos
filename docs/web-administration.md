@@ -42,7 +42,8 @@ An explicit LAN interface IP is more restrictive than `0.0.0.0`, which binds all
 IPv4 interfaces. IPv6 literals are also accepted. Hostnames are not bind settings.
 No separate web CLI flags exist.
 
-Start from the Pi's graphical desktop session:
+Use the [user systemd service](installation.md#managed-startup-and-browser-restart)
+for production and browser restart. For a foreground diagnostic run:
 
 ```bash
 cd /home/pi/phos
@@ -214,7 +215,8 @@ procedure. Do not delete only `password.json` while the server is running.
 - Filesystem access is trusted. The editor can select model/cascade/log paths
   within the privileges of the PHOS OS account. Run as a normal user, not root.
 - Configurations/credentials are atomically replaced, but there is no automatic
-  backup, cross-process edit lock, subsystem hot reload or high-availability service.
+  backup, cross-process edit lock, arbitrary subsystem hot reload or high-availability service. A dead web worker
+  now causes graceful parent shutdown and a nonzero exit for systemd recovery.
 
 Implementation uses [Flask security guidance](https://flask.palletsprojects.com/en/stable/web-security/),
 [Flask-WTF CSRF protection](https://flask-wtf.readthedocs.io/en/1.2.x/csrf/),
@@ -315,3 +317,12 @@ file edits; a file changed or hardware removed after validation can still cause
 startup to fail. Systemd bounds repeated startup failures; inspect its journal
 and repair locally as described in installation. A lifecycle channel failure
 reports unavailable rather than pretending that settings were applied.
+
+Preview reload failures are shown as errors and logged in the parent. Earlier
+successful appearance changes may already be active; inspect System actions
+after correcting the camera/dependency problem. Invalid JSON/schema applies
+nothing. An accepted preview configuration does not certify live image quality;
+check the physical display and logs. The lifecycle channel waits up to five
+seconds. If a native camera start takes longer, the action may still complete;
+the response reports uncertainty and the channel stays unavailable until PHOS
+restarts. Check locally rather than assuming the operation was cancelled.

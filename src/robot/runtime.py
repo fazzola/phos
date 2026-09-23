@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import replace
 from typing import Callable, Optional
 
 from robot.config import RuntimeConfig
@@ -46,6 +45,8 @@ class PhosRuntime:
         self._loop = None
         self._vision_changed: Optional[asyncio.Event] = None
         self._vision_lock = asyncio.Lock()
+        self._preview_tasks = set()
+        self._stopping = False
         self._unsubscribers: list[Callable[[], None]] = []
         self._started = False
         self._vision_started = False
@@ -55,20 +56,48 @@ class PhosRuntime:
         self._eye_render_loop.request_appearance(iris_color=config.iris_color)
 
     def apply_camera_preview(self, config: RuntimeConfig) -> None:
-        """Queue preview configuration through runtime and display boundaries."""
-        self._eye_render_loop.request_preview_settings(_preview_settings(config))
-        names = ("camera_preview_enabled", "camera_preview_position", "camera_preview_scale",
-                 "camera_preview_max_fps", "camera_preview_show_face_box",
-                 "camera_preview_show_expression", "camera_preview_show_confidence")
-        if self._config is not None:
-            self._config = replace(self._config, **{name: getattr(config, name) for name in names})
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._queue_preview_reconcile)
+        """Apply from the lifecycle thread and acknowledge runtime acceptance."""
+        loop = self._loop
+        if loop is None or not self._started or self._stopping:
+            raise RuntimeError("PHOS runtime is not ready for preview reload")
+        try:
+            caller_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            caller_loop = None
+        if caller_loop is loop:
+            raise RuntimeError("Preview reload must use the lifecycle thread")
+        future = asyncio.run_coroutine_threadsafe(self._apply_camera_preview(config), loop)
+        # The IPC client bounds its response wait and reports an in-flight result
+        # as uncertain. Keep this acknowledgement tied to actual completion:
+        # native camera startup may outlast the HTTP request. Shutdown cancels
+        # and drains the task, so it cannot start a camera after runtime exit.
+        future.result()
 
-    def _queue_preview_reconcile(self):
-        if self._vision_changed is not None:
-            self._vision_changed.set()
-        asyncio.create_task(self._reconcile_vision_preview())
+    async def _apply_camera_preview(self, config):
+        task = asyncio.current_task()
+        self._preview_tasks.add(task)
+        try:
+            async with self._vision_lock:
+                if self._stopping or not self._started:
+                    raise RuntimeError("PHOS runtime is stopping")
+                names = ("camera_preview_enabled", "camera_preview_position", "camera_preview_scale",
+                         "camera_preview_max_fps", "camera_preview_show_face_box",
+                         "camera_preview_show_expression", "camera_preview_show_confidence")
+                previous = self._config
+                updated = RuntimeConfig.from_dict(previous.to_dict(), base_dir=previous._base_dir,
+                    overrides={name: getattr(config, name) for name in names})
+                # Validate the effective configuration, retaining pending restart fields.
+                self._config = updated
+                try:
+                    await self._reconcile_vision_preview()
+                    self._eye_render_loop.request_preview_settings(_preview_settings(updated))
+                except BaseException:
+                    self._config = previous
+                    if self._vision_pipeline is not None:
+                        self._vision_pipeline.configure_preview(previous.camera_preview_enabled)
+                    raise
+        finally:
+            self._preview_tasks.discard(task)
 
     async def _supervise_vision(self):
         while True:
@@ -80,10 +109,13 @@ class PhosRuntime:
                 continue
             wait_task = asyncio.create_task(self._vision_pipeline.wait())
             change_task = asyncio.create_task(self._vision_changed.wait())
-            done, pending = await asyncio.wait((wait_task, change_task), return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
+            try:
+                done, _ = await asyncio.wait((wait_task, change_task), return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for task in (wait_task, change_task):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(wait_task, change_task, return_exceptions=True)
             if change_task in done:
                 self._vision_changed.clear()
                 if not self._vision_started:
@@ -104,32 +136,40 @@ class PhosRuntime:
     async def _reconcile_vision_preview(self) -> None:
         if self._vision_pipeline is None or self._config is None:
             return
-        async with self._vision_lock:
-            configure_preview = getattr(self._vision_pipeline, "configure_preview", None)
-            if configure_preview is not None:
-                configure_preview(self._config.camera_preview_enabled)
-            wanted = self._config.vision_enabled or self._vision_forced
-            if wanted and not self._vision_started:
-                try:
-                    await self._vision_pipeline.start()
-                    self._vision_started = True
-                    logger.info("PHOS vision pipeline started for camera preview")
-                    if self._vision_changed is not None:
-                        self._vision_changed.set()
-                except Exception:
-                    self._vision_started = False
-                    logger.exception("Could not start the optional camera preview")
-            elif not wanted and self._vision_started:
+        configure_preview = getattr(self._vision_pipeline, "configure_preview", None)
+        if configure_preview is not None:
+            configure_preview(self._config.camera_preview_enabled)
+        wanted = self._config.vision_enabled or self._vision_forced
+        if wanted and not self._vision_started:
+            self._vision_started = True
+            try:
+                await self._vision_pipeline.start()
+                logger.info("PHOS vision pipeline started for camera preview")
+            except BaseException:
+                # Camera ownership may already have been acquired before failure.
                 await self._vision_pipeline.stop()
                 self._vision_started = False
-                logger.info("PHOS vision pipeline stopped after preview was disabled")
-                if self._vision_changed is not None:
-                    self._vision_changed.set()
+                raise
+            finally:
+                self._vision_changed.set()
+        elif not wanted and self._vision_started:
+            # Tell the supervisor before awaiting stop, which completes wait().
+            self._vision_started = False
+            self._vision_changed.set()
+            try:
+                await self._vision_pipeline.stop()
+            except BaseException:
+                # Retain ownership so final shutdown retries cleanup.
+                self._vision_started = True
+                self._vision_changed.set()
+                raise
+            logger.info("PHOS vision pipeline stopped after preview was disabled")
 
     async def start(self) -> None:
         if self._started:
             raise RuntimeError("PHOS runtime is already running.")
         self._unsubscribers = [self.core.events.subscribe(STATE_CHANGED, self._log_state_transition)]
+        self._stopping = False
         self._loop = asyncio.get_running_loop()
         self._vision_changed = asyncio.Event()
         try:
@@ -173,6 +213,7 @@ class PhosRuntime:
                 except Exception as error:
                     logger.exception("PHOS subsystem failed", exc_info=error)
                     await self._transition_to_error(type(error).__name__)
+                    raise
         finally:
             for task in [stop_task, *supervisors]:
                 if not task.done():
@@ -181,6 +222,12 @@ class PhosRuntime:
             await self.stop()
 
     async def stop(self) -> None:
+        self._stopping = True
+        tasks = tuple(self._preview_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._loop = None
         if self._vision_started and self._vision_pipeline is not None:
             try:
                 await self._vision_pipeline.stop()
@@ -254,8 +301,8 @@ def build_runtime(
 
 
 def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optional[VisionPipeline]:
-    if not (config.vision_enabled or config.web_enabled):
-        return None
+    # Construct a dormant owner for later preview reload; constructors do not
+    # import camera/OpenCV dependencies or acquire hardware.
     expression_provider = None
     smoother = None
     if config.expression_enabled and config.expression_provider == "aws":
