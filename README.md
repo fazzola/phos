@@ -7,6 +7,9 @@ face tracking, local/AWS expression observations and authenticated configuration
 administration. See the [release scope and limitations](docs/release-1.0.0.md),
 [installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
+## Contact
+@phosairobot
+
 ## Current hardware
 - Raspberry Pi 3
 - 5-inch 800x600 display
