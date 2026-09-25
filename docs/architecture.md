@@ -100,9 +100,15 @@ a sustained pose, and needs confirmed alternative evidence plus a cooldown
 to rearm. UNKNOWN allows normal decay. Face tracking and blink timing
 remain independent from expression inference.
 
-`VisualAccent` is deliberately provider-neutral. A future WS2812B LED-ring
-adapter may consume the same semantic state, but no LED integration or hardware
-control belongs in the current display/Vision path.
+`VisualAccent` is deliberately provider-neutral. The optional WS2812B LED-ring
+controller consumes the same `FaceState` semantic accent and strength through a
+separate low-rate worker. It does not receive Vision, IMU or sensor objects and
+does not alter `BehaviorEngine` decisions or eye rendering.
+
+```text
+BehaviorEngine -> FaceState -> EyeRenderer -> display
+                         \-> LEDRingController -> local socket -> root LED helper -> WS2812BProvider -> ring
+```
 
 ## Runtime
 

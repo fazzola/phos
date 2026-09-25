@@ -27,6 +27,7 @@ GROUPS = {
                 ("imu", "GY-521 / MPU-6050 motion", ("sensors.imu.",), None)],
     "network": [("listener", "Administration address", ("web.host", "web.port"), None)],
     "display": [("display", "Display", ("display.",), None),
+                ("led-ring", "WS2812B LED ring", ("led_ring.",), None),
                 ("behavior", "Eye behavior", ("behavior.",), None)],
     "vision": [("vision", "Camera & tracking", ("vision.face_tracking_enabled", "vision.camera_resolution", "vision.capture_fps", "vision.detection_fps"), None),
                ("camera-preview", "Camera picture-in-picture preview", ("vision.camera_preview.",), None),

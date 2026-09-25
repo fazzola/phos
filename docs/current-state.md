@@ -252,7 +252,7 @@ and type field; Web Admin offers both types and shows the active sensor.
 See [installation](installation.md#optional-environmental-sensor) for exact
 Pi commands and [hardware](hardware.md#bme280) for expected signal wiring and
 unverified breakout details. Physical I2C/accuracy/combined-runtime acceptance
-remains pending. The CCS811 and MPU-6050 extensions are recorded below; LED-ring work has not started.
+remains pending. The CCS811, MPU-6050 and LED-ring extensions are recorded below.
 
 Verification on 2026-09-23 (macOS, Python 3.11.6):
 
@@ -406,3 +406,8 @@ Horizontal IMU tilt now has explicit mirrored eye asymmetry: TILT_LEFT opens the
 left eye and TILT_RIGHT opens the right. Forward/back and transient IMU alerts
 keep equal eye sizes. The renderer receives only signed FaceState intent and
 smoothly interpolates left/right openings independently.
+
+The optional WS2812B ring is now implemented as a separate `FaceState` semantic
+consumer. Its provider is lazy-loaded and disabled by default; it never receives
+raw IMU, Vision or sensor input. Physical electrical and Pi acceptance remain
+pending.
