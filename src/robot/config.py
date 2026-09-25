@@ -111,6 +111,10 @@ _SCHEMA = {
     "display": {"width": "display_width", "height": "display_height", "fps": "display_fps",
                 "fullscreen": "fullscreen", "transition_seconds": "display_transition_seconds",
                 "iris_color": "iris_color"},
+    "led_ring": {"enabled": "led_ring_enabled", "led_count": "led_ring_led_count",
+                 "gpio_pin": "led_ring_gpio_pin", "brightness": "led_ring_brightness",
+                 "base_color": "led_ring_base_color", "follow_visual_state": "led_ring_follow_visual_state",
+                 "update_rate_hz": "led_ring_update_rate_hz"},
     "behavior": {"blink_interval_seconds": "blink_interval_seconds", "gaze_interval_seconds": "gaze_interval_seconds",
                  "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second",
                  "imu_reaction_strength": "imu_reaction_strength", "imu_tilt_gaze_strength": "imu_tilt_gaze_strength",
@@ -232,6 +236,13 @@ class RuntimeConfig:
     fullscreen: bool
     display_transition_seconds: float
     iris_color: str
+    led_ring_enabled: bool
+    led_ring_led_count: int
+    led_ring_gpio_pin: int
+    led_ring_brightness: float
+    led_ring_base_color: str
+    led_ring_follow_visual_state: bool
+    led_ring_update_rate_hz: float
     blink_interval_seconds: Tuple[float, float]
     gaze_interval_seconds: Tuple[float, float]
     face_gaze_smoothing: float
@@ -418,6 +429,14 @@ class RuntimeConfig:
         number("imu_motion_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
         if self.imu_motion_impact_threshold_m_s2 <= self.imu_motion_movement_threshold_m_s2:
             raise ConfigurationError("sensors.imu.motion.impact_threshold_m_s2 must exceed movement_threshold_m_s2")
+        number("led_ring_led_count", minimum=0, inclusive=True, maximum=1024, integer=True)
+        number("led_ring_gpio_pin", minimum=0, inclusive=True, maximum=27, integer=True)
+        number("led_ring_brightness", minimum=0, inclusive=True, maximum=1)
+        number("led_ring_update_rate_hz", minimum=1, inclusive=True, maximum=30)
+        if self.led_ring_base_color not in {"cyan", "blue", "green", "turquoise", "amber", "violet", "white"}:
+            raise ConfigurationError("led_ring.base_color must be a supported named color")
+        if self.led_ring_enabled and self.led_ring_led_count <= 0:
+            raise ConfigurationError("led_ring.led_count must be positive when LED ring is enabled")
         number("web_port", integer=True, maximum=65535)
         try:
             ipaddress.ip_address(self.web_host)
@@ -447,7 +466,7 @@ class RuntimeConfig:
         number("imu_reaction_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("ccs811_enabled", "environmental_enabled", "imu_enabled", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
+        for name in ("ccs811_enabled", "environmental_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
                      "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
                      "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
             if type(getattr(self, name)) is not bool:

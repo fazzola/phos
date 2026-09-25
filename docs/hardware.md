@@ -157,7 +157,11 @@ Before physical acceptance:
 
 ## WS2812B RGB LED ring
 
-PHOS will include a WS2812B addressable RGB LED ring for visual feedback in addition to the face displayed on screen.
+PHOS supports an optional WS2812B addressable RGB LED ring for visual feedback
+in addition to the face displayed on screen. `robot.hardware.ws2812b.WS2812BProvider`
+uses the optional `rpi-ws281x` library; a separate low-rate controller consumes
+only provider-neutral `FaceState` semantic accent and strength. Vision, IMU and
+sensors never address the ring directly.
 
 Intended role:
 
@@ -166,7 +170,10 @@ Intended role:
 - provide activity/attention feedback;
 - potentially complement states such as listening, thinking, speaking, sleeping, warning, or error.
 
-The mapping between colors/animations and PHOS states is **not defined yet** and belongs to a later behavior/integration decision.
+The controller uses uniform, lightweight effects: configured base color is
+steady for neutral; warm and curious pulse gently; alert pulses amber; sleepy
+fades dim violet; error is steady red. The normal semantic alert state covers
+short IMU shake/impact behavior through its existing transient FaceState intent.
 
 ### Electrical considerations
 
@@ -182,7 +189,22 @@ Before wiring the ring:
 - select and document the final GPIO only after checking compatibility with the chosen Raspberry Pi LED driver/library;
 - consider the usual WS2812B data-line protection and supply decoupling recommended for the final wiring.
 
-Brightness should eventually be limited in software both for power consumption and to avoid excessive visual intensity, but that behavior is not part of this hardware document.
+PHOS limits configured brightness to 0–1 and defaults to 30%, but this is not a
+power-supply guarantee. Estimate worst-case current from the exact LED count and
+manufacturer data (commonly up to roughly 60 mA per LED at full white) before
+selecting a supply. Use a suitably rated external 5 V supply where that estimate
+or the ring's documentation requires it; do not power a substantial ring from a
+Pi GPIO pin. Connect the Pi ground and LED supply ground together. A 3.3 V to 5 V
+data-level shifter may be needed for reliable operation; add sensible data-line
+protection and supply decoupling according to the actual ring documentation.
+
+`led_ring.gpio_pin` and `led_ring.led_count` are hardware settings and require
+restart. Because the selected driver requires mailbox/physical-memory access, a
+root-owned LED-only helper owns GPIO/DMA and exposes a group-writable local Unix
+socket to the normal PHOS user service. Enabled, brightness, base color, semantic
+following and update rate are live-reloadable. Missing helper/GPIO/write failures
+mark the ring unavailable and are rate-limited in logs; eye rendering and PHOS
+continue normally.
 
 ## Hardware/software boundary
 

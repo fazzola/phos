@@ -23,7 +23,7 @@ To keep a separate deployment copy, copy the full canonical file, edit it and
 pass its path explicitly. Keep deployment changes out of commits if inappropriate.
 No file may contain credentials.
 
-The seven required sections are `web`, `display`, `behavior`, `vision`, `expression`
+The eight required sections are `web`, `display`, `led_ring`, `behavior`, `vision`, `expression`
 (with `smoothing`, `local`, `aws`), `sensors` (with `environmental`, `ccs811` and `imu`) and `logging`. `vision` includes `detector`.
 Only the implemented environmental, CCS811 and MPU-6050 services have sensor configuration; there are no speculative runtime/voice settings. Every field in the
 canonical file is required, including null values and inactive-provider settings;
@@ -40,6 +40,7 @@ must be finite; booleans must be JSON booleans, not strings or numbers.
 | `sensors.ccs811` | `enabled`: boolean; `i2c_address`: canonical lowercase `"0x5a"` or `"0x5b"`, bus 1; `poll_interval_seconds`: finite 1–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All four require PHOS restart. |
 | `sensors.imu` | `enabled`: boolean; `i2c_address`: canonical lowercase `"0x68"` or `"0x69"`, bus 1; `poll_interval_seconds`: finite 0.05–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All four require PHOS restart. |
 | `sensors.imu.motion` | `movement_threshold_m_s2`, `tilt_threshold_m_s2`, `shake_threshold_deg_s`, `impact_threshold_m_s2`, `confirmation_seconds`, `cooldown_seconds`: finite thresholds/timing. Impact must exceed movement. Also required: `tilt_exit_threshold_m_s2` (positive, below enter; both at most standard gravity), and distinct signed `lateral_axis` / `forward_axis` mounting axes. All motion fields are live-reloadable and do not reinitialize I2C. See installation for normalized threshold semantics. |
+| `led_ring` | `enabled`: boolean; `led_count`: 0–1024 integer, positive when enabled; `gpio_pin`: GPIO 0–27; `brightness`: 0–1; `base_color`: named iris color; `follow_visual_state`: boolean; `update_rate_hz`: 1–30. Pin/count require restart. All other fields are live-reloadable. |
 | `behavior` IMU fields | `imu_reaction_strength`, `imu_tilt_gaze_strength`, `imu_shake_reaction_strength`, and `imu_impact_reaction_strength`: 0–1; impact strength must exceed shake strength. `imu_tilt_eye_asymmetry_strength`: 0–0.5 signed-eye delta. Shake/impact duration: 0.1–30 seconds; cooldown: 0–3600 seconds. These eight fields are live-reloadable. |
 | `web` | `enabled`: start the administration worker; `host`: IPv4/IPv6 bind address; `port`: integer 1–65535. See the [web manual](web-administration.md). |
 | `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration; `iris_color`: one of cyan, blue, green, turquoise, amber, violet or white. Iris theme is a renderer style choice and applies after validated configuration reload. |

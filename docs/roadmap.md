@@ -47,7 +47,8 @@ establish hardware acceptance. Sensor-driven behavior remains deferred.
 - [x] Optional smbus2 MPU-6050 adapter with typed six-axis readings and bounded worker lifecycle.
 - [x] Canonical configuration, Web Admin editor/status and hardware-free adapter/runtime tests.
 - [x] Provider-neutral, debounced motion interpretation with live-reloadable thresholds.
-- [x] Motion-state behavior mapping to FaceState with live-reloadable visual intensity and timing; no LED behavior.
+- [x] Motion-state behavior mapping to FaceState with live-reloadable visual intensity and timing.
+- [x] Optional WS2812B semantic LED-ring provider/controller, canonical configuration and hardware-free tests.
 - [ ] Verify board wiring, address, stable readings and coexistence on Raspberry Pi 3.
 
 ## Post-1.0 — explicitly deferred
@@ -55,7 +56,7 @@ establish hardware acceptance. Sensor-driven behavior remains deferred.
 | Area | Deferred work |
 | --- | --- |
 | Environmental/inertial sensors | Behavior integration for sensors including MPU-6050 and BME280; CCS811 eCO2 must not be labeled direct CO2. |
-| LED ring | WS2812B electrical verification, adapter and behavior mapping. |
+| LED ring | WS2812B physical wiring, power, level-shifting and target-Pi acceptance. |
 | Remote-control API | Authenticated service-mediated control, authorization and documented contracts. |
 | Advanced OS administration | Raspberry Pi reboot, if a future safe permission boundary is approved. |
 | MCP server | Service-mediated tools; no direct hardware or subsystem-internal access. |

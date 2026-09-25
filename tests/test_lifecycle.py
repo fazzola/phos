@@ -81,6 +81,20 @@ def test_imu_behavior_settings_reload_without_restart(runtime):
     assert not result["restart_required"] and applied == [(.8, .2, .95)]
 
 
+def test_led_ring_visual_settings_reload_and_hardware_fields_require_restart(runtime):
+    path, service, _, _ = runtime
+    applied = []
+    service.register_led_ring_applier(lambda config: applied.append((config.led_ring_enabled, config.led_ring_brightness)))
+    update(path, lambda d: d["led_ring"].update(led_count=16, brightness=.5, base_color="violet"))
+
+    result = service.execute("reload")
+
+    assert result["ok"]
+    assert result["applied"] == ["led_ring.brightness", "led_ring.base_color"]
+    assert result["restart_required"] == ["led_ring.led_count"]
+    assert applied == [(False, .5)]
+
+
 def test_mixed_appearance_logging_and_provider_changes_keep_restart_pending(runtime):
     path, service, logs, _ = runtime
     applied = []

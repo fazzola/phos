@@ -39,9 +39,10 @@ the `vision` extra on the Pi. OpenCV DNN loads ONNX directly: **onnxruntime,
 TensorFlow and PyTorch are not required**.
 
 Alternative source transfer: review the destination in `run_pi.sh` and run it
-from your development checkout. It seeds a missing configuration and preserves
-existing Pi settings/models/administrator data; it neither installs dependencies
-nor restarts PHOS. Upgrades must merge new required fields from the complete
+from your development checkout. It copies release scripts, including the WS2812B
+helper, seeds a missing configuration and preserves existing Pi
+settings/models/administrator data; it neither installs dependencies nor restarts
+PHOS. Upgrades must merge new required fields from the complete
 canonical schema. The script has a site-specific destination, not auto-discovery.
 
 ### 2. Check the camera and display
@@ -482,6 +483,113 @@ authoritative over IMU intent.
 For Pi acceptance, verify the detected address and WHO_AM_I, stable six-axis
 values, wrong-address recovery, a restart, and coexistence with every connected
 I2C sensor. Record board revision and wiring before treating it as accepted.
+
+## Optional WS2812B RGB LED ring
+
+PHOS uses the optional `rpi-ws281x` provider for a WS2812B ring. Decide the
+actual ring count, data GPIO and power arrangement before following the enable
+sequence below.
+
+The default `led_ring` block is disabled and uses `led_count: 0` as an explicit
+unconfigured value. Set the exact count, supported data GPIO and `enabled: true`
+only after the helper starts successfully. GPIO pin and LED count require a
+restart; enabled state, brightness, base color, semantic following and update
+rate can later use Web Admin → Display & Appearance → WS2812B LED ring → Save →
+**Reload configuration**. The status snapshot reports disabled, starting,
+available or unavailable plus the current semantic state/effect.
+
+`rpi-ws281x` requires privileged mailbox and physical-memory access. PHOS keeps
+the desktop/camera service unprivileged and uses the separate root-owned
+`deploy/phos-led.service` helper instead.
+
+### Enable the ring on a deployed Pi
+
+From the development checkout, first run the deployment script. It transfers
+`scripts/phos_ws2812b_helper.py`, the standalone smoke test and the service-unit
+template to `~/phos`; it does not install or restart the root service:
+
+```bash
+./run_pi.sh
+```
+
+On the Pi, install the driver into the same virtual environment used by the
+helper. In `~/phos/deploy/phos-led.service`, set `--count` and `--pin` to the
+physical ring's exact LED count and BCM data GPIO. Its Python path and working
+directory must also match the PHOS installation. Then install or update the
+unit and start it:
+
+```bash
+cd ~/phos
+.venv/bin/python -m pip install 'rpi-ws281x>=5.0,<6'
+sudo cp deploy/phos-led.service /etc/systemd/system/phos-led.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now phos-led.service
+sudo systemctl restart phos-led.service
+sudo systemctl status phos-led.service --no-pager
+ls -l /run/phos-led.sock
+```
+
+The helper owns only `/run/phos-led.sock`, which is writable by the `gpio` group.
+The normal PHOS user service sends bounded RGB frames to that socket and never
+opens `/dev/vcio` or `/dev/mem`. The service must report `active (running)` and
+the socket must exist before enabling PHOS LED output.
+
+Next update the deployed canonical `~/phos/config/phos.json` so its count and
+GPIO exactly match the helper. Replace its `led_ring` object with values for the
+actual ring; for a 12-pixel ring on BCM GPIO 18:
+
+```json
+"led_ring": {
+  "enabled": true,
+  "led_count": 12,
+  "gpio_pin": 18,
+  "brightness": 0.30,
+  "base_color": "cyan",
+  "follow_visual_state": true,
+  "update_rate_hz": 10.0
+}
+```
+
+Keep the surrounding JSON valid. `run_pi.sh` deliberately preserves an existing
+Pi configuration, so it does not make this configuration change for you. Start
+PHOS with the new configuration:
+
+```bash
+systemctl --user restart phos.service
+```
+
+After LED count or GPIO changes, update both the helper unit and `phos.json`,
+then restart `phos-led.service` followed by `phos.service`. Brightness, base
+color, semantic following and update rate may instead use Web Admin → Display &
+Appearance → WS2812B LED ring → Save → **Reload configuration**.
+
+To isolate wiring and driver setup from PHOS, stop the PHOS service and run the
+standalone color smoke test. It requires the exact LED count and leaves the ring
+off when it finishes:
+
+```bash
+systemctl --user stop phos.service
+cd ~/phos
+sudo .venv/bin/python scripts/test_ws2812b.py --count 12 --pin 18
+```
+
+Replace `12` and `18` with the actual count and BCM GPIO. It shows red, green,
+blue and white at low brightness. This temporary root invocation is diagnostic;
+do not run the normal PHOS service as root.
+
+Power the ring from a correctly sized 5 V supply as determined from the actual
+ring's documentation and LED count. Do not draw LED power from a GPIO pin. Tie
+the Pi and LED-supply grounds together. WS2812B data reliability may require a
+3.3 V-to-5 V logic-level shifter; use the ring maker's recommended data-line
+protection and supply decoupling. Verify wiring without PHOS first, then start
+with low brightness. A driver, permission or write failure only disables ring
+output; PHOS eyes and other services continue.
+
+The ring is steady in its configured base color when neutral. Warm/curious use a
+gentle pulse, alert uses a short amber pulse, sleepy a dim violet fade and error
+a steady red. Existing transient alert strength drives the alert pulse, so shake
+and impact require no direct IMU-to-LED coupling. Confirm the configured base
+color returns after an alert.
 
 ## Optional CCS811 air-quality sensor
 

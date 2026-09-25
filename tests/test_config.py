@@ -95,6 +95,7 @@ def test_missing_required_fields_fail_with_path(document, tmp_path, route):
     ("behavior.imu_shake_reaction_strength", 1.0),
     ("behavior.imu_impact_reaction_strength", .88),
     ("behavior.imu_tilt_eye_asymmetry_strength", .51),
+    ("led_ring.brightness", 1.1), ("led_ring.update_rate_hz", 0),
     ("vision.camera_preview.scale", 0.05), ("vision.camera_preview.scale", 0.5),
     ("vision.camera_preview.max_fps", 11), ("vision.camera_preview.position", "center"),
     ("vision.camera_preview.enabled", "yes"),

@@ -12,6 +12,15 @@
     "transition_seconds": 0.18,
     "iris_color": "cyan"
   },
+  "led_ring": {
+    "enabled": false,
+    "led_count": 0,
+    "gpio_pin": 18,
+    "brightness": 0.30,
+    "base_color": "cyan",
+    "follow_visual_state": true,
+    "update_rate_hz": 10.0
+  },
   "behavior": {
     "blink_interval_seconds": [3.5, 6.5],
     "gaze_interval_seconds": [2.5, 5.5],

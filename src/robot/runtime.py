@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import logging
 from typing import Callable, Optional
 
@@ -10,6 +11,7 @@ from robot.config import RuntimeConfig
 from robot.hardware.environmental import environmental_provider_type
 from robot.hardware.ccs811 import CCS811Provider
 from robot.hardware.mpu6050 import MPU6050Provider
+from robot.hardware.ws2812b import LEDRingProvider, LEDRingSocketProvider
 from robot.motion import MotionSettings
 from robot.motion import MotionState
 from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorService,
@@ -17,7 +19,8 @@ from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorServi
                            IMUSensorProvider, IMUSensorService)
 from robot.core import BehaviorEngine, Event, EventBus, RobotCore, RobotState, STATE_CHANGED
 from robot.core.behavior_engine import IMU_MOTION_STATE
-from robot.ui import CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, TkEyeDisplay
+from robot.ui import (CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, LEDRingController,
+                      LEDRingSettings, TkEyeDisplay)
 from robot.ui.runtime import EyeRenderLoop
 from robot.vision import (
     ExpressionSmoother,
@@ -47,6 +50,7 @@ class PhosRuntime:
         sensor_service: Optional[EnvironmentalSensorService] = None,
         air_quality_service: Optional[AirQualitySensorService] = None,
         imu_service: Optional[IMUSensorService] = None,
+        led_ring_controller: Optional[LEDRingController] = None,
     ) -> None:
         self.core = core
         self._behavior_engine = behavior_engine
@@ -57,6 +61,7 @@ class PhosRuntime:
         self._sensor_service = sensor_service
         self._air_quality_service = air_quality_service
         self._imu_service = imu_service
+        self._led_ring_controller = led_ring_controller
         self._loop = None
         self._vision_changed: Optional[asyncio.Event] = None
         self._vision_lock = asyncio.Lock()
@@ -86,6 +91,17 @@ class PhosRuntime:
             config.imu_shake_reaction_duration_seconds, config.imu_impact_reaction_duration_seconds,
             config.imu_reaction_cooldown_seconds)
 
+    def apply_led_ring(self, config: RuntimeConfig) -> None:
+        if self._led_ring_controller is None:
+            raise RuntimeError("LED ring service is not configured")
+        # Pin/count changes remain pending restart, so never pass saved hardware
+        # values to an already-open provider during a visual-only reload.
+        active = self._config
+        settings = _led_settings(config)
+        if active is not None:
+            settings = replace(settings, led_count=active.led_ring_led_count, gpio_pin=active.led_ring_gpio_pin)
+        self._led_ring_controller.configure(settings)
+
     def sensor_status(self) -> dict:
         """Read-only application boundary, safe for the lifecycle thread."""
         state = {"environmental": self._sensor_service.snapshot()} if self._sensor_service is not None else {}
@@ -93,6 +109,8 @@ class PhosRuntime:
             state["ccs811"] = self._air_quality_service.snapshot()
         if self._imu_service is not None:
             state["imu"] = self._imu_service.snapshot()
+        if self._led_ring_controller is not None:
+            state["led_ring"] = self._led_ring_controller.snapshot()
         return state
 
     def apply_imu_motion(self, config: RuntimeConfig) -> None:
@@ -226,6 +244,8 @@ class PhosRuntime:
                 await self._air_quality_service.start()
             if self._imu_service is not None:
                 await self._imu_service.start()
+            if self._led_ring_controller is not None:
+                self._led_ring_controller.start()
             logger.info("PHOS core, behavior engine, and renderer started")
             if self._vision_pipeline is not None and self._config is not None and (self._config.vision_enabled or self._vision_forced):
                 # Stop must also release a partially started camera/pipeline.
@@ -280,6 +300,8 @@ class PhosRuntime:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         self._loop = None
+        if self._led_ring_controller is not None:
+            self._led_ring_controller.stop()
         if self._air_quality_service is not None:
             await self._air_quality_service.stop()
         if self._imu_service is not None:
@@ -326,6 +348,7 @@ def build_runtime(
     sensor_provider_factory: Optional[Callable[[], EnvironmentalSensorProvider]] = None,
     air_quality_provider_factory: Optional[Callable[[], AirQualitySensorProvider]] = None,
     imu_provider_factory: Optional[Callable[[], IMUSensorProvider]] = None,
+    led_ring_provider_factory: Optional[Callable[[LEDRingSettings], LEDRingProvider]] = None,
 ) -> PhosRuntime:
     """Compose a runtime; tests may inject Vision, display and sensor providers."""
     if vision_pipeline is not None and vision_factory is not None:
@@ -398,9 +421,14 @@ def build_runtime(
     if config.imu_enabled:
         logger.info("MPU-6050 enabled: I2C bus 1, address %s, polling every %s seconds",
                     config.imu_i2c_address, config.imu_poll_interval_seconds)
+    led_ring = LEDRingController(
+        _led_settings(config), lambda: behavior_engine.face_state,
+        led_ring_provider_factory if led_ring_provider_factory is not None else
+        lambda settings: LEDRingSocketProvider(led_count=settings.led_count),
+    )
     runtime = PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
                        config=config, vision_forced=injected_vision, sensor_service=sensors,
-                       air_quality_service=air_quality, imu_service=imu)
+                       air_quality_service=air_quality, imu_service=imu, led_ring_controller=led_ring)
     runtime_holder["runtime"] = runtime
     return runtime
 
@@ -414,6 +442,12 @@ def _motion_settings(config: RuntimeConfig) -> MotionSettings:
                           config.imu_motion_cooldown_seconds,
                           config.imu_motion_tilt_exit_threshold_m_s2,
                           config.imu_motion_lateral_axis, config.imu_motion_forward_axis)
+
+
+def _led_settings(config: RuntimeConfig) -> LEDRingSettings:
+    return LEDRingSettings(config.led_ring_enabled, config.led_ring_led_count, config.led_ring_gpio_pin,
+                           config.led_ring_brightness, config.led_ring_base_color,
+                           config.led_ring_follow_visual_state, config.led_ring_update_rate_hz)
 
 
 def _log_motion_publish_failure(task):

@@ -31,7 +31,12 @@ IMU_BEHAVIOR_RELOADABLE = frozenset({
     "behavior.imu_shake_reaction_duration_seconds", "behavior.imu_impact_reaction_duration_seconds",
     "behavior.imu_reaction_cooldown_seconds",
 })
-RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE, *IMU_BEHAVIOR_RELOADABLE})
+LED_RING_RELOADABLE = frozenset({
+    "led_ring.enabled", "led_ring.brightness", "led_ring.base_color", "led_ring.follow_visual_state",
+    "led_ring.update_rate_hz",
+})
+RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE,
+                        *IMU_BEHAVIOR_RELOADABLE, *LED_RING_RELOADABLE})
 
 
 def changed_fields(active, saved, prefix=""):
@@ -65,6 +70,7 @@ class LifecycleService:
         self._apply_camera_preview = None
         self._apply_imu_motion = None
         self._apply_imu_behavior = None
+        self._apply_led_ring = None
         self._sensor_status = None
         self._clock = clock
         self._lock = RLock()
@@ -86,6 +92,10 @@ class LifecycleService:
     def register_imu_behavior_applier(self, applier):
         with self._lock:
             self._apply_imu_behavior = applier
+
+    def register_led_ring_applier(self, applier):
+        with self._lock:
+            self._apply_led_ring = applier
 
     @property
     def restart_due(self):
@@ -145,6 +155,10 @@ class LifecycleService:
                                   if path in IMU_BEHAVIOR_RELOADABLE]
                 if behavior_paths and self._apply_imu_behavior is None:
                     return {"ok": False, "error": "Runtime IMU behavior service is not ready. No settings were applied; retry reload shortly."}
+                led_paths = [path for path in changed_fields(self.active["led_ring"], saved["led_ring"], "led_ring")
+                             if path in LED_RING_RELOADABLE]
+                if led_paths and self._apply_led_ring is None:
+                    return {"ok": False, "error": "Runtime LED ring service is not ready. No settings were applied; retry reload shortly."}
                 if self.active["display"]["iris_color"] != saved["display"]["iris_color"]:
                     try:
                         self._apply_appearance(config)
@@ -175,6 +189,16 @@ class LifecycleService:
                     for path in behavior_paths:
                         self.active["behavior"][path.rsplit(".", 1)[1]] = saved["behavior"][path.rsplit(".", 1)[1]]
                     applied.extend(behavior_paths)
+                if led_paths:
+                    try:
+                        self._apply_led_ring(config)
+                    except Exception:
+                        logging.getLogger(__name__).exception("LED ring reload failed")
+                        return {"ok": False, **self._snapshot(saved), "applied": applied,
+                                "error": "LED ring settings could not be applied. PHOS continues without LED output; retry reload or restart."}
+                    for path in led_paths:
+                        self.active["led_ring"][path.rsplit(".", 1)[1]] = saved["led_ring"][path.rsplit(".", 1)[1]]
+                    applied.extend(led_paths)
                 if self.active["logging"]["level"] != saved["logging"]["level"]:
                     self._set_log_level(saved["logging"]["level"])
                     self.active["logging"]["level"] = saved["logging"]["level"]
