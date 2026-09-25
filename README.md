@@ -7,7 +7,8 @@ face tracking, local/AWS expression observations and authenticated configuration
 administration. See the [release scope and limitations](docs/release-1.0.0.md),
 [installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
-Release acceptance is **pending**: see the [checklist and remaining blockers](docs/release-1.0.0.md#release-checklist). No stable tag is implied by the version string.
+## Contact
+@phosairobot
 
 ## Current hardware
 - Raspberry Pi 3
