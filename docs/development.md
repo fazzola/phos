@@ -23,9 +23,9 @@ To keep a separate deployment copy, copy the full canonical file, edit it and
 pass its path explicitly. Keep deployment changes out of commits if inappropriate.
 No file may contain credentials.
 
-The six required sections are `web`, `display`, `behavior`, `vision`, `expression`
-(with `smoothing`, `local`, `aws`) and `logging`. `vision` includes `detector`.
-There are no speculative runtime/voice/sensor sections. Every field in the
+The seven required sections are `web`, `display`, `behavior`, `vision`, `expression`
+(with `smoothing`, `local`, `aws`), `sensors` (with `environmental` and `ccs811`) and `logging`. `vision` includes `detector`.
+Only the implemented environmental and CCS811 services have sensor configuration; there are no speculative runtime/voice settings. Every field in the
 canonical file is required, including null values and inactive-provider settings;
 a missing value is an error, not a second default hidden in code.
 
@@ -36,6 +36,8 @@ must be finite; booleans must be JSON booleans, not strings or numbers.
 
 | Section | Fields and purpose |
 | --- | --- |
+| `sensors.environmental` | `type`: `"bme280"` or `"bmp280"`; `enabled`: boolean; `i2c_address`: string `"0x76"` or `"0x77"` on bus 1; `poll_interval_seconds`: finite 1–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All five require PHOS restart. |
+| `sensors.ccs811` | `enabled`: boolean; `i2c_address`: canonical lowercase `"0x5a"` or `"0x5b"`, bus 1; `poll_interval_seconds`: finite 1–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All four require PHOS restart. |
 | `web` | `enabled`: start the administration worker; `host`: IPv4/IPv6 bind address; `port`: integer 1–65535. See the [web manual](web-administration.md). |
 | `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration; `iris_color`: one of cyan, blue, green, turquoise, amber, violet or white. Iris theme is a renderer style choice and applies after validated configuration reload. |
 | `behavior` | `blink_interval_seconds`, `gaze_interval_seconds`: positive ascending `[minimum, maximum]` timing ranges; `face_gaze_smoothing`: gaze smoothing coefficient in (0,1]; `reaction_decay_per_second`: positive visual reaction decay. |
@@ -221,3 +223,53 @@ parent-owned service. Confirmation/authentication remain adapter responsibilitie
 validation and restart capability policy are shared. Test both the service and
 adapter guards. Infrastructure service markers are deployment metadata, not
 ordinary JSON settings. No new runtime configuration section is needed.
+
+
+### Environmental configuration migration
+
+For an existing BME280 deployment, rename `sensors.bme280` to
+`sensors.environmental`, retain its four existing values and add `"type": "bme280"`.
+Do not retain both blocks. To use BMP280 choose `"type": "bmp280"`; humidity is
+unsupported. The Python RuntimeConfig fields now use the `environmental_` prefix.
+
+When updating a deployment without sensor settings, merge the complete `sensors` object from
+`config/phos.json` into its existing JSON, preserving other settings. The new
+section and all five fields are required even when disabled. As with previous
+schema additions, missing fields fail validation; no silent overlay/migration or
+second set of defaults is introduced. `run_pi.sh` preserves deployed JSON and
+does not perform this merge. Validate locally before restarting the service.
+No new CLI flags are added. Save/Reload classify every sensor difference as
+restart-required; unrelated services are not restarted by either action.
+
+Hardware-free sensor checks: `.venv/bin/python -m pytest -q tests/test_sensors.py`.
+The adapter uses lazy optional imports; disabled operation and ordinary tests
+need neither Linux I2C access nor the driver packages. Fake drivers test address,
+chip ID, calibration and unit mapping; the service tests failure recovery,
+staleness, polling and bounded shutdown independently of physical hardware.
+
+
+### CCS811 configuration migration
+
+Merge the complete `sensors.ccs811` block from the canonical JSON into an existing
+deployment; preserve `sensors.environmental`. All four fields are required,
+including when disabled. Default values live only in `config/phos.json`.
+The typed surface uses the `ccs811_` prefix; no CLI overrides were added. Save
+and Reload do not reinitialize the device or change poll timing. Use Restart PHOS.
+
+`AirQualityReading` carries integer `eco2_ppm` and `tvoc_ppb`; invalid values are
+rejected before publication. Device-specific ranges live in the CCS811 adapter.
+The shared worker handles lifecycle, stale values, retry/backoff and bounded
+shutdown for both sensor services. `SensorNotReady` preserves initialization
+and communicates conditioning/no new data; physical faults recreate the provider.
+Compensation passes an immutable `EnvironmentalCompensation` from a fresh
+service snapshot; it never invokes environmental hardware from the air-quality
+worker. Temperature must be within -25–50 °C and humidity within 0–100% for this
+compensation boundary. BMP280, disabled/failed/stale or out-of-range sources
+supply no compensation, restoring device defaults. Device constants such as
+conditioning/drive mode are adapter protocol policy, not duplicate JSON defaults.
+
+Run `.venv/bin/python -m pytest -q tests/test_air_quality.py tests/test_sensors.py`
+and the full suite. Tests use fake time, bus registers and providers, covering
+conditioning without a 20-minute sleep. See the
+[installation guide](installation.md#optional-ccs811-air-quality-sensor) for
+physical verification and dependency commands.

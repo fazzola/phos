@@ -69,7 +69,8 @@ This file is an implementation handoff for coding agents. It records what is pre
 
 ## Current development priority
 
-Complete the remaining 1.0.0 release acceptance checks; do not expand scope.
+Complete the remaining 1.0.0 release acceptance checks and physical acceptance
+of the separately approved BME280/BMP280 addition below. Other scope remains deferred.
 The expression-reaction implementation needs target-hardware verification with
 a selected lightweight ONNX model. Confirm the model's labels, dimensions and
 preprocessing, then verify semantic happy/surprised confirmation and UNKNOWN
@@ -122,7 +123,8 @@ hardware-free; Pi resource usage and LAN browser verification remain required.
 
 ## PHOS 1.0.0 finalization
 
-The current implemented scope is frozen; see [release record](release-1.0.0.md)
+The established 1.0.0 scope is frozen; the separately approved BME280/BMP280 addition is
+recorded below. See [release record](release-1.0.0.md)
 and [deferred roadmap](roadmap.md). Version is authoritative in
 `src/robot/__init__.py`, with package metadata, startup logs and Status using it.
 Camera failure/partial-start and cancellation cleanup are hardened. Source sync
@@ -224,3 +226,146 @@ The fresh-install guide now provides one complete path through dependencies,
 configuration, model/SDK selection, credentials and the recommended user service.
 Release documentation owns exact acceptance steps and performance limitations;
 no new Pi performance or recognition-quality claim is made.
+
+
+## BME280 / BMP280 follow-on integration
+
+The explicitly requested BME280/BMP280 addition is implemented separately from the
+frozen 1.0.0 baseline (ADR-022); the source version remains unchanged. It is
+disabled by default. `robot.sensors` provides immutable environmental values,
+a synchronous provider contract and one bounded worker with current-state
+snapshots. `robot.hardware.bme280` owns lazy RPi.bme280/smbus2 access to bus 1,
+address 0x76/0x77, chip-ID validation, calibration, sampling and cleanup.
+`robot.hardware.bmp280` adds Pimoroni BMP280 with the same ownership boundary;
+`hardware.environmental` centralizes type selection. Nullable humidity and
+explicit capabilities distinguish unsupported humidity from unavailable samples.
+
+Runtime starts/stops the service; sensor absence, invalid samples and I/O errors
+stay local to sensor availability with retry/backoff. Native slow calls cannot
+block eyes/Vision or accumulate jobs. Monotonic freshness and UTC update time
+prevent old readings being shown as current. The lifecycle status snapshot sends
+read-only state to authenticated Web Admin → Sensors over the existing channel.
+All five new canonical settings require restart; no CLI fields or behavior
+coupling were added. Existing deployment JSON needs the explicit `sensors.environmental` migration
+and type field; Web Admin offers both types and shows the active sensor.
+
+See [installation](installation.md#optional-environmental-sensor) for exact
+Pi commands and [hardware](hardware.md#bme280) for expected signal wiring and
+unverified breakout details. Physical I2C/accuracy/combined-runtime acceptance
+remains pending. The CCS811 extension is recorded below; GY-521 and LED-ring work has not started.
+
+Verification on 2026-09-23 (macOS, Python 3.11.6):
+
+- Final complete suite: **325 passed, 1 skipped** in 151.16 seconds
+  (`.venv/bin/python -m pytest -q --tb=short -rs`, outside the sandbox with
+  permission for localhost binding). Both real web-worker tests passed.
+- The sole skip is the existing Vision preprocessing test at
+  `tests/vision/test_expression.py:105`, because local `cv2` is unavailable.
+- Sensor coverage uses fake providers/vendor modules: disabled/no access,
+  both addresses and chip ID, units, invalid values, polling/freshness,
+  backoff/recovery, render continuity, bounded shutdown during read/start,
+  clean restart, config migration/validation, lifecycle IPC and web display/save.
+- `pip check`, Python compilation, startup `--help`, shell syntax and
+  `git diff --check` passed. Optional BME280 libraries were not installed locally;
+  real I2C and Raspberry Pi resource measurements were not performed.
+
+These BME280-only results are historical; the extension verification is recorded below. No commit, deployment or physical hardware acceptance was performed.
+
+
+### Selectable environmental sensor extension (2026-09-24)
+
+Changed implementation files: `config/phos.json`, `pyproject.toml`,
+`src/robot/config.py`, `src/robot/runtime.py`, `src/robot/sensors.py`,
+`src/robot/hardware/bme280.py`, `src/robot/hardware/bmp280.py`,
+`src/robot/hardware/environmental.py`, `src/robot/web/configuration.py`,
+`src/robot/web/domains.py`, `src/robot/web/templates/configuration.html`,
+`tests/test_sensors.py`, and `tests/test_web.py`.
+Documentation updated: README, hardware, installation, development/configuration,
+web administration, architecture, decisions, current state and roadmap.
+The pre-existing uncommitted BME280 work is extended, not discarded; existing
+lifecycle/main/web-app integration is retained without further changes.
+
+The shared provider/service now supports both chips. Runtime snapshots carry
+active type, explicit available measurements, values, freshness and health.
+BMP280 humidity is null and displayed as Not supported. Wrong chip IDs and
+capability mismatches are unavailable, with bounded retries and clear logs.
+All five `sensors.environmental` settings require restart; no hot swapping.
+The required config migration is documented in development. RPi.bme280 remains
+unchanged; BMP280 uses the optional bmp280 1.x / i2cdevice library and the same
+adapter-owned smbus2 bus. Pi setup and runnable physical checks remain in
+installation; no deployment or actual wiring/accuracy acceptance was performed.
+
+Verification (macOS, Python 3.11): sensor suite **50 passed**; final complete
+suite **340 passed, 1 skipped** in 223.37 seconds
+(`.venv/bin/python -m pytest -q --tb=short -rs`, with permission for localhost
+binding). The single skip is the existing Vision preprocessing check because
+`cv2` is unavailable. Both real web-worker checks passed. The sandbox-only run
+had two localhost-binding PermissionErrors; these disappeared in the authorized
+run. Canonical JSON validation, Python compilation, `pip check` and
+`git diff --check` passed. Driver distributions were inspected without installing
+sensor dependencies locally. No unresolved architectural conflicts were found.
+
+
+### CCS811 air-quality follow-on (2026-09-24)
+
+The explicitly requested CCS811 capability extends the sensor services (ADR-023).
+`hardware.ccs811.CCS811Provider` uses smbus2, validates chip/application status,
+initializes mode 1, handles readiness and returns typed eCO2 ppm / TVOC ppb.
+`AirQualitySensorService` shares the existing bounded worker with the environmental
+service; neither failure nor conditioning blocks rendering/Vision. eCO2 is
+estimated equivalent CO2, not direct NDIR CO2.
+
+Canonical `sensors.ccs811` has enabled, I2C address, polling and stale timeout;
+all require restart and the committed default is disabled. Existing deployment
+JSON must merge this required block. The Sensors page includes configuration,
+measurements, timestamp/age, health and compensation input over the same lifecycle
+channel. Fresh temperature/humidity may pass through the environmental service;
+BMP280 or unavailable sources restore device defaults. Conditioning withholds
+values for 20 minutes after initialization; first-use/physical stability remains
+unverified. No baseline storage, firmware loader or GPIO wake controller is added.
+
+Implementation files changed for this task: `src/robot/hardware/ccs811.py`,
+`src/robot/sensors.py`, `src/robot/runtime.py`, `src/robot/config.py`,
+`config/phos.json`, `pyproject.toml`, `src/robot/web/configuration.py`,
+`src/robot/web/domains.py`, `src/robot/web/templates/configuration.html`,
+`tests/test_air_quality.py`, `tests/test_web.py`. README and hardware, installation,
+development, web administration, architecture, decisions, roadmap and this handoff
+were updated. Prior uncommitted environmental work is preserved.
+
+Physical TODO: identify the precise Keyestudio/SEN breakout, verify supply and
+Pi-side logic/wake wiring, sustained bus transfers, conditioning/stability,
+compensation, failure recovery and concurrent eyes/Vision/Web Admin operation.
+Use the concrete commands/checks in installation. No hardware acceptance,
+deployment or commit is claimed. GY-521 and WS2812B remain out of scope.
+
+Verification for CCS811: **88 sensor tests passed** (environmental regression
+plus air quality); **3 targeted Web Admin tests passed**. Final full suite:
+**379 passed, 1 skipped** in 220.95 seconds with
+`.venv/bin/python -m pytest -q --tb=short -rs` and localhost socket permission.
+The sole skip is the existing Vision preprocessing test because local `cv2` is
+unavailable. Canonical JSON validation, Python compilation, `pip check` and
+`git diff --check` passed. No physical I2C test was run. No architectural conflict
+was found; the electrical identity of the actual SEN/Keyestudio board remains a
+physical acceptance prerequisite, explicitly distinguished in hardware notes.
+
+### CCS811 initialization diagnosis follow-up
+
+User reports HW_ID=0x81 after sensor power recovery, then all registers=0xff
+once PHOS starts, persisting after PHOS stops with BMP280 disconnected. This
+localizes the trigger to startup interaction but does not establish the exact
+physical cause. The unconditional SW_RESET was removed from normal startup;
+APP_START is now conditional on boot mode, and mode 1 is verified after writing.
+Initialization errors include address, phase and actual values; all-ones STATUS
+is rejected before interpreting flags. No config or architecture changes.
+
+Changed `src/robot/hardware/ccs811.py`, `tests/test_air_quality.py`, installation
+troubleshooting and this handoff. Mock tests cover boot/application startup,
+reconnect without reset, and invalid reads at each initialization checkpoint.
+The physical fix remains pending a test using the updated file on the Pi after
+power recovery. No deployment or commit was performed.
+
+Verification of this follow-up: **94 sensor tests passed**; full suite **385
+passed, 1 skipped** in 222.07 seconds (`.venv/bin/python -m pytest -q --tb=short
+-rs`, with localhost socket permission). The skip remains missing local `cv2`.
+Compilation and `git diff --check` passed. These are software checks, not
+confirmation that removing SW_RESET resolves the reported physical failure.

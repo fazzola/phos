@@ -37,6 +37,38 @@ Your edits on this page have not been saved.</p>
 <p><a href="{{ url_for('system') }}">System actions: reload configuration or restart PHOS</a></p>
 {% else %}
 <p class="notice">Editing saved settings. Save does not apply changes. Use System actions to reload logging level, eye appearance and camera preview, or restart PHOS for other changes.</p>
+{% if area == 'sensors' %}
+<section class="status" aria-label="Current environmental readings">
+<h3>Current environmental readings</h3>
+<p>Read-only running sensor state. Refresh this page for a new snapshot; save edits first.</p>
+{% set sensor = runtime_state.get('sensors', {}).get('environmental') if runtime_state and runtime_state.ok else none %}
+{% if sensor %}
+<dl><dt>Active sensor</dt><dd>{{ sensor.sensor_type | upper }}</dd><dt>Sensor status</dt><dd>{{ sensor.status }}</dd>
+<dt>Temperature</dt><dd>{{ '%.2f °C' | format(sensor.measurements.temperature_c) if sensor.available else 'Unavailable' }}</dd>
+<dt>Humidity</dt><dd>{% if 'humidity_percent' not in sensor.available_measurements %}Not supported{% elif sensor.available %}{{ '%.2f %%' | format(sensor.measurements.humidity_percent) }}{% else %}Unavailable{% endif %}</dd>
+<dt>Pressure</dt><dd>{{ '%.2f hPa' | format(sensor.measurements.pressure_hpa) if sensor.available else 'Unavailable' }}</dd>
+<dt>Last update (UTC)</dt><dd>{{ sensor.last_update or 'No successful reading' }}</dd>
+<dt>Reading age</dt><dd>{{ '%.1f seconds' | format(sensor.age_seconds) if sensor.age_seconds is not none else 'Unavailable' }}</dd>
+{% if sensor.error %}<dt>Sensor error</dt><dd>{{ sensor.error }}</dd>{% endif %}</dl>
+{% else %}<p>Sensor status unavailable. {{ runtime_state.error if runtime_state and not runtime_state.ok else 'The runtime sensor service has not reported a snapshot.' }}</p>{% endif %}
+<p><a href="{{ url_for('system') }}">System actions: Restart PHOS to apply sensor settings</a></p>
+</section>
+<section class="status" aria-label="Current CCS811 air-quality readings">
+<h3>CCS811 air quality</h3>
+<p>eCO2 is estimated equivalent CO2, not a direct NDIR CO2 measurement. TVOC estimates total volatile organic compounds.</p>
+{% set air = runtime_state.get('sensors', {}).get('ccs811') if runtime_state and runtime_state.ok else none %}
+{% if air %}
+<dl><dt>Sensor status</dt><dd>{{ air.status }}</dd>
+<dt>eCO2 (estimated equivalent CO2)</dt><dd>{{ '%d ppm' | format(air.measurements.eco2_ppm) if air.available else 'Unavailable' }}</dd>
+<dt>TVOC</dt><dd>{{ '%d ppb' | format(air.measurements.tvoc_ppb) if air.available else 'Unavailable' }}</dd>
+<dt>Last update (UTC)</dt><dd>{{ air.last_update or 'No successful reading' }}</dd>
+<dt>Reading age</dt><dd>{{ '%.1f seconds' | format(air.age_seconds) if air.age_seconds is not none else 'Unavailable' }}</dd>
+<dt>Compensation input</dt><dd>{{ 'Fresh environmental temperature/humidity' if air.compensation_input == 'environmental' else 'Device defaults (25 °C / 50% RH)' if air.compensation_input == 'device_defaults' else 'Unavailable' }}</dd>
+{% if air.error %}<dt>Sensor detail</dt><dd>{{ air.error }}</dd>{% endif %}</dl>
+{% else %}<p>CCS811 status unavailable.</p>{% endif %}
+<p>Allow 20 minutes of conditioning after initialization. Refresh this page for current state. All sensor settings require Restart PHOS.</p>
+</section>
+{% endif %}
 {% if area == 'security' %}
 <section class="account"><h3>Administrator password</h3>
 <p>Password changes take effect immediately and end all sessions. Passwords are stored separately from runtime configuration.</p>
@@ -55,7 +87,7 @@ Your edits on this page have not been saved.</p>
 {% set value = submitted.get(field.name, '') if submitted is not none else field.value %}
 <div class="field"><label for="{{ field.name }}">{{ field.label }}</label>
 {% if field.choices %}
-<select id="{{ field.name }}" name="{{ field.name }}">{% for choice in field.choices %}<option value="{{ choice }}" {{ 'selected' if value == choice else '' }}>{{ choice }}</option>{% endfor %}</select>
+<select id="{{ field.name }}" name="{{ field.name }}">{% for choice in field.choices %}<option value="{{ choice }}" {{ 'selected' if value == choice else '' }}>{{ choice | upper if field.name == 'sensors.environmental.type' else choice }}</option>{% endfor %}</select>
 {% elif field.kind == 'checkbox' %}
 <input id="{{ field.name }}" name="{{ field.name }}" type="checkbox" {{ 'checked' if (value == 'on' if submitted is not none else value) else '' }}>
 {% else %}

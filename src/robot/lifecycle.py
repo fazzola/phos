@@ -48,6 +48,7 @@ class LifecycleService:
         self._set_log_level = log_level_setter
         self._apply_appearance = None
         self._apply_camera_preview = None
+        self._sensor_status = None
         self._clock = clock
         self._lock = RLock()
 
@@ -66,6 +67,11 @@ class LifecycleService:
         with self._lock:
             return self.restart_at is not None and self._clock() >= self.restart_at
 
+    def register_sensor_status(self, supplier):
+        """Register a nonblocking snapshot supplier, never a hardware callback."""
+        with self._lock:
+            self._sensor_status = supplier
+
     def _snapshot(self, saved):
         changed = changed_fields(self.active, saved)
         return {"active": deepcopy(self.active), "config_path": str(self.path),
@@ -73,7 +79,8 @@ class LifecycleService:
                 "reloadable": sorted(set(changed) & RELOADABLE),
                 "restart_required": sorted(set(changed) - RELOADABLE),
                 "restart_supported": self.restart_supported,
-                "restart_requested": self.restart_at is not None}
+                "restart_requested": self.restart_at is not None,
+                "sensors": self._sensor_status() if self._sensor_status is not None else {}}
 
     def execute(self, operation):
         """Fixed allowlist; no command/path/config payload is accepted from adapters."""

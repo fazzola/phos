@@ -168,7 +168,7 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
             document = config.read()
         except (ConfigurationError, OSError):
             return render_template("error.html", error="Cannot load configuration. Repair the JSON file locally and reload."), 503
-        runtime_state = lifecycle.execute("status") if area == "status" and lifecycle is not None else None
+        runtime_state = lifecycle.execute("status") if area in {"status", "sensors"} and lifecycle is not None else None
         current = runtime_state["active"] if runtime_state and runtime_state["ok"] else active_document
         related_area, error_group = error_domain(document, error) if error else (None, None)
         return render_template("configuration.html", sections=domain_sections(document, area),

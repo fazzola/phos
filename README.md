@@ -7,7 +7,8 @@ face tracking, local/AWS expression observations and authenticated configuration
 administration. See the [release scope and limitations](docs/release-1.0.0.md),
 [installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
-Release acceptance is **pending**: see the [checklist and remaining blockers](docs/release-1.0.0.md#release-checklist). No stable tag is implied by the version string.
+## Contact
+@phosairobot
 
 ## Current hardware
 - Raspberry Pi 3
@@ -29,7 +30,11 @@ Release acceptance is **pending**: see the [checklist and remaining blockers](do
 4. Read `docs/roadmap.md`
 5. Read `docs/decisions.md`
 
-The 1.0.0 feature scope is frozen. Sensors, LEDs, voice, conversational AI,
+The 1.0.0 baseline is frozen. A separately approved optional
+[BME280/BMP280 integration](docs/installation.md#optional-environmental-sensor)
+now provides environmental readings in Web Admin → Sensors. The separately approved
+[CCS811 integration](docs/installation.md#optional-ccs811-air-quality-sensor) adds
+eCO2 (estimated equivalent CO2) and TVOC there; physical acceptance is pending. Other sensors, LEDs, voice, conversational AI,
 Home Assistant, remote control API and MCP remain explicitly deferred.
 
 ## Run PHOS
