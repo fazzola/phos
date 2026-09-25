@@ -381,3 +381,8 @@ that block and reads a service snapshot only. The adapter uses ±2 g / ±250 °/
 factory scale factors, without automatic offset calibration, sensor fusion,
 orientation or behavior integration. Physical wiring and concurrent Pi testing
 remain pending.
+
+The follow-on motion interpreter derives stable STILL, MOVING, tilt, SHAKE and
+IMPACT observations from IMU service samples only. Its configurable thresholds
+are live-reloadable; hardware configuration remains restart-only. These events
+are visible in Web Admin status but have no behavior or eye-rendering effect.

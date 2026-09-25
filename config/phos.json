@@ -93,7 +93,15 @@
       "enabled": false,
       "i2c_address": "0x68",
       "poll_interval_seconds": 5.0,
-      "stale_after_seconds": 30.0
+      "stale_after_seconds": 30.0,
+      "motion": {
+        "movement_threshold_m_s2": 1.5,
+        "tilt_threshold_m_s2": 4.0,
+        "shake_threshold_deg_s": 180.0,
+        "impact_threshold_m_s2": 25.0,
+        "confirmation_seconds": 1.0,
+        "cooldown_seconds": 2.0
+      }
     }
   },
   "logging": {

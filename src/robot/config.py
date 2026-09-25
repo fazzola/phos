@@ -144,7 +144,13 @@ _SCHEMA = {
                            "stale_after_seconds": "ccs811_stale_after_seconds"},
                 "imu": {"enabled": "imu_enabled", "i2c_address": "imu_i2c_address",
                         "poll_interval_seconds": "imu_poll_interval_seconds",
-                        "stale_after_seconds": "imu_stale_after_seconds"}},
+                        "stale_after_seconds": "imu_stale_after_seconds",
+                        "motion": {"movement_threshold_m_s2": "imu_motion_movement_threshold_m_s2",
+                                   "tilt_threshold_m_s2": "imu_motion_tilt_threshold_m_s2",
+                                   "shake_threshold_deg_s": "imu_motion_shake_threshold_deg_s",
+                                   "impact_threshold_m_s2": "imu_motion_impact_threshold_m_s2",
+                                   "confirmation_seconds": "imu_motion_confirmation_seconds",
+                                   "cooldown_seconds": "imu_motion_cooldown_seconds"}}},
     "logging": {"level": "log_level", "file": "log_file", "expression_diagnostics": "expression_diagnostics"},
 }
 _PATH_FIELDS = {"expression_model_path", "cascade_path", "log_file"}
@@ -198,6 +204,12 @@ class RuntimeConfig:
     imu_i2c_address: str
     imu_poll_interval_seconds: float
     imu_stale_after_seconds: float
+    imu_motion_movement_threshold_m_s2: float
+    imu_motion_tilt_threshold_m_s2: float
+    imu_motion_shake_threshold_deg_s: float
+    imu_motion_impact_threshold_m_s2: float
+    imu_motion_confirmation_seconds: float
+    imu_motion_cooldown_seconds: float
     web_enabled: bool
     web_host: str
     web_port: int
@@ -369,6 +381,13 @@ class RuntimeConfig:
             raise ConfigurationError("sensors.imu.stale_after_seconds must exceed poll_interval_seconds")
         if not isinstance(self.imu_i2c_address, str) or self.imu_i2c_address not in {"0x68", "0x69"}:
             raise ConfigurationError("sensors.imu.i2c_address must be 0x68 or 0x69")
+        for name in ("imu_motion_movement_threshold_m_s2", "imu_motion_tilt_threshold_m_s2",
+                     "imu_motion_shake_threshold_deg_s", "imu_motion_impact_threshold_m_s2",
+                     "imu_motion_confirmation_seconds"):
+            number(name, minimum=.01, inclusive=True, maximum=1000)
+        number("imu_motion_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
+        if self.imu_motion_impact_threshold_m_s2 <= self.imu_motion_movement_threshold_m_s2:
+            raise ConfigurationError("sensors.imu.motion.impact_threshold_m_s2 must exceed movement_threshold_m_s2")
         number("web_port", integer=True, maximum=65535)
         try:
             ipaddress.ip_address(self.web_host)

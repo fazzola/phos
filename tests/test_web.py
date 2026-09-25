@@ -763,13 +763,17 @@ def test_imu_form_and_status_use_shared_configuration_and_lifecycle(setup):
                               'acceleration_z_m_s2': -9.80665, 'angular_velocity_x_deg_s': 3,
                               'angular_velocity_y_deg_s': 4, 'angular_velocity_z_deg_s': 5},
              'last_update': '2026-09-25T12:00:00+00:00', 'age_seconds': 2,
-             'calibration': 'factory_scale_only', 'error': None}
+             'calibration': 'factory_scale_only', 'motion_state': 'tilt_left',
+             'tilt_direction': 'tilt_left',
+             'last_motion_event': {'state': 'tilt_left', 'timestamp': '2026-09-25T11:59:59+00:00'},
+             'error': None}
     lifecycle.register_sensor_status(lambda: {'imu': dict(state)})
     client = authorize(create_app(path, active_document=config.to_dict(), lifecycle=lifecycle))
     page = client.get('/configuration/sensors').get_data(as_text=True)
     for text in ('1.250 / 2.500 / -9.807 m/s²', '3.000 / 4.000 / 5.000 °/s',
                  'Factory scale only; no offset calibration', state['last_update'],
-                 'name="sensors.imu.enabled"', 'value="0x69"'):
+                 'Tilt Left', '2026-09-25T11:59:59+00:00',
+                 'name="sensors.imu.enabled"', 'name="sensors.imu.motion.impact_threshold_m_s2"', 'value="0x69"'):
         assert text in page
     data = form(client, 'sensors')
     data.update({'sensors.imu.enabled': 'on', 'sensors.imu.i2c_address': '0x69',

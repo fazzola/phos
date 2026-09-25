@@ -46,6 +46,7 @@ establish hardware acceptance. Sensor-driven behavior remains deferred.
 
 - [x] Optional smbus2 MPU-6050 adapter with typed six-axis readings and bounded worker lifecycle.
 - [x] Canonical configuration, Web Admin editor/status and hardware-free adapter/runtime tests.
+- [x] Provider-neutral, debounced motion interpretation with live-reloadable thresholds; no behavior reaction.
 - [ ] Verify board wiring, address, stable readings and coexistence on Raspberry Pi 3.
 
 ## Post-1.0 — explicitly deferred

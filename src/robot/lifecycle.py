@@ -16,7 +16,12 @@ PREVIEW_RELOADABLE = frozenset({
     "vision.camera_preview.max_fps", "vision.camera_preview.show_face_box",
     "vision.camera_preview.show_expression", "vision.camera_preview.show_confidence",
 })
-RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE})
+IMU_MOTION_RELOADABLE = frozenset({
+    "sensors.imu.motion.movement_threshold_m_s2", "sensors.imu.motion.tilt_threshold_m_s2",
+    "sensors.imu.motion.shake_threshold_deg_s", "sensors.imu.motion.impact_threshold_m_s2",
+    "sensors.imu.motion.confirmation_seconds", "sensors.imu.motion.cooldown_seconds",
+})
+RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE})
 
 
 def changed_fields(active, saved, prefix=""):
@@ -48,6 +53,7 @@ class LifecycleService:
         self._set_log_level = log_level_setter
         self._apply_appearance = None
         self._apply_camera_preview = None
+        self._apply_imu_motion = None
         self._sensor_status = None
         self._clock = clock
         self._lock = RLock()
@@ -61,6 +67,10 @@ class LifecycleService:
         """Register runtime service for applying validated preview settings."""
         with self._lock:
             self._apply_camera_preview = applier
+
+    def register_imu_motion_applier(self, applier):
+        with self._lock:
+            self._apply_imu_motion = applier
 
     @property
     def restart_due(self):
@@ -112,6 +122,10 @@ class LifecycleService:
                 preview_changed = bool(preview_paths)
                 if preview_changed and self._apply_camera_preview is None:
                     return {"ok": False, "error": "Runtime camera preview service is not ready. No settings were applied; retry reload shortly."}
+                motion_paths = changed_fields(self.active["sensors"]["imu"]["motion"],
+                    saved["sensors"]["imu"]["motion"], "sensors.imu.motion")
+                if motion_paths and self._apply_imu_motion is None:
+                    return {"ok": False, "error": "Runtime IMU motion service is not ready. No settings were applied; retry reload shortly."}
                 if self.active["display"]["iris_color"] != saved["display"]["iris_color"]:
                     try:
                         self._apply_appearance(config)
@@ -128,6 +142,15 @@ class LifecycleService:
                                 "error": "Camera preview could not be applied. Earlier appearance changes may already be active. Check PHOS logs, then retry reload or restart."}
                     self.active["vision"]["camera_preview"] = deepcopy(saved["vision"]["camera_preview"])
                     applied.extend(preview_paths)
+                if motion_paths:
+                    try:
+                        self._apply_imu_motion(config)
+                    except Exception:
+                        logging.getLogger(__name__).exception("IMU motion reload failed")
+                        return {"ok": False, **self._snapshot(saved), "applied": applied,
+                                "error": "IMU motion settings could not be applied. No IMU hardware was reinitialized; retry reload or restart PHOS."}
+                    self.active["sensors"]["imu"]["motion"] = deepcopy(saved["sensors"]["imu"]["motion"])
+                    applied.extend(motion_paths)
                 if self.active["logging"]["level"] != saved["logging"]["level"]:
                     self._set_log_level(saved["logging"]["level"])
                     self.active["logging"]["level"] = saved["logging"]["level"]
