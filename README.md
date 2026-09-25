@@ -34,7 +34,9 @@ The 1.0.0 baseline is frozen. A separately approved optional
 [BME280/BMP280 integration](docs/installation.md#optional-environmental-sensor)
 now provides environmental readings in Web Admin → Sensors. The separately approved
 [CCS811 integration](docs/installation.md#optional-ccs811-air-quality-sensor) adds
-eCO2 (estimated equivalent CO2) and TVOC there; physical acceptance is pending. Other sensors, LEDs, voice, conversational AI,
+eCO2 (estimated equivalent CO2) and TVOC there. The optional
+[GY-521/MPU-6050 IMU](docs/installation.md#optional-gy-521--mpu-6050-imu) adds
+six-axis motion readings there; physical acceptance is pending. Other sensors, LEDs, voice, conversational AI,
 Home Assistant, remote control API and MCP remain explicitly deferred.
 
 ## Run PHOS

@@ -141,7 +141,10 @@ _SCHEMA = {
                            "stale_after_seconds": "environmental_stale_after_seconds"},
                 "ccs811": {"enabled": "ccs811_enabled", "i2c_address": "ccs811_i2c_address",
                            "poll_interval_seconds": "ccs811_poll_interval_seconds",
-                           "stale_after_seconds": "ccs811_stale_after_seconds"}},
+                           "stale_after_seconds": "ccs811_stale_after_seconds"},
+                "imu": {"enabled": "imu_enabled", "i2c_address": "imu_i2c_address",
+                        "poll_interval_seconds": "imu_poll_interval_seconds",
+                        "stale_after_seconds": "imu_stale_after_seconds"}},
     "logging": {"level": "log_level", "file": "log_file", "expression_diagnostics": "expression_diagnostics"},
 }
 _PATH_FIELDS = {"expression_model_path", "cascade_path", "log_file"}
@@ -191,6 +194,10 @@ class RuntimeConfig:
     ccs811_i2c_address: str
     ccs811_poll_interval_seconds: float
     ccs811_stale_after_seconds: float
+    imu_enabled: bool
+    imu_i2c_address: str
+    imu_poll_interval_seconds: float
+    imu_stale_after_seconds: float
     web_enabled: bool
     web_host: str
     web_port: int
@@ -356,6 +363,12 @@ class RuntimeConfig:
             raise ConfigurationError("sensors.ccs811.stale_after_seconds must exceed poll_interval_seconds")
         if not isinstance(self.ccs811_i2c_address, str) or self.ccs811_i2c_address not in {"0x5a", "0x5b"}:
             raise ConfigurationError("sensors.ccs811.i2c_address must be 0x5a or 0x5b")
+        number("imu_poll_interval_seconds", minimum=1, inclusive=True, maximum=3600)
+        number("imu_stale_after_seconds", maximum=86400)
+        if self.imu_stale_after_seconds <= self.imu_poll_interval_seconds:
+            raise ConfigurationError("sensors.imu.stale_after_seconds must exceed poll_interval_seconds")
+        if not isinstance(self.imu_i2c_address, str) or self.imu_i2c_address not in {"0x68", "0x69"}:
+            raise ConfigurationError("sensors.imu.i2c_address must be 0x68 or 0x69")
         number("web_port", integer=True, maximum=65535)
         try:
             ipaddress.ip_address(self.web_host)
@@ -375,7 +388,7 @@ class RuntimeConfig:
         number("face_gaze_smoothing", maximum=1)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("ccs811_enabled", "environmental_enabled", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
+        for name in ("ccs811_enabled", "environmental_enabled", "imu_enabled", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
                      "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
                      "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
             if type(getattr(self, name)) is not bool:

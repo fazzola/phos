@@ -374,6 +374,47 @@ configuration changes require Restart PHOS even though driver failures retry
 automatically.
 
 
+## Optional GY-521 / MPU-6050 IMU
+
+PHOS reads the GY-521's MPU-6050 accelerometer and gyroscope on I2C bus 1. Stop
+PHOS before wiring or probing the bus. Connect **VCC to 3.3 V**, **GND to GND**,
+**SDA to GPIO2/pin 3**, and **SCL to GPIO3/pin 5**. Ensure the specific breakout
+uses 3.3 V I2C logic. Leave INT/XDA/XCL unconnected. AD0 low is `0x68`; AD0 high
+is `0x69`.
+
+```bash
+systemctl --user stop phos.service
+i2cdetect -y 1 0x68 0x69
+cd ~/phos
+.venv/bin/python -m pip install 'smbus2>=0.4,<1'
+.venv/bin/python -m pip check
+```
+
+Expect `68` or `69`; `--` means no response and `UU` means another driver owns
+the device. The optional package extra is `.[imu]`. Merge the complete
+`sensors.imu` block from `config/phos.json` into an existing configuration, then
+enable it in **Web Admin → Sensors → GY-521 / MPU-6050 motion** (or set
+`"enabled": true` directly). All four fields require **Restart PHOS**:
+
+```bash
+cd ~/phos
+PYTHONPATH=src .venv/bin/python -c "from pathlib import Path; from robot.config import RuntimeConfig; RuntimeConfig.from_file(Path('config/phos.json')); print('Configuration valid')"
+systemctl --user restart phos.service
+journalctl --user -u phos.service -n 100 --no-pager
+```
+
+The status panel shows acceleration X/Y/Z in m/s² and angular velocity X/Y/Z in
+°/s, with timestamp, age and health. PHOS configures ±2 g / ±250 °/s and converts
+the raw readings using factory scale factors. It does not calibrate mounting
+offsets at startup: keep the robot still only when comparing baseline values, and
+expect one acceleration axis to include gravity. No orientation, sensor fusion or
+behavior response is implemented. If CCS811 shares bus 1, retain its documented
+10 kHz `i2c_arm_baudrate` setting.
+
+For Pi acceptance, verify the detected address and WHO_AM_I, stable six-axis
+values, wrong-address recovery, a restart, and coexistence with every connected
+I2C sensor. Record board revision and wiring before treating it as accepted.
+
 ## Optional CCS811 air-quality sensor
 
 Follow the shared [I2C enablement and permissions setup](#optional-environmental-sensor)

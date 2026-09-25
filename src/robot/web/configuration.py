@@ -67,6 +67,7 @@ class ConfigurationService:
 
 # Presentation hints only. Field structure and validation belong to robot.config.
 CHOICES = {"sensors.ccs811.i2c_address": ("0x5a", "0x5b"),
+           "sensors.imu.i2c_address": ("0x68", "0x69"),
            "sensors.environmental.type": ("bme280", "bmp280"),
            "expression.provider": ("local", "aws"),
            "sensors.environmental.i2c_address": ("0x76", "0x77"),
@@ -75,6 +76,7 @@ CHOICES = {"sensors.ccs811.i2c_address": ("0x5a", "0x5b"),
            "vision.camera_preview.position": ("bottom_right", "bottom_left", "top_right", "top_left")}
 HELP = {
     "sensors.ccs811": "CCS811: estimated equivalent CO2 (eCO2, ppm), not direct NDIR CO2; TVOC (ppb). Disabled by default. I2C bus 1. Readings withheld during 20-minute conditioning after initialization. Poll interval 1–3600 seconds; stale timeout must be longer, at most 86400 seconds. Fresh environmental temperature/humidity are used automatically when available; BMP280 cannot supply humidity. Save, then Restart PHOS for every change.",
+    "sensors.imu": "GY-521 / MPU-6050: acceleration in m/s² and angular velocity in °/s. I2C bus 1; AD0 selects 0x68 or 0x69. Disabled by default. The adapter uses the ±2 g / ±250 °/s factory scale and does not estimate mounting offsets at startup. Poll interval: 1–3600 seconds; stale timeout must be longer (at most 86400 seconds). Save, then Restart PHOS for every change.",
     "sensors.environmental": "BME280: temperature, humidity, pressure. BMP280: temperature and pressure; humidity not supported. I2C bus 1. Disabled by default. Poll interval: 1–3600 seconds; stale timeout must be longer (at most 86400 seconds). Save, then Restart PHOS to apply any sensor change. No sensor hot reload.",
     "web": "Disabled by default. Use the Pi's LAN IP or 0.0.0.0 for trusted LAN access. Restart after changing these settings.",
     "display": "Display dimensions are pixels; fps controls animation cadence. Iris color is a named eye theme and applies after configuration reload. Display geometry and fullscreen changes require restart.",

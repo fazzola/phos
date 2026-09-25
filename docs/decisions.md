@@ -305,3 +305,16 @@ never assumes BMP280 humidity and restores device defaults on loss of source.
 No baseline persistence, firmware updating, GPIO wake control, GY-521, WS2812B
 or additional control surface is included. Exact breakout electrical validation,
 first-use burn-in and sustained Pi operation remain separate physical acceptance.
+
+## ADR-024 — Optional MPU-6050 IMU service
+
+**Status:** Accepted (explicit GY-521 integration request).
+
+Add typed `IMUSensorProvider` / immutable `IMUReading` and reuse the existing
+bounded sensor worker for an optional bus-1 MPU-6050 adapter. Canonical
+`sensors.imu` defaults disabled, permits `0x68`/`0x69`, and requires restart for
+all fields. Report acceleration in m/s² and angular velocity in °/s through the
+existing runtime status and Web Admin boundaries. Use smbus2 directly and fixed
+±2 g / ±250 °/s scales; do not add automatic offset calibration, orientation
+fusion, interrupts, gestures or behavior integration. Physical wiring and board
+acceptance remain separate from this implementation.

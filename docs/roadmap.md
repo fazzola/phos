@@ -42,11 +42,17 @@ establish hardware acceptance. Sensor-driven behavior remains deferred.
 - [ ] Verify actual module power/logic/wake wiring, both addresses as fitted, first-use stability, clock stretching and concurrent operation on Pi 3.
 - [ ] Consider baseline persistence after physical validation; not implemented now.
 
+## Approved follow-on — GY-521 / MPU-6050 IMU
+
+- [x] Optional smbus2 MPU-6050 adapter with typed six-axis readings and bounded worker lifecycle.
+- [x] Canonical configuration, Web Admin editor/status and hardware-free adapter/runtime tests.
+- [ ] Verify board wiring, address, stable readings and coexistence on Raspberry Pi 3.
+
 ## Post-1.0 — explicitly deferred
 
 | Area | Deferred work |
 | --- | --- |
-| Environmental/inertial sensors | GY-521/MPU-6050 adapters and observations; behavior integration for all sensors including BME280; CCS811 eCO2 must not be labeled direct CO2. |
+| Environmental/inertial sensors | Behavior integration for sensors including MPU-6050 and BME280; CCS811 eCO2 must not be labeled direct CO2. |
 | LED ring | WS2812B electrical verification, adapter and behavior mapping. |
 | Remote-control API | Authenticated service-mediated control, authorization and documented contracts. |
 | Advanced OS administration | Raspberry Pi reboot, if a future safe permission boundary is approved. |

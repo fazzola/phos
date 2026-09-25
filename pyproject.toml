@@ -6,6 +6,7 @@ requires-python = ">=3.9"
 
 [project.optional-dependencies]
 ccs811 = ["smbus2>=0.4,<1"]
+imu = ["smbus2>=0.4,<1"]
 environmental = ["RPi.bme280>=0.2.4,<0.3", "bmp280>=1.0.0,<2", "smbus2>=0.4,<1"]
 bmp280 = ["bmp280>=1.0.0,<2", "smbus2>=0.4,<1"]
 bme280 = ["RPi.bme280>=0.2.4,<0.3", "smbus2>=0.4,<1"]

@@ -110,7 +110,7 @@ and [installation/conditioning procedure](installation.md#optional-ccs811-air-qu
 
 ### Shared I2C bus
 
-BME280/BMP280 and CCS811 can share the Raspberry Pi I2C bus if their actual module configuration and addresses are compatible.
+BME280/BMP280, CCS811 and MPU-6050 can share the Raspberry Pi I2C bus if their actual module configuration and addresses are compatible. Keep the 10 kHz bus setting documented for CCS811 when it is present; MPU-6050 works on that shared bus speed.
 
 Before physical acceptance:
 
@@ -124,24 +124,29 @@ Before physical acceptance:
 
 ### GY-521 (MPU-6050)
 
-PHOS will include a GY-521 module based on the MPU-6050, connected directly to the Raspberry Pi over **I2C**.
+PHOS supports an optional GY-521 module based on the MPU-6050 through
+`robot.hardware.mpu6050.MPU6050Provider`, disabled by default. It publishes
+raw acceleration in m/s² and angular velocity in °/s through the IMU service;
+it does not publish orientation, gestures or behavior inputs.
 
 The device provides six inertial measurement axes:
 
 - 3-axis accelerometer: X, Y, Z linear acceleration;
 - 3-axis gyroscope: X, Y, Z angular velocity / rotation rate.
 
-The module may later be used to give PHOS awareness of its own movement, tilt, orientation changes, vibration, or physical interaction. Those behaviors are intentionally **not defined yet** and belong to a later software-integration milestone.
+Wire the verified board to Pi bus 1: **VCC → 3.3 V**, **GND → GND**, **SDA → GPIO2/pin 3**, and **SCL → GPIO3/pin 5**. Use 3.3 V logic and confirm the actual breakout’s regulator and pull-ups before applying power. AD0 low selects `0x68`; AD0 high selects `0x69`. INT, XDA and XCL are not used by PHOS and stay unconnected.
 
 Important distinction: the MPU-6050 measures acceleration and angular velocity. Absolute orientation is not a direct raw sensor output and would require software-side estimation/filtering if needed later.
 
-Before integration:
+The adapter wakes the chip, selects ±2 g / ±250 °/s scale, reads the six raw axes and applies only those fixed scale conversions. It intentionally performs no startup bias calibration because that would require PHOS to be perfectly still. Mounting bias and gravity remain in readings. See [installation](installation.md#optional-gy-521--mpu-6050-imu) for I2C verification and setup.
+
+Before physical acceptance:
 
 - verify the exact GY-521 board revision and pin labels;
 - verify its supply and logic-level requirements on the actual breakout board;
 - verify the configured I2C address (commonly dependent on the AD0 pin state);
 - document whether AD0, INT, or other auxiliary pins will be used;
-- verify coexistence with the BME280 and CCS811 on the shared I2C bus;
+- verify coexistence with BME280/BMP280 and CCS811 on the shared I2C bus;
 - do not define gesture, orientation, impact, or movement semantics until the corresponding PHOS behavior contract is designed.
 
 ## WS2812B RGB LED ring
@@ -189,7 +194,7 @@ Provider-neutral reading or command
 PHOS core / state / behavior integration
 ```
 
-The implemented environmental and air-quality providers/services are described in [architecture](architecture.md#environmental-sensor-service). They publish read-only state, without behavior integration. Other sensors and light-output abstractions remain deferred.
+The implemented environmental, air-quality and IMU providers/services are described in [architecture](architecture.md#environmental-sensor-service). They publish read-only state, without behavior integration. Other sensors and light-output abstractions remain deferred.
 
 ## Wiring information still to record
 

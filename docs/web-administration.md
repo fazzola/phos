@@ -90,7 +90,7 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Display & Appearance | Display dimensions, fps, fullscreen and transitions; blink/gaze intervals, gaze smoothing and reaction decay from `behavior`. |
 | Vision | Face tracking, camera resolution/cadence, face detection and optional display-only camera picture-in-picture preview. |
 | Expression Recognition | Provider selection/enabling and observation cadence/crop margin; smoothing; local ONNX model, labels and preprocessing; AWS region/confidence/timeouts; a separate cloud cost/rate-limit group. |
-| Sensors | Environmental type (BME280/BMP280) and CCS811 air quality, enable, I2C address, polling and stale timeout; read-only current readings, last update, age and sensor health from the parent runtime. All sensor settings require Restart PHOS. |
+| Sensors | Environmental type (BME280/BMP280), CCS811 air quality and GY-521/MPU-6050 motion: enable, I2C address, polling and stale timeout; read-only current readings, last update, age and sensor health from the parent runtime. All sensor settings require Restart PHOS. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
 | System / Status | Read-only PHOS version, configuration path, active expression provider/enabled state, last successful load/reload time, saved-versus-active comparison and restart-required fields. Live robot state is not monitored and AWS credential availability is not probed. |
@@ -388,3 +388,14 @@ supply compensation automatically. BMP280 lacks humidity; stale, failed or
 missing environmental data use clearly labeled device defaults. The panel
 reports the input last written, not a guarantee that the displayed gas sample
 already incorporates it. Consult the journal for hardware ERROR_ID diagnostics.
+
+### GY-521 / MPU-6050 motion
+
+The **GY-521 / MPU-6050 motion** group edits enabled state, `0x68`/`0x69` address,
+polling and stale timeout. Save then use **System actions → Restart PHOS**. The
+read-only panel shows acceleration X/Y/Z in m/s² and angular velocity X/Y/Z in
+°/s, timestamp, age and status. `Factory scale only; no offset calibration`
+means the adapter converted its ±2 g / ±250 °/s raw scale but did not require a
+motionless startup calibration. Values are hidden whenever unavailable or stale;
+the page never opens I2C itself. Setup and Pi verification are in the
+[MPU-6050 installation guide](installation.md#optional-gy-521--mpu-6050-imu).
