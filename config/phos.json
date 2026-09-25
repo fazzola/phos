@@ -75,6 +75,21 @@
       "read_timeout_seconds": 5.0
     }
   },
+  "sensors": {
+    "environmental": {
+      "type": "bme280",
+      "enabled": false,
+      "i2c_address": "0x76",
+      "poll_interval_seconds": 5.0,
+      "stale_after_seconds": 30.0
+    },
+    "ccs811": {
+      "enabled": false,
+      "i2c_address": "0x5a",
+      "poll_interval_seconds": 5.0,
+      "stale_after_seconds": 30.0
+    }
+  },
   "logging": {
     "level": "INFO",
     "file": "../phos.log",

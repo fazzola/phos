@@ -61,8 +61,8 @@ permission problems before proceeding. Camera packages and setup follow
 ### 3. Configure PHOS and Web Admin
 
 Edit `~/phos/config/phos.json`. Release defaults start only eyes: tracking,
-expressions, camera preview and Web Admin are disabled. Keep this complete file;
-all six sections (`web`, `display`, `behavior`, `vision`, `expression`, `logging`)
+expressions, camera preview, environmental sensors, CCS811 and Web Admin are disabled. Keep this complete file;
+all seven sections (`web`, `display`, `behavior`, `vision`, `expression`, `sensors`, `logging`)
 are required, including inactive provider fields and `vision.camera_preview`.
 Paths inside JSON resolve relative to its directory.
 
@@ -249,3 +249,285 @@ Switching provider or disabling expressions requires restart. See
 Deprecated per-setting CLI overrides are still functional for compatibility;
 production uses only `--config`. Supported eye and Vision diagnostic commands
 remain available; no obsolete provider-specific JSON files are required.
+
+
+## Optional environmental sensor
+
+This is the separately approved sensor addition to the 1.0.0 baseline. Leave it
+disabled until wired according to [hardware notes](hardware.md#bme280). Confirm
+the breakout accepts 3.3 V power/logic; the exact board revision is not assumed.
+With PHOS stopped, on Raspberry Pi OS as the desktop/service user:
+
+```bash
+sudo apt update
+sudo apt install -y i2c-tools
+sudo raspi-config nonint do_i2c 0
+sudo usermod -aG i2c "$USER"
+sudo reboot
+```
+
+Reboot ensures the I2C interface and desktop/user-service group membership take
+effect. Alternatively enable **Interface Options → I2C** in `sudo raspi-config`.
+See [Raspberry Pi configuration documentation](https://www.raspberrypi.com/documentation/computers/configuration.html).
+After logging back into the desktop, stop PHOS before probing its bus:
+
+```bash
+systemctl --user stop phos.service
+ls -l /dev/i2c-1
+id -nG
+i2cdetect -y 1 0x76 0x77
+cd ~/phos
+.venv/bin/python -m pip install 'RPi.bme280>=0.2.4,<0.3' 'bmp280>=1.0.0,<2' 'smbus2>=0.4,<1'
+.venv/bin/python -m pip check
+.venv/bin/python -c "import bme280, bmp280, smbus2; print('Environmental driver imports OK')"
+```
+
+For a foreground-only installation, stop the foreground process instead of the
+systemctl command. The scan should show `76` or `77`; `--` means no response,
+while `UU` means a kernel driver owns that address. Do not force competing access.
+A responding address alone does not identify the chip: PHOS checks its chip
+ID against the selected type (BME280 0x60, BMP280 0x58). Keep the bus at its default speed. No sudo is needed for the PHOS process.
+If access is denied, confirm `i2c` membership and the device permissions after reboot.
+
+The optional package extra is `.[environmental]` for both sensors; `.[bme280]`
+and `.[bmp280]` install only the selected driver. Source launch uses the pip
+dependencies above. [RPi.bme280](https://pypi.org/project/RPi.bme280/)
+is a small pure-Python compensation/sampling driver using `smbus2`, without a
+CircuitPython/graphics/numerical stack. It is an older library; the adapter is
+isolated and target-Pi verification is still required.
+
+RPi.bme280 0.2.4 always accesses humidity registers and has no BMP280 sampling
+API. It is retained for existing BME280 behavior. BMP280 uses the small pure-Python
+[Pimoroni bmp280](https://github.com/pimoroni/bmp280-python) 1.x driver (with
+`i2cdevice`), passed the adapter-owned `smbus2.SMBus(1)`. Its forced-mode update
+supplies temperature and pressure from one conversion. No CircuitPython, numeric
+framework or second bus owner is introduced. Only the selected driver is imported.
+
+For an existing config, first merge the required `sensors` object from the new
+canonical file as described in [migration](development.md#environmental-configuration-migration).
+In Web Admin → Sensors (or directly in the complete JSON), select type **BME280** or **BMP280**, set enabled to true,
+choose the detected address, and set polling/stale timing. The canonical defaults
+are maintained in `config/phos.json`. Save, validate and restart:
+
+```bash
+cd ~/phos
+PYTHONPATH=src .venv/bin/python -c "from pathlib import Path; from robot.config import RuntimeConfig; RuntimeConfig.from_file(Path('config/phos.json')); print('Configuration valid')"
+systemctl --user restart phos.service
+journalctl --user -u phos.service -n 100 --no-pager
+```
+
+Manual launch: `.venv/bin/python src/robot/main.py --config config/phos.json`.
+Open **Web Admin → Sensors** and refresh the page to see current °C, % relative
+humidity (BME280 only) and hPa, UTC last-update time, age and health. BMP280
+humidity is null and shown as **Not supported**. The active type remains visible
+when a different saved type is awaiting restart. Save alone changes only
+the file; Reload leaves **all five** environmental fields pending for Restart PHOS.
+
+Missing libraries, wrong address, absent hardware, invalid readings or I/O errors
+make the sensor unavailable without stopping eyes/Vision/web. Retrying starts at
+the polling interval, doubles to a maximum of 60 seconds (or the configured poll
+interval if longer), and resets after success. Error warnings are limited to one
+per minute; measurements are DEBUG-only. Old measurements are hidden immediately
+after failure or when their age reaches the stale timeout. Last-update/age remain
+visible. A slow I2C call occupies one worker only; no queue or replacement threads
+accumulate. Shutdown waits at most one second for that worker; a stuck native
+call is cleaned up when it returns or by process exit.
+
+Physical acceptance: verify the actual address and chip, compare the supported measurements
+with a reference, check advancing timestamps over several polls, then test a
+wrong address and recovery after correcting it/restarting. Power off before
+changing wiring. Confirm eyes, camera and web remain responsive with a missing
+sensor; confirm disable plus restart removes sensor bus activity. Record actual
+module, wiring, Pi OS, readings and service logs. No physical acceptance is
+claimed by the mock tests.
+
+### Missing BMP280 driver
+
+If the journal reports `ModuleNotFoundError: No module named 'bmp280'`, install
+the driver into the same Python environment used to run PHOS. On the Raspberry
+Pi, for the documented installation:
+
+```bash
+cd ~/phos
+.venv/bin/python -m pip install 'bmp280>=1.0.0,<2' 'smbus2>=0.4,<1'
+.venv/bin/python -c "import bmp280, smbus2; print('Driver OK')"
+```
+
+The sensor service retries automatically after installation. To restart the
+managed service explicitly:
+
+```bash
+systemctl --user restart phos.service
+journalctl --user -u phos.service -n 100 --no-pager
+```
+
+For a manual launch, stop and rerun PHOS with the same virtual environment.
+Selecting BMP280 in Web Admin does not install its optional Python dependency.
+If imports succeed but the runtime still reports a missing module, check that
+the service uses this virtual environment and checkout.
+
+The sensor type in the warning is the active runtime selection. For BMP280,
+the deployed `sensors.environmental` block must have `"type": "bmp280"` and
+`"enabled": true`. Check the configuration path shown in Web Admin → System /
+Status; a development-machine file may differ from the Pi's file. Saved sensor
+configuration changes require Restart PHOS even though driver failures retry
+automatically.
+
+
+## Optional CCS811 air-quality sensor
+
+Follow the shared [I2C enablement and permissions setup](#optional-environmental-sensor)
+above once. Before powering the Pi, verify the exact module and
+[CCS811 wiring](hardware.md#keyestudio-sen-ccs811), including nWAKE and Pi-side
+logic levels. Do not apply the BME280 supply assumption to an unidentified
+Keyestudio board. With PHOS stopped, as its desktop/service user:
+
+```bash
+systemctl --user stop phos.service
+ls -l /dev/i2c-1
+id -nG
+i2cdetect -y 1 0x5a 0x5b
+cd ~/phos
+.venv/bin/python -m pip install 'smbus2>=0.4,<1'
+.venv/bin/python -m pip check
+.venv/bin/python -c "import smbus2; print('CCS811 I2C dependency OK')"
+```
+
+For a foreground launch, stop that process instead of systemctl. Expect `5a` or
+`5b`; `--` is no response, and `UU` means a kernel driver owns the address.
+Do not force competing access. A response does not prove chip identity: PHOS
+checks HW_ID. Only one PHOS process should own these sensor addresses.
+
+The optional package extra is `.[ccs811]`. PHOS uses its small CCS811 register
+adapter over [smbus2](https://smbus2.readthedocs.io/en/latest/), the same I2C
+library as the environmental adapters. No separate `ccs811` Python package,
+Blinka/CircuitPython framework or GPIO dependency is required. Imports are lazy;
+a disabled CCS811 needs no optional dependency. A `ModuleNotFoundError` for
+`smbus2` means install it using the exact virtual environment in the service's
+ExecStart, then retry or restart.
+
+Merge the required `sensors.ccs811` block from `config/phos.json` into existing
+deployment JSON, preserving `sensors.environmental` and all other settings.
+Missing fields fail validation even when disabled; `run_pi.sh` preserves existing
+JSON and does not migrate it. In **Web Admin → Sensors → CCS811 air quality**,
+enable it, choose the detected address and set host polling/stale timeout.
+Save alone changes the file. All four fields require **Restart PHOS**; Reload
+leaves them pending. For the documented deployment:
+
+```bash
+cd ~/phos
+PYTHONPATH=src .venv/bin/python -c "from pathlib import Path; from robot.config import RuntimeConfig; RuntimeConfig.from_file(Path('config/phos.json')); print('Configuration valid')"
+systemctl --user restart phos.service
+journalctl --user -u phos.service -n 100 --no-pager
+```
+
+Manual launch uses `.venv/bin/python src/robot/main.py --config config/phos.json`.
+The runtime starts the firmware application and selects device mode 1 (one-second
+measurements). Host polling does not change that drive mode. Readings are withheld
+for 20 minutes after every initialization, including reconnect/restart; the UI
+shows `warming_up`, no values and no fabricated timestamp. No-data polls retain
+the initialized device and resume at the configured interval. Faults use the
+existing bounded backoff and rate-limited warnings without stopping eyes/Vision.
+
+### CCS811 conditioning, baseline and compensation
+
+The [ams CCS811 datasheet, v1-06](https://www.mouser.com/datasheet/2/588/CCS811_DS000459_7-00-1594304.pdf)
+describes 20-minute conditioning, a 60-minute first-power-on period and continuing
+early-life changes over 48 hours. Allow at least an hour on a new sensor and
+record stability over 48 hours during physical acceptance. PHOS does not persist
+sensor lifetime, so its 20-minute gate is not certification of first-use accuracy.
+It relies on device automatic baseline correction; it neither saves/restores a
+baseline nor writes a copied example baseline. Baseline persistence is follow-up
+work requiring device-specific validation.
+
+Fresh, valid temperature and humidity from the environmental service are passed
+automatically to CCS811. BME280 can supply both; BMP280 cannot. If unavailable,
+stale or outside the compensation range, the adapter explicitly restores device
+default inputs (25 °C / 50% RH). Those are algorithm assumptions, not measured
+room conditions. The UI identifies the last compensation input; the device may
+apply a changed input after the next gas sample. ENV_DATA writes are deduplicated.
+This is supported by the device register protocol through smbus2, without coupling
+the CCS811 adapter to another hardware provider.
+
+### CCS811 verification and troubleshooting
+
+Refresh **Web Admin → Sensors** after saving edits. After conditioning expect
+eCO2 in ppm (estimated equivalent CO2, **not direct NDIR CO2**) and TVOC in ppb,
+advancing UTC timestamps, age and health. A valid low TVOC value can be zero;
+unavailable/stale readings instead show Unavailable. Do not interpret a successful
+poll or eCO2 as a calibrated direct CO2 measurement.
+
+Verify actual board revision, power/logic levels, nWAKE, address and chip identity.
+Check both sensors together with eyes/Vision/Web Admin running. With BME280,
+confirm environmental compensation; with BMP280 or disabled environmental sensing,
+confirm device defaults. Verify a wrong configured address produces unavailable
+without stopping PHOS, then correct it and restart. Power off before changing
+wires; disabling CCS811 plus restart should remove CCS811 transactions.
+
+If the address responds but reads fail, inspect journal error codes, wiring,
+pull-ups, power and clock-stretch handling on the Pi's I2C controller. CCS811
+uses clock stretching; detecting it alone does not verify reliable transfers.
+For the Raspberry Pi 3, configure the shared I2C bus at 10 kHz before retrying
+CCS811. This setting affects every device on bus 1, including BME280/BMP280.
+
+```bash
+sudo nano /boot/firmware/config.txt
+```
+
+On older Raspberry Pi OS installations, use `/boot/config.txt` instead. In the
+`[all]` section, retain I2C enablement and add or update this single setting:
+
+```ini
+dtparam=i2c_arm=on
+dtparam=i2c_arm_baudrate=10000
+```
+
+Do not leave multiple `i2c_arm_baudrate` entries with conflicting values. Save,
+then shut down and remove power from the CCS811 before starting again:
+
+```bash
+sudo poweroff
+```
+
+After restoring power, start PHOS and inspect its journal. The low bus speed is
+a Raspberry Pi system setting, not `poll_interval_seconds` in `phos.json`.
+PHOS does not alter bus speed or switch to a software I2C bus itself. Record Pi
+OS, module revision, address, sustained readings and recovery results before
+claiming hardware acceptance. DEBUG logs include reads and compensation changes;
+INFO does not log every sample. A stuck I/O call stays in one worker, with a
+bounded shutdown wait and cleanup by its owner when it returns.
+
+### CCS811 reads 0x81 after power cycling, then 0xff after PHOS starts
+
+This observation points to a problem triggered during initialization; it does
+not by itself identify the exact transaction or prove a hardware fault. Normal
+startup now reads HW_ID/STATUS, issues APP_START only in boot mode, and verifies
+mode 1. It does **not** send SW_RESET on startup or reconnect. This follows the
+normal boot-to-application sequence in the datasheet linked above. A chip already
+in application mode is reused; the existing conditioning gate still applies.
+
+Initialization errors report address, failed phase and actual register values.
+For example, `read HW_ID: HW_ID=0xff, expected 0x81` differs from an invalid STATUS
+during `verify APP_START` or `verify MEAS_MODE`. All-ones STATUS is rejected as
+unreliable communication instead of being interpreted as valid application flags.
+DEBUG logs include the initial valid HW_ID/STATUS pair.
+
+To validate this change on the Pi:
+
+1. Stop PHOS and update `src/robot/hardware/ccs811.py` from this checkout into the
+   actual deployed checkout; editing the development copy alone has no effect.
+2. Prevent automatic PHOS startup for the test (temporarily
+   `systemctl --user disable --now phos.service` for the documented managed setup).
+   Shut down the Pi and remove power from the sensor as well to clear its existing
+   all-ones state. Keep the current wiring unchanged for this comparison.
+3. Boot and confirm HW_ID is 0x81 at 0x5a with PHOS stopped, then stop the checker
+   before `systemctl --user start phos.service`.
+4. Inspect `journalctl --user -u phos.service -n 100 --no-pager`. Successful startup
+   reports initialization followed by conditioning. If it fails, record the first
+   failure's phase and values; later retries may show only the already-failed bus.
+5. Restore automatic startup with `systemctl --user enable phos.service` when
+   testing is complete if it was previously enabled.
+
+Avoid simultaneous checker/PHOS access. This change is hardware-unverified; a
+persistent all-ones response can still require power recovery and investigation
+of power, wake and I2C timing. No automatic GPIO reset or bus-speed change is made.

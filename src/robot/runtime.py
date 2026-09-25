@@ -7,6 +7,10 @@ import logging
 from typing import Callable, Optional
 
 from robot.config import RuntimeConfig
+from robot.hardware.environmental import environmental_provider_type
+from robot.hardware.ccs811 import CCS811Provider
+from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorService,
+                           AirQualitySensorProvider, AirQualitySensorService)
 from robot.core import BehaviorEngine, Event, EventBus, RobotCore, RobotState, STATE_CHANGED
 from robot.ui import CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, TkEyeDisplay
 from robot.ui.runtime import EyeRenderLoop
@@ -35,6 +39,8 @@ class PhosRuntime:
         vision_pipeline: Optional[VisionPipeline] = None,
         config: Optional[RuntimeConfig] = None,
         vision_forced: bool = False,
+        sensor_service: Optional[EnvironmentalSensorService] = None,
+        air_quality_service: Optional[AirQualitySensorService] = None,
     ) -> None:
         self.core = core
         self._behavior_engine = behavior_engine
@@ -42,6 +48,8 @@ class PhosRuntime:
         self._vision_pipeline = vision_pipeline
         self._config = config
         self._vision_forced = vision_forced
+        self._sensor_service = sensor_service
+        self._air_quality_service = air_quality_service
         self._loop = None
         self._vision_changed: Optional[asyncio.Event] = None
         self._vision_lock = asyncio.Lock()
@@ -54,6 +62,13 @@ class PhosRuntime:
     def apply_appearance(self, config: RuntimeConfig) -> None:
         """Apply validated appearance through the display runtime boundary."""
         self._eye_render_loop.request_appearance(iris_color=config.iris_color)
+
+    def sensor_status(self) -> dict:
+        """Read-only application boundary, safe for the lifecycle thread."""
+        state = {"environmental": self._sensor_service.snapshot()} if self._sensor_service is not None else {}
+        if self._air_quality_service is not None:
+            state["ccs811"] = self._air_quality_service.snapshot()
+        return state
 
     def apply_camera_preview(self, config: RuntimeConfig) -> None:
         """Apply from the lifecycle thread and acknowledge runtime acceptance."""
@@ -174,6 +189,10 @@ class PhosRuntime:
         self._vision_changed = asyncio.Event()
         try:
             await self.core.start()
+            if self._sensor_service is not None:
+                await self._sensor_service.start()
+            if self._air_quality_service is not None:
+                await self._air_quality_service.start()
             logger.info("PHOS core, behavior engine, and renderer started")
             if self._vision_pipeline is not None and self._config is not None and (self._config.vision_enabled or self._vision_forced):
                 # Stop must also release a partially started camera/pipeline.
@@ -228,6 +247,10 @@ class PhosRuntime:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         self._loop = None
+        if self._air_quality_service is not None:
+            await self._air_quality_service.stop()
+        if self._sensor_service is not None:
+            await self._sensor_service.stop()
         if self._vision_started and self._vision_pipeline is not None:
             try:
                 await self._vision_pipeline.stop()
@@ -265,8 +288,10 @@ def build_runtime(
     eye_display: Optional[EyeDisplay] = None,
     vision_pipeline: Optional[VisionPipeline] = None,
     vision_factory: Optional[Callable[[EventBus], VisionPipeline]] = None,
+    sensor_provider_factory: Optional[Callable[[], EnvironmentalSensorProvider]] = None,
+    air_quality_provider_factory: Optional[Callable[[], AirQualitySensorProvider]] = None,
 ) -> PhosRuntime:
-    """Compose a runtime; tests may inject a fake VisionPipeline/display."""
+    """Compose a runtime; tests may inject Vision, display and sensor providers."""
     if vision_pipeline is not None and vision_factory is not None:
         raise ValueError("Provide either vision_pipeline or vision_factory, not both.")
     config = RuntimeConfig.from_file() if config is None else config
@@ -296,8 +321,30 @@ def build_runtime(
         vision_factory(core.events) if vision_factory is not None else _build_configured_vision(config, core.events)
     )
     vision_holder["pipeline"] = resolved_vision
+    provider_type = environmental_provider_type(config.environmental_type)
+    sensors = EnvironmentalSensorService(
+        sensor_provider_factory if sensor_provider_factory is not None else
+        lambda: provider_type(address=int(config.environmental_i2c_address, 16)),
+        sensor_type=config.environmental_type,
+        available_measurements=provider_type.available_measurements,
+        enabled=config.environmental_enabled,
+        poll_interval_seconds=config.environmental_poll_interval_seconds,
+        stale_after_seconds=config.environmental_stale_after_seconds,
+    )
+    if config.environmental_enabled:
+        logger.info("%s enabled: I2C bus 1, address %s, polling every %s seconds",
+                    config.environmental_type.upper(), config.environmental_i2c_address, config.environmental_poll_interval_seconds)
+    air_quality = AirQualitySensorService(
+        air_quality_provider_factory if air_quality_provider_factory is not None else
+        lambda: CCS811Provider(address=int(config.ccs811_i2c_address, 16)),
+        enabled=config.ccs811_enabled, poll_interval_seconds=config.ccs811_poll_interval_seconds,
+        stale_after_seconds=config.ccs811_stale_after_seconds, compensation_supplier=sensors.compensation,
+    )
+    if config.ccs811_enabled:
+        logger.info("CCS811 enabled: I2C bus 1, address %s, polling every %s seconds",
+                    config.ccs811_i2c_address, config.ccs811_poll_interval_seconds)
     return PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
-                       config=config, vision_forced=injected_vision)
+                       config=config, vision_forced=injected_vision, sensor_service=sensors, air_quality_service=air_quality)
 
 
 def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optional[VisionPipeline]:

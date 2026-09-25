@@ -437,7 +437,7 @@ def test_domain_pages_partition_canonical_fields_and_are_protected(setup):
         for field in group["fields"]:
             assert all_html.count(f'name="{field["name"]}"') == 1
     assert len(exposed) == len(set(exposed))
-    assert client.get("/configuration/sensors").status_code == 404
+    assert client.get("/configuration/not-an-area").status_code == 404
 
 
 def test_each_domain_save_preserves_other_domains_and_rejects_injected_fields(setup):
@@ -642,3 +642,112 @@ def test_real_worker_reload_reaches_parent_application(setup):
             assert logging.getLogger().level == logging.ERROR
     finally:
         logging.getLogger().setLevel(original_level)
+
+
+def test_sensors_form_validates_and_preserves_other_domains(setup):
+    app, path, _ = setup
+    client = authorize(app)
+    original = load_document(path)
+    data = form(client, "sensors")
+    data.update({"sensors.environmental.type": "bmp280", "sensors.environmental.enabled": "on", "sensors.environmental.i2c_address": "0x77",
+                 "sensors.environmental.poll_interval_seconds": "10",
+                 "sensors.environmental.stale_after_seconds": "60"})
+    assert client.post("/configuration/sensors", data=data).status_code == 302
+    expected = json.loads(json.dumps(original))
+    expected["sensors"]["environmental"].update(type="bmp280", enabled=True, i2c_address="0x77",
+        poll_interval_seconds=10, stale_after_seconds=60)
+    assert load_document(path) == expected
+    for field, value in [("type", "unsupported"), ("i2c_address", "0x75"), ("poll_interval_seconds", "0"),
+                         ("stale_after_seconds", "10")]:
+        invalid = form(client, "sensors")
+        invalid[f"sensors.environmental.{field}"] = value
+        assert client.post("/configuration/sensors", data=invalid).status_code == 400
+        assert load_document(path) == expected
+    invalid = form(client, "sensors")
+    invalid["display.fps"] = "1"
+    assert client.post("/configuration/sensors", data=invalid).status_code == 400
+    assert load_document(path) == expected
+
+
+def test_sensor_status_panel_uses_parent_service_and_hides_stale_values(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    state = {"sensor_type": "bme280",
+             "available_measurements": ["temperature_c", "humidity_percent", "pressure_hpa"],
+             "status": "available", "available": True,
+             "measurements": {"temperature_c": 22.5, "humidity_percent": 48.25,
+                              "pressure_hpa": 1008.75},
+             "last_update": "2026-09-23T10:00:00+00:00", "age_seconds": 2, "error": None}
+    lifecycle.register_sensor_status(lambda: {"environmental": dict(state)})
+    app = create_app(path, active_document=config.to_dict(), lifecycle=lifecycle)
+    client = authorize(app)
+    page = client.get("/configuration/sensors").get_data(as_text=True)
+    for value in ("22.50 °C", "48.25 %", "1008.75 hPa", state["last_update"], "2.0 seconds"):
+        assert value in page
+    state.update(status="stale", available=False, measurements=None, error="No fresh reading")
+    page = client.get("/configuration/sensors").get_data(as_text=True)
+    assert "stale" in page and "No fresh reading" in page
+    assert "22.50" not in page and "1008.75" not in page
+    state.update(status="disabled", error=None)
+    assert "disabled" in client.get("/configuration/sensors").get_data(as_text=True)
+
+
+def test_bmp280_status_shows_unsupported_humidity_even_when_disabled(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    state = {"sensor_type": "bmp280", "available_measurements": ["temperature_c", "pressure_hpa"],
+             "status": "available", "available": True,
+             "measurements": {"temperature_c": 22.5, "humidity_percent": None, "pressure_hpa": 1008.75},
+             "last_update": None, "age_seconds": 0, "error": None}
+    lifecycle.register_sensor_status(lambda: {"environmental": state})
+    client = authorize(create_app(path, active_document=config.to_dict(), lifecycle=lifecycle))
+    for available in (True, False):
+        state['available'] = available
+        page = client.get('/configuration/sensors').get_data(as_text=True)
+        assert 'Not supported' in page and 'BMP280' in page
+        assert '0.00 %' not in page
+        assert '<select' in page and 'name="sensors.environmental.type"' in page
+        assert 'value="bme280"' in page and 'value="bmp280"' in page
+        if available:
+            assert '22.50 °C' in page and '1008.75 hPa' in page
+
+
+def test_ccs811_form_and_status_use_shared_configuration_and_lifecycle(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    state = {'sensor_type': 'ccs811', 'status': 'available', 'available': True,
+             'measurements': {'eco2_ppm': 1234, 'tvoc_ppb': 321},
+             'last_update': '2026-09-24T12:00:00+00:00', 'age_seconds': 2,
+             'compensation_input': 'environmental', 'error': None}
+    lifecycle.register_sensor_status(lambda: {'ccs811': dict(state)})
+    client = authorize(create_app(path, active_document=config.to_dict(), lifecycle=lifecycle))
+    page = client.get('/configuration/sensors').get_data(as_text=True)
+    for text in ('1234 ppm', '321 ppb', 'estimated equivalent CO2', 'not a direct NDIR',
+                 'Fresh environmental temperature/humidity', state['last_update'],
+                 'name="sensors.ccs811.enabled"', 'value="0x5b"'):
+        assert text in page
+    data = form(client, 'sensors')
+    data.update({'sensors.ccs811.enabled': 'on', 'sensors.ccs811.i2c_address': '0x5b',
+                 'sensors.ccs811.poll_interval_seconds': '10', 'sensors.ccs811.stale_after_seconds': '60'})
+    assert client.post('/configuration/sensors', data=data).status_code == 302
+    expected = config.to_dict()
+    expected['sensors']['ccs811'].update(enabled=True, i2c_address='0x5b',
+                                        poll_interval_seconds=10, stale_after_seconds=60)
+    assert load_document(path) == expected
+    assert len(lifecycle.execute('status')['restart_required']) == 4
+    for field, value in [('i2c_address', '0x76'), ('poll_interval_seconds', '0'), ('stale_after_seconds', '10')]:
+        invalid = form(client, 'sensors')
+        invalid['sensors.ccs811.' + field] = value
+        assert client.post('/configuration/sensors', data=invalid).status_code == 400
+        assert load_document(path) == expected
+    for status in ('warming_up', 'unavailable', 'stale', 'disabled'):
+        state.update(status=status, available=False, measurements=None, error='Waiting for sensor')
+        page = client.get('/configuration/sensors').get_data(as_text=True)
+        assert status in page and 'Waiting for sensor' in page
+        assert '1234 ppm' not in page and '321 ppb' not in page
