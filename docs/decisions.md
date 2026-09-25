@@ -327,3 +327,44 @@ low-pass filter, temporal confirmation and event cooldown. Thresholds are
 canonical `sensors.imu.motion` settings and reload through the runtime service
 without touching I2C. No behavior, rendering, orientation fusion or hardware
 interrupt contract is introduced.
+
+### ADR-024 extension — Motion visual intent
+
+Permit stable motion state changes to enter Core as provider-neutral local
+events. BehaviorEngine maps them to FaceState only: persistent tilt/movement in
+IDLE and bounded shake/impact alert overlays. Core states retain priority and
+EyeRenderer remains unaware of IMU concepts. Eight live-reloadable `behavior.imu_*`
+settings provide visible intensity, tilt gaze range and eye asymmetry, separate transient strengths,
+durations and
+cooldown without exposing renderer geometry or changing the base iris theme.
+
+### ADR-024 extension — Reliable sustained tilt
+
+The user-approved classifier correction removes the movement gate on tilt.
+Filtered normalized gravity, signed mounting axes, enter/exit hysteresis and
+temporal confirmation give tilt priority below impact/shake and above movement.
+Preserve the public tilt threshold key with normalized-component semantics; add
+an exit threshold and explicit mounting mapping to canonical live configuration.
+Use a fixed time-based low-pass filter and 20 Hz default sampling, without AHRS
+or changes to BehaviorEngine/EyeRenderer. See installation for conventions,
+limitations, diagnostics and physical verification.
+
+### ADR-024 extension — Amplified IMU visual intent
+
+Keep the established IMU event → BehaviorEngine → FaceState boundary. Increase
+persistent motion and tilt intent for visibility on the 800×600 display, while
+using separately configurable shake and impact strengths so impact is always
+stronger. FaceState retains its existing geometry clamps; alert accents remain
+temporary semantic intent, preserving the configured base iris. The seven
+`behavior.imu_*` settings reload live and do not alter the motion interpreter.
+
+### ADR-024 extension — Directional IMU eye asymmetry
+
+Add an optional signed `FaceState.eye_asymmetry` intent. It requests mirrored
+left/right eye openness without naming an IMU state in the renderer. Behavior
+sets it from stable horizontal tilt: left tilt opens the left eye and right tilt
+opens the right eye by the same configured amount; forward/back and non-tilt IMU
+states request equal eyes. This explicit value overrides the expression
+profile's ordinary asymmetry, while EyeRenderer continues to clamp and
+independently interpolate received eye targets. The one live-reloadable behavior
+setting remains architecture-neutral and preserves robot-state priority.

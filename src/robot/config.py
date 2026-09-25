@@ -112,7 +112,14 @@ _SCHEMA = {
                 "fullscreen": "fullscreen", "transition_seconds": "display_transition_seconds",
                 "iris_color": "iris_color"},
     "behavior": {"blink_interval_seconds": "blink_interval_seconds", "gaze_interval_seconds": "gaze_interval_seconds",
-                 "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second"},
+                 "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second",
+                 "imu_reaction_strength": "imu_reaction_strength", "imu_tilt_gaze_strength": "imu_tilt_gaze_strength",
+                 "imu_tilt_eye_asymmetry_strength": "imu_tilt_eye_asymmetry_strength",
+                 "imu_shake_reaction_strength": "imu_shake_reaction_strength",
+                 "imu_impact_reaction_strength": "imu_impact_reaction_strength",
+                 "imu_shake_reaction_duration_seconds": "imu_shake_reaction_duration_seconds",
+                 "imu_impact_reaction_duration_seconds": "imu_impact_reaction_duration_seconds",
+                 "imu_reaction_cooldown_seconds": "imu_reaction_cooldown_seconds"},
     "vision": {"face_tracking_enabled": "face_tracking_enabled", "camera_resolution": "camera_resolution",
                "capture_fps": "vision_capture_fps", "detection_fps": "face_detection_fps",
                "camera_preview": {"enabled": "camera_preview_enabled", "position": "camera_preview_position",
@@ -146,6 +153,9 @@ _SCHEMA = {
                         "poll_interval_seconds": "imu_poll_interval_seconds",
                         "stale_after_seconds": "imu_stale_after_seconds",
                         "motion": {"movement_threshold_m_s2": "imu_motion_movement_threshold_m_s2",
+                                   "tilt_exit_threshold_m_s2": "imu_motion_tilt_exit_threshold_m_s2",
+                                   "lateral_axis": "imu_motion_lateral_axis",
+                                   "forward_axis": "imu_motion_forward_axis",
                                    "tilt_threshold_m_s2": "imu_motion_tilt_threshold_m_s2",
                                    "shake_threshold_deg_s": "imu_motion_shake_threshold_deg_s",
                                    "impact_threshold_m_s2": "imu_motion_impact_threshold_m_s2",
@@ -205,6 +215,9 @@ class RuntimeConfig:
     imu_poll_interval_seconds: float
     imu_stale_after_seconds: float
     imu_motion_movement_threshold_m_s2: float
+    imu_motion_tilt_exit_threshold_m_s2: float
+    imu_motion_lateral_axis: str
+    imu_motion_forward_axis: str
     imu_motion_tilt_threshold_m_s2: float
     imu_motion_shake_threshold_deg_s: float
     imu_motion_impact_threshold_m_s2: float
@@ -223,6 +236,14 @@ class RuntimeConfig:
     gaze_interval_seconds: Tuple[float, float]
     face_gaze_smoothing: float
     reaction_decay_per_second: float
+    imu_reaction_strength: float
+    imu_tilt_gaze_strength: float
+    imu_tilt_eye_asymmetry_strength: float
+    imu_shake_reaction_strength: float
+    imu_impact_reaction_strength: float
+    imu_shake_reaction_duration_seconds: float
+    imu_impact_reaction_duration_seconds: float
+    imu_reaction_cooldown_seconds: float
     face_tracking_enabled: bool
     camera_preview_enabled: bool
     camera_preview_position: str
@@ -375,7 +396,7 @@ class RuntimeConfig:
             raise ConfigurationError("sensors.ccs811.stale_after_seconds must exceed poll_interval_seconds")
         if not isinstance(self.ccs811_i2c_address, str) or self.ccs811_i2c_address not in {"0x5a", "0x5b"}:
             raise ConfigurationError("sensors.ccs811.i2c_address must be 0x5a or 0x5b")
-        number("imu_poll_interval_seconds", minimum=1, inclusive=True, maximum=3600)
+        number("imu_poll_interval_seconds", minimum=.05, inclusive=True, maximum=3600)
         number("imu_stale_after_seconds", maximum=86400)
         if self.imu_stale_after_seconds <= self.imu_poll_interval_seconds:
             raise ConfigurationError("sensors.imu.stale_after_seconds must exceed poll_interval_seconds")
@@ -385,6 +406,15 @@ class RuntimeConfig:
                      "imu_motion_shake_threshold_deg_s", "imu_motion_impact_threshold_m_s2",
                      "imu_motion_confirmation_seconds"):
             number(name, minimum=.01, inclusive=True, maximum=1000)
+        number("imu_motion_tilt_threshold_m_s2", minimum=.01, inclusive=True, maximum=9.80665)
+        number("imu_motion_tilt_exit_threshold_m_s2", minimum=.01, inclusive=True, maximum=9.80665)
+        if self.imu_motion_tilt_exit_threshold_m_s2 >= self.imu_motion_tilt_threshold_m_s2:
+            raise ConfigurationError("IMU tilt exit threshold must be below enter threshold")
+        axes = (self.imu_motion_lateral_axis, self.imu_motion_forward_axis)
+        if any(not isinstance(axis, str) or axis not in {"x", "y", "z", "-x", "-y", "-z"} for axis in axes):
+            raise ConfigurationError("IMU mounting axes must be signed x, y or z")
+        if axes[0][-1] == axes[1][-1]:
+            raise ConfigurationError("IMU mounting axes must be distinct")
         number("imu_motion_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
         if self.imu_motion_impact_threshold_m_s2 <= self.imu_motion_movement_threshold_m_s2:
             raise ConfigurationError("sensors.imu.motion.impact_threshold_m_s2 must exceed movement_threshold_m_s2")
@@ -405,6 +435,16 @@ class RuntimeConfig:
             number(name)
         number("detector_scale_factor", minimum=1)
         number("face_gaze_smoothing", maximum=1)
+        number("imu_reaction_strength", inclusive=True, maximum=1)
+        number("imu_tilt_gaze_strength", inclusive=True, maximum=1)
+        number("imu_tilt_eye_asymmetry_strength", minimum=0, inclusive=True, maximum=.5)
+        number("imu_shake_reaction_strength", inclusive=True, maximum=1)
+        number("imu_impact_reaction_strength", inclusive=True, maximum=1)
+        if self.imu_impact_reaction_strength <= self.imu_shake_reaction_strength:
+            raise ConfigurationError("IMU impact reaction strength must exceed shake reaction strength")
+        number("imu_shake_reaction_duration_seconds", minimum=.1, inclusive=True, maximum=30)
+        number("imu_impact_reaction_duration_seconds", minimum=.1, inclusive=True, maximum=30)
+        number("imu_reaction_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
         for name in ("ccs811_enabled", "environmental_enabled", "imu_enabled", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",

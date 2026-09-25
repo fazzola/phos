@@ -142,7 +142,9 @@ The adapter wakes the chip, selects ±2 g / ±250 °/s scale, reads the six raw 
 
 PHOS also derives stable software observations from those raw samples: STILL,
 MOVING, TILT_LEFT/RIGHT/FORWARD/BACK, SHAKE and IMPACT. They are not hardware
-interrupts and do not currently alter robot behavior or the display.
+interrupts. In the approved motion behavior follow-on, these observations drive
+the documented eyes-only reactions through BehaviorEngine; they do not control
+GPIO or LEDs.
 
 Before physical acceptance:
 

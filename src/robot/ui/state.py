@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import re
+from typing import Optional
 
 
 class FaceExpression(str, Enum):
@@ -43,6 +44,9 @@ class FaceState:
 
     background: str = "#10243A"
     eye_open: float = 1.0
+    # Signed extra openness for the left eye; right receives the opposite value.
+    # None keeps the expression profile's normal asymmetry, while 0 requests symmetry.
+    eye_asymmetry: Optional[float] = None
     squint: float = 0.0
     pupil_x: float = 0.0
     pupil_y: float = 0.0
@@ -60,6 +64,7 @@ class FaceState:
         return FaceState(
             background=background if _HEX_COLOR.fullmatch(background) else "#10243A",
             eye_open=_clamp(self.eye_open, 0.0, 1.25),
+            eye_asymmetry=None if self.eye_asymmetry is None else _clamp(self.eye_asymmetry, -0.5, 0.5),
             squint=_clamp(self.squint, 0.0, 1.0),
             pupil_x=_clamp(self.pupil_x, -1.0, 1.0),
             pupil_y=_clamp(self.pupil_y, -1.0, 1.0),

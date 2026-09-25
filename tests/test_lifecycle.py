@@ -62,6 +62,25 @@ def test_appearance_change_is_reloadable_and_not_restart_required(runtime):
     assert result["restart_required"] == []
 
 
+def test_imu_behavior_settings_reload_without_restart(runtime):
+    path, service, _, _ = runtime
+    applied = []
+    service.register_imu_behavior_applier(lambda config: applied.append(
+        (config.imu_tilt_gaze_strength, config.imu_tilt_eye_asymmetry_strength,
+         config.imu_impact_reaction_strength)))
+    update(path, lambda d: d["behavior"].update(imu_tilt_gaze_strength=.8, imu_tilt_eye_asymmetry_strength=.2,
+                                                  imu_impact_reaction_strength=.95,
+                                                  imu_impact_reaction_duration_seconds=1.1))
+
+    result = service.execute("reload")
+
+    assert result["ok"]
+    assert result["applied"] == ["behavior.imu_tilt_gaze_strength", "behavior.imu_tilt_eye_asymmetry_strength",
+                                  "behavior.imu_impact_reaction_strength",
+                                  "behavior.imu_impact_reaction_duration_seconds"]
+    assert not result["restart_required"] and applied == [(.8, .2, .95)]
+
+
 def test_mixed_appearance_logging_and_provider_changes_keep_restart_pending(runtime):
     path, service, logs, _ = runtime
     applied = []

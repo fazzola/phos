@@ -407,20 +407,77 @@ The status panel shows acceleration X/Y/Z in m/s² and angular velocity X/Y/Z in
 °/s, with timestamp, age and health. PHOS configures ±2 g / ±250 °/s and converts
 the raw readings using factory scale factors. It does not calibrate mounting
 offsets at startup: keep the robot still only when comparing baseline values, and
-expect one acceleration axis to include gravity. No orientation, sensor fusion or
-behavior response is implemented. If CCS811 shares bus 1, retain its documented
+expect one acceleration axis to include gravity. The interpreter estimates tilt from gravity; no full orientation fusion is implemented. If CCS811 shares bus 1, retain its documented
 10 kHz `i2c_arm_baudrate` setting.
 
-The default motion interpreter uses 1.5 m/s² movement, 4.0 m/s² tilt, 180 °/s
-shake and 25 m/s² impact thresholds, plus one second confirmation and a two
-second event cooldown. Movement compares acceleration magnitude with gravity;
-tilt compares filtered X/Y gravity components. A shake requires opposite high
-gyro samples and impact uses the raw total acceleration. Adjust these in Web
-Admin → Sensors → GY-521 / MPU-6050 motion, save, then use **Reload
-configuration**; only I2C enable/address/poll settings require Restart PHOS.
-Tilt labels assume the GY-521 is mounted with its printed X/Y axes aligned to
-PHOS's left/right and forward/back axes; verify that physical mounting before
-using the labels externally.
+The motion interpreter prioritizes IMPACT, SHAKE, confirmed TILT, MOVING,
+then STILL. Tilt no longer requires the movement metric to be below threshold.
+It low-pass filters acceleration with a fixed 0.2-second time constant using
+sample elapsed time, then normalizes the gravity vector. The existing
+`tilt_threshold_m_s2` remains the enter setting, now measured as normalized
+lateral/forward gravity component times standard gravity, independent of total
+acceleration magnitude. Default 4.0 corresponds to about 24°;
+`tilt_exit_threshold_m_s2` defaults to 3.0 (about 18°). A confirmed direction
+holds until below exit; otherwise the largest component wins (lateral wins exact
+ties). `confirmation_seconds` defaults to 0.3 for entry, direction changes and
+exit. Brief vibration cannot confirm a tilt. At the default 0.05-second IMU poll
+interval (20 Hz), a normal 35° tilt settles in roughly half a second. Existing
+five-second polling deployments must change that setting and restart to obtain
+this responsiveness. Slower polling necessarily limits confirmation speed.
+
+Mounting is explicit: `lateral_axis` and `forward_axis` each select a distinct
+signed sensor axis (`x`, `-x`, `y`, `-y`, `z`, `-z`). Defaults retain the old
+X/Y convention: positive mapped lateral acceleration means TILT_RIGHT, negative
+means TILT_LEFT; positive mapped forward means TILT_FORWARD, negative means
+TILT_BACK. At level, both mapped components should be near zero, with gravity
+on the unused axis. Verify by physically tilting right and forward; reverse signs
+or swap axes as needed. No startup calibration assumes that the robot is level.
+Diagnostic roll/pitch are `asin(mapped normalized lateral/forward)` in degrees:
+approximate signed inclinations, not full Euler attitude or yaw. Upside-down
+orientation is not distinguished. Sustained linear acceleration cannot be fully
+distinguished from gravity by this accelerometer-only method; freefall-like
+filtered magnitudes below 0.25 g do not provide tilt evidence.
+
+Movement still compares filtered acceleration magnitude with gravity (default
+1.5 m/s²); shake requires opposite high gyro samples (180 °/s); impact uses raw
+total acceleration (25 m/s²). Both override tilt. The event cooldown (2 seconds)
+does not delay stable state publication. All motion settings apply through Web
+Admin → Sensors → GY-521 / MPU-6050 motion → Save → Reload configuration,
+without reopening I2C. Reload clears pending tilt evidence and filter history.
+Enable DEBUG logging temporarily to see `IMU motion` diagnostics at most once
+per second: filtered acceleration, pitch/roll, movement metric, normalized
+enter/exit thresholds, tilt candidate, winning classification/reason, confirmed
+state and confirmation duration. MOVING explains whether gravity is too small
+or tilt is below threshold; a pending tilt leaves the previous state visible
+until confirmation completes.
+
+For interpreter acceptance on Pi: rest level, tilt each direction about 35° and
+hold one second, gently vibrate while holding tilt, then return level. Confirm
+STILL → the correct TILT → STILL in status and diagnostics; level vertical
+movement should produce MOVING. Verify mounting signs before assessing eye
+reactions. Save/reload thresholds and confirm the provider is not reopened.
+
+With visual reactions enabled, sustained tilt visibly moves pupils in the tilt
+direction and remains active while tilt is observed. Defaults use 86% of the safe
+gaze range. Horizontal tilt uses `imu_tilt_eye_asymmetry_strength` 0.18:
+TILT_LEFT opens the left eye and closes the right by the same amount; TILT_RIGHT
+mirrors it. Left/right use shared openness 1.12 before that split; forward and
+back keep equal eyes at 1.23 and 0.82 respectively.
+MOVING recenters pupils, opens to 1.16 and uses 0.63 reaction strength. SHAKE is
+a 1.18-open, 0.88-strength surprised alert for 1.35 seconds; IMPACT is the
+stronger 1.25-open, 1.0-strength alert for 1.0 second. Both hold for 55% of the
+duration and then decay smoothly. Configure the eight `behavior.imu_*` values in
+Web Admin → Display & Appearance → Eye behavior, save and use **Reload
+configuration**. Impact strength must remain greater than shake strength. The
+base iris theme returns after an alert because the alert is temporary semantic
+tint, not an appearance change.
+
+For physical display acceptance, enable the IMU and DEBUG logging, then confirm
+that MOVING recenters the pupils, each held tilt produces the documented gaze
+direction and mirrored eye-size change, SHAKE produces a clear amber surprised response and IMPACT is
+visibly wider/brighter/stronger. Let each alert expire and verify the configured
+iris theme returns. Confirm sleeping, speaking and error remain visually
+authoritative over IMU intent.
 
 For Pi acceptance, verify the detected address and WHO_AM_I, stable six-axis
 values, wrong-address recovery, a restart, and coexistence with every connected

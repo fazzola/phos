@@ -81,7 +81,11 @@ positively confirmed neutral observation; current uncalibrated models abstain
 on neutral. See `docs/vision.md` for thresholds and temporal rules.
 
 `FaceState` carries the expression, semantic `VisualAccent`, and
-`reaction_strength` independently. The renderer maps accents to its own color
+`reaction_strength` independently. Its optional signed `eye_asymmetry` is
+provider-neutral visual intent: positive opens the left eye by that amount and
+closes the right by the same amount; negative mirrors it; zero requests equal
+eyes. When absent, the renderer uses the expression profile's ordinary shape.
+The renderer maps accents to its own color
 palette: neutral light cyan/white, warm turquoise, curious cyan/blue, alert
 amber, sleepy muted violet, and error red. Strength blends the neutral and
 accent colors, as well as the existing eye-shape profile. Eye, pupil, and
@@ -319,3 +323,21 @@ state and last event through the existing status boundary. `STILL`, `MOVING`,
 four tilt directions, `SHAKE` and `IMPACT` are semantic observations only; no
 PHOS behavior consumes them yet. Motion settings reload into the interpreter
 without reopening the I2C provider.
+
+### IMU visual behavior extension
+
+The IMU service publishes stable semantic state changes to Core's local event
+bus. `BehaviorEngine` consumes them and overlays visual intent onto `FaceState`;
+the renderer still receives no IMU object or event. In `IDLE`, MOVING recenters
+the pupils, opens the eyes to 1.16 and gives it 0.63 reaction strength. Each
+tilt moves pupils in the corresponding visual direction at 86% of the normalized
+safe range. Horizontal tilts also use a mirrored 0.18 signed eye asymmetry:
+left tilt opens the left eye and closes the right, right tilt reverses it.
+Forward/back keep equal eyes, opening to 1.23/closing to 0.82; horizontal tilts
+use 1.12. All have 0.56 strength and the curious accent. SHAKE is a 1.18-open, 0.88-strength surprised
+alert; IMPACT is the stronger 1.25-open, 1.0-strength alert. Both hold for 55%
+of their configured duration then decay smoothly.
+`ERROR`, `SLEEPING`, `LISTENING`, `THINKING` and `SPEAKING` override IMU intent;
+motion then resumes only when Core returns to IDLE. Motion overlays take priority
+over lower-priority Vision expression reactions in IDLE, without changing the
+user-selected iris theme.
