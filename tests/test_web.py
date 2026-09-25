@@ -751,3 +751,34 @@ def test_ccs811_form_and_status_use_shared_configuration_and_lifecycle(setup):
         page = client.get('/configuration/sensors').get_data(as_text=True)
         assert status in page and 'Waiting for sensor' in page
         assert '1234 ppm' not in page and '321 ppb' not in page
+
+
+def test_imu_form_and_status_use_shared_configuration_and_lifecycle(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    state = {'sensor_type': 'mpu6050', 'status': 'available', 'available': True,
+             'measurements': {'acceleration_x_m_s2': 1.25, 'acceleration_y_m_s2': 2.5,
+                              'acceleration_z_m_s2': -9.80665, 'angular_velocity_x_deg_s': 3,
+                              'angular_velocity_y_deg_s': 4, 'angular_velocity_z_deg_s': 5},
+             'last_update': '2026-09-25T12:00:00+00:00', 'age_seconds': 2,
+             'calibration': 'factory_scale_only', 'error': None}
+    lifecycle.register_sensor_status(lambda: {'imu': dict(state)})
+    client = authorize(create_app(path, active_document=config.to_dict(), lifecycle=lifecycle))
+    page = client.get('/configuration/sensors').get_data(as_text=True)
+    for text in ('1.250 / 2.500 / -9.807 m/s²', '3.000 / 4.000 / 5.000 °/s',
+                 'Factory scale only; no offset calibration', state['last_update'],
+                 'name="sensors.imu.enabled"', 'value="0x69"'):
+        assert text in page
+    data = form(client, 'sensors')
+    data.update({'sensors.imu.enabled': 'on', 'sensors.imu.i2c_address': '0x69',
+                 'sensors.imu.poll_interval_seconds': '10', 'sensors.imu.stale_after_seconds': '60'})
+    assert client.post('/configuration/sensors', data=data).status_code == 302
+    expected = config.to_dict()
+    expected['sensors']['imu'].update(enabled=True, i2c_address='0x69', poll_interval_seconds=10, stale_after_seconds=60)
+    assert load_document(path) == expected
+    state.update(status='stale', available=False, measurements=None, error='No fresh reading')
+    page = client.get('/configuration/sensors').get_data(as_text=True)
+    assert 'stale' in page and 'No fresh reading' in page
+    assert '1.250 / 2.500' not in page

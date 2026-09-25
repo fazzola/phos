@@ -87,6 +87,31 @@ class AirQualitySensorProvider(Protocol):
     def close(self) -> None: ...
 
 
+@dataclass(frozen=True)
+class IMUReading:
+    """Six-axis motion sample in SI acceleration and degrees-per-second rotation."""
+
+    acceleration_x_m_s2: float
+    acceleration_y_m_s2: float
+    acceleration_z_m_s2: float
+    angular_velocity_x_deg_s: float
+    angular_velocity_y_deg_s: float
+    angular_velocity_z_deg_s: float
+
+    def __post_init__(self):
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+               for value in (self.acceleration_x_m_s2, self.acceleration_y_m_s2, self.acceleration_z_m_s2,
+                             self.angular_velocity_x_deg_s, self.angular_velocity_y_deg_s,
+                             self.angular_velocity_z_deg_s)):
+            raise ValueError("IMU measurements must be finite numbers")
+
+
+class IMUSensorProvider(Protocol):
+    def start(self) -> None: ...
+    def read(self) -> IMUReading: ...
+    def close(self) -> None: ...
+
+
 class _SensorService:
     """Shared worker, freshness, retry and shutdown implementation."""
     _label = "Sensor"
@@ -293,3 +318,25 @@ class AirQualitySensorService(_SensorService):
         # not instantaneous algorithm use for the displayed measurement.
         return {"compensation_input": self._compensation_source
                 if status in {"available", "warming_up"} else None}
+
+
+class IMUSensorService(_SensorService):
+    _label = "IMU sensor"
+
+    def __init__(self, provider_factory: Callable[[], IMUSensorProvider], *,
+                 enabled, poll_interval_seconds, stale_after_seconds, clock=time.monotonic):
+        super().__init__(provider_factory, enabled=enabled,
+                         poll_interval_seconds=poll_interval_seconds,
+                         stale_after_seconds=stale_after_seconds, sensor_type="mpu6050",
+                         available_measurements=("acceleration_x_m_s2", "acceleration_y_m_s2", "acceleration_z_m_s2",
+                                                 "angular_velocity_x_deg_s", "angular_velocity_y_deg_s",
+                                                 "angular_velocity_z_deg_s"), clock=clock)
+
+    def _read(self, provider):
+        reading = provider.read()
+        if not isinstance(reading, IMUReading):
+            raise ValueError("Provider did not return an IMU reading")
+        return reading
+
+    def _snapshot_details(self, status):
+        return {"calibration": "factory_scale_only" if status in {"available", "starting"} else None}

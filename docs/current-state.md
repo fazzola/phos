@@ -252,7 +252,7 @@ and type field; Web Admin offers both types and shows the active sensor.
 See [installation](installation.md#optional-environmental-sensor) for exact
 Pi commands and [hardware](hardware.md#bme280) for expected signal wiring and
 unverified breakout details. Physical I2C/accuracy/combined-runtime acceptance
-remains pending. The CCS811 extension is recorded below; GY-521 and LED-ring work has not started.
+remains pending. The CCS811 and MPU-6050 extensions are recorded below; LED-ring work has not started.
 
 Verification on 2026-09-23 (macOS, Python 3.11.6):
 
@@ -336,7 +336,7 @@ Physical TODO: identify the precise Keyestudio/SEN breakout, verify supply and
 Pi-side logic/wake wiring, sustained bus transfers, conditioning/stability,
 compensation, failure recovery and concurrent eyes/Vision/Web Admin operation.
 Use the concrete commands/checks in installation. No hardware acceptance,
-deployment or commit is claimed. GY-521 and WS2812B remain out of scope.
+deployment or commit is claimed. WS2812B remains out of scope; the MPU-6050 follow-on is recorded below.
 
 Verification for CCS811: **88 sensor tests passed** (environmental regression
 plus air quality); **3 targeted Web Admin tests passed**. Final full suite:
@@ -369,3 +369,15 @@ passed, 1 skipped** in 222.07 seconds (`.venv/bin/python -m pytest -q --tb=short
 -rs`, with localhost socket permission). The skip remains missing local `cv2`.
 Compilation and `git diff --check` passed. These are software checks, not
 confirmation that removing SW_RESET resolves the reported physical failure.
+
+### MPU-6050 IMU follow-on (2026-09-25)
+
+The requested GY-521 / MPU-6050 extension is implemented as a separate typed
+sensor path: `MPU6050Provider` owns smbus2/register access and `IMUSensorService`
+owns polling, freshness, retry and status. `IMUReading` exposes acceleration XYZ
+in m/s² and angular velocity XYZ in °/s. Canonical `sensors.imu` is disabled by
+default and supports `0x68`/`0x69`; all changes require restart. Web Admin edits
+that block and reads a service snapshot only. The adapter uses ±2 g / ±250 °/s
+factory scale factors, without automatic offset calibration, sensor fusion,
+orientation or behavior integration. Physical wiring and concurrent Pi testing
+remain pending.

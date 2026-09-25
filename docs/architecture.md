@@ -297,3 +297,14 @@ references another driver. The UI receives only state/metadata. Missing humidity
 (including BMP280) or invalid/stale inputs restore device defaults; baseline
 persistence and behavior integration remain deferred. See ADR-023 and the
 [installation policy](installation.md#optional-ccs811-air-quality-sensor).
+
+### MPU-6050 IMU extension
+
+`hardware.MPU6050Provider → IMUSensorService → PhosRuntime.sensor_status` uses
+the same worker, freshness, retry and authenticated status boundary as the other
+sensors. `IMUReading` holds acceleration X/Y/Z in m/s² and angular velocity X/Y/Z
+in °/s. The hardware adapter alone knows MPU-6050 registers and smbus2; Web Admin
+only reads snapshots and edits canonical `sensors.imu` settings. No BehaviorEngine,
+EyeRenderer or Vision component receives IMU readings. The adapter applies fixed
+±2 g / ±250 °/s scale factors only; offset calibration, fusion and orientation are
+outside this capability.

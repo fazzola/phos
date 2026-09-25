@@ -68,6 +68,21 @@ Your edits on this page have not been saved.</p>
 {% else %}<p>CCS811 status unavailable.</p>{% endif %}
 <p>Allow 20 minutes of conditioning after initialization. Refresh this page for current state. All sensor settings require Restart PHOS.</p>
 </section>
+<section class="status" aria-label="Current MPU-6050 motion readings">
+<h3>GY-521 / MPU-6050 motion</h3>
+<p>Acceleration is shown in m/s² and angular velocity in degrees per second. These are raw factory-scale measurements; no orientation or motion fusion is applied.</p>
+{% set imu = runtime_state.get('sensors', {}).get('imu') if runtime_state and runtime_state.ok else none %}
+{% if imu %}
+<dl><dt>Sensor status</dt><dd>{{ imu.status }}</dd>
+<dt>Acceleration X / Y / Z</dt><dd>{% if imu.available %}{{ '%.3f / %.3f / %.3f m/s²' | format(imu.measurements.acceleration_x_m_s2, imu.measurements.acceleration_y_m_s2, imu.measurements.acceleration_z_m_s2) }}{% else %}Unavailable{% endif %}</dd>
+<dt>Angular velocity X / Y / Z</dt><dd>{% if imu.available %}{{ '%.3f / %.3f / %.3f °/s' | format(imu.measurements.angular_velocity_x_deg_s, imu.measurements.angular_velocity_y_deg_s, imu.measurements.angular_velocity_z_deg_s) }}{% else %}Unavailable{% endif %}</dd>
+<dt>Calibration</dt><dd>{{ 'Factory scale only; no offset calibration' if imu.calibration == 'factory_scale_only' else 'Unavailable' }}</dd>
+<dt>Last update (UTC)</dt><dd>{{ imu.last_update or 'No successful reading' }}</dd>
+<dt>Reading age</dt><dd>{{ '%.1f seconds' | format(imu.age_seconds) if imu.age_seconds is not none else 'Unavailable' }}</dd>
+{% if imu.error %}<dt>Sensor detail</dt><dd>{{ imu.error }}</dd>{% endif %}</dl>
+{% else %}<p>MPU-6050 status unavailable.</p>{% endif %}
+<p>Refresh this page for current state. All sensor settings require Restart PHOS.</p>
+</section>
 {% endif %}
 {% if area == 'security' %}
 <section class="account"><h3>Administrator password</h3>

@@ -24,8 +24,8 @@ pass its path explicitly. Keep deployment changes out of commits if inappropriat
 No file may contain credentials.
 
 The seven required sections are `web`, `display`, `behavior`, `vision`, `expression`
-(with `smoothing`, `local`, `aws`), `sensors` (with `environmental` and `ccs811`) and `logging`. `vision` includes `detector`.
-Only the implemented environmental and CCS811 services have sensor configuration; there are no speculative runtime/voice settings. Every field in the
+(with `smoothing`, `local`, `aws`), `sensors` (with `environmental`, `ccs811` and `imu`) and `logging`. `vision` includes `detector`.
+Only the implemented environmental, CCS811 and MPU-6050 services have sensor configuration; there are no speculative runtime/voice settings. Every field in the
 canonical file is required, including null values and inactive-provider settings;
 a missing value is an error, not a second default hidden in code.
 
@@ -38,6 +38,7 @@ must be finite; booleans must be JSON booleans, not strings or numbers.
 | --- | --- |
 | `sensors.environmental` | `type`: `"bme280"` or `"bmp280"`; `enabled`: boolean; `i2c_address`: string `"0x76"` or `"0x77"` on bus 1; `poll_interval_seconds`: finite 1–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All five require PHOS restart. |
 | `sensors.ccs811` | `enabled`: boolean; `i2c_address`: canonical lowercase `"0x5a"` or `"0x5b"`, bus 1; `poll_interval_seconds`: finite 1–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All four require PHOS restart. |
+| `sensors.imu` | `enabled`: boolean; `i2c_address`: canonical lowercase `"0x68"` or `"0x69"`, bus 1; `poll_interval_seconds`: finite 1–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All four require PHOS restart. |
 | `web` | `enabled`: start the administration worker; `host`: IPv4/IPv6 bind address; `port`: integer 1–65535. See the [web manual](web-administration.md). |
 | `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration; `iris_color`: one of cyan, blue, green, turquoise, amber, violet or white. Iris theme is a renderer style choice and applies after validated configuration reload. |
 | `behavior` | `blink_interval_seconds`, `gaze_interval_seconds`: positive ascending `[minimum, maximum]` timing ranges; `face_gaze_smoothing`: gaze smoothing coefficient in (0,1]; `reaction_decay_per_second`: positive visual reaction decay. |
@@ -273,3 +274,13 @@ and the full suite. Tests use fake time, bus registers and providers, covering
 conditioning without a 20-minute sleep. See the
 [installation guide](installation.md#optional-ccs811-air-quality-sensor) for
 physical verification and dependency commands.
+
+### MPU-6050 configuration migration
+
+Merge the complete `sensors.imu` block from canonical JSON into an existing
+deployment, preserving the environmental and CCS811 blocks. The typed surface
+uses the `imu_` prefix. All four fields are required even when disabled and are
+restart-only. `IMUReading` contains finite acceleration values in m/s² and
+angular velocity values in °/s. It has no persisted calibration state: the
+adapter applies fixed factory scale factors only. Run
+`.venv/bin/python -m pytest -q tests/test_imu.py` before Pi validation.

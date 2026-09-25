@@ -9,8 +9,10 @@ from typing import Callable, Optional
 from robot.config import RuntimeConfig
 from robot.hardware.environmental import environmental_provider_type
 from robot.hardware.ccs811 import CCS811Provider
+from robot.hardware.mpu6050 import MPU6050Provider
 from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorService,
-                           AirQualitySensorProvider, AirQualitySensorService)
+                           AirQualitySensorProvider, AirQualitySensorService,
+                           IMUSensorProvider, IMUSensorService)
 from robot.core import BehaviorEngine, Event, EventBus, RobotCore, RobotState, STATE_CHANGED
 from robot.ui import CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, TkEyeDisplay
 from robot.ui.runtime import EyeRenderLoop
@@ -41,6 +43,7 @@ class PhosRuntime:
         vision_forced: bool = False,
         sensor_service: Optional[EnvironmentalSensorService] = None,
         air_quality_service: Optional[AirQualitySensorService] = None,
+        imu_service: Optional[IMUSensorService] = None,
     ) -> None:
         self.core = core
         self._behavior_engine = behavior_engine
@@ -50,6 +53,7 @@ class PhosRuntime:
         self._vision_forced = vision_forced
         self._sensor_service = sensor_service
         self._air_quality_service = air_quality_service
+        self._imu_service = imu_service
         self._loop = None
         self._vision_changed: Optional[asyncio.Event] = None
         self._vision_lock = asyncio.Lock()
@@ -68,6 +72,8 @@ class PhosRuntime:
         state = {"environmental": self._sensor_service.snapshot()} if self._sensor_service is not None else {}
         if self._air_quality_service is not None:
             state["ccs811"] = self._air_quality_service.snapshot()
+        if self._imu_service is not None:
+            state["imu"] = self._imu_service.snapshot()
         return state
 
     def apply_camera_preview(self, config: RuntimeConfig) -> None:
@@ -193,6 +199,8 @@ class PhosRuntime:
                 await self._sensor_service.start()
             if self._air_quality_service is not None:
                 await self._air_quality_service.start()
+            if self._imu_service is not None:
+                await self._imu_service.start()
             logger.info("PHOS core, behavior engine, and renderer started")
             if self._vision_pipeline is not None and self._config is not None and (self._config.vision_enabled or self._vision_forced):
                 # Stop must also release a partially started camera/pipeline.
@@ -249,6 +257,8 @@ class PhosRuntime:
         self._loop = None
         if self._air_quality_service is not None:
             await self._air_quality_service.stop()
+        if self._imu_service is not None:
+            await self._imu_service.stop()
         if self._sensor_service is not None:
             await self._sensor_service.stop()
         if self._vision_started and self._vision_pipeline is not None:
@@ -290,6 +300,7 @@ def build_runtime(
     vision_factory: Optional[Callable[[EventBus], VisionPipeline]] = None,
     sensor_provider_factory: Optional[Callable[[], EnvironmentalSensorProvider]] = None,
     air_quality_provider_factory: Optional[Callable[[], AirQualitySensorProvider]] = None,
+    imu_provider_factory: Optional[Callable[[], IMUSensorProvider]] = None,
 ) -> PhosRuntime:
     """Compose a runtime; tests may inject Vision, display and sensor providers."""
     if vision_pipeline is not None and vision_factory is not None:
@@ -343,8 +354,18 @@ def build_runtime(
     if config.ccs811_enabled:
         logger.info("CCS811 enabled: I2C bus 1, address %s, polling every %s seconds",
                     config.ccs811_i2c_address, config.ccs811_poll_interval_seconds)
+    imu = IMUSensorService(
+        imu_provider_factory if imu_provider_factory is not None else
+        lambda: MPU6050Provider(address=int(config.imu_i2c_address, 16)),
+        enabled=config.imu_enabled, poll_interval_seconds=config.imu_poll_interval_seconds,
+        stale_after_seconds=config.imu_stale_after_seconds,
+    )
+    if config.imu_enabled:
+        logger.info("MPU-6050 enabled: I2C bus 1, address %s, polling every %s seconds",
+                    config.imu_i2c_address, config.imu_poll_interval_seconds)
     return PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
-                       config=config, vision_forced=injected_vision, sensor_service=sensors, air_quality_service=air_quality)
+                       config=config, vision_forced=injected_vision, sensor_service=sensors,
+                       air_quality_service=air_quality, imu_service=imu)
 
 
 def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optional[VisionPipeline]:

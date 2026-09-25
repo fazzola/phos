@@ -88,6 +88,12 @@
       "i2c_address": "0x5a",
       "poll_interval_seconds": 5.0,
       "stale_after_seconds": 30.0
+    },
+    "imu": {
+      "enabled": false,
+      "i2c_address": "0x68",
+      "poll_interval_seconds": 5.0,
+      "stale_after_seconds": 30.0
     }
   },
   "logging": {
