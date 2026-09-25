@@ -22,11 +22,12 @@ def main():
     if args.count <= 0 or args.pin < 0 or args.pin > 27 or args.seconds <= 0:
         raise SystemExit("--count and --seconds must be positive; --pin must be BCM GPIO 0 through 27")
     try:
-        from rpi_ws281x import Color, PixelStrip
+        from rpi_ws281x import Color, PixelStrip, ws
     except ImportError:
         raise SystemExit("rpi-ws281x is not installed. Install it with: pip install 'rpi-ws281x>=5.0,<6'")
 
-    strip = PixelStrip(args.count, args.pin, brightness=args.brightness)
+    strip = PixelStrip(args.count, args.pin, brightness=args.brightness,
+                       strip_type=ws.WS2811_STRIP_GRB)
     started = False
     try:
         strip.begin()

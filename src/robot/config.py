@@ -18,6 +18,24 @@ if not DEFAULT_CONFIG_PATH.is_file():
     DEFAULT_CONFIG_PATH = Path(sys.prefix) / "share" / "phos" / "config" / "phos.json"
 
 
+# Logical RGB values sent by PHOS.  The WS2812B adapter owns conversion to its
+# GRB wire format, so these values must never be rearranged for a particular
+# ring.  Keep this separate from the display-only iris theme palette.
+LED_RING_COLOR_RGB = {
+    "green": (0, 255, 64),
+    "red": (255, 26, 26),
+    "yellow": (255, 212, 0),
+    "blue": (0, 123, 255),
+    "violet": (160, 32, 240),
+    "white": (255, 255, 255),
+    "cyan": (0, 229, 255),
+    "turquoise": (0, 255, 200),
+    "orange": (255, 122, 0),
+    "magenta": (255, 0, 200),
+}
+LED_RING_COLOR_CHOICES = tuple(LED_RING_COLOR_RGB)
+
+
 class ConfigurationError(ValueError):
     """Invalid settings, reported before any subsystem is constructed."""
 
@@ -433,7 +451,7 @@ class RuntimeConfig:
         number("led_ring_gpio_pin", minimum=0, inclusive=True, maximum=27, integer=True)
         number("led_ring_brightness", minimum=0, inclusive=True, maximum=1)
         number("led_ring_update_rate_hz", minimum=1, inclusive=True, maximum=30)
-        if self.led_ring_base_color not in {"cyan", "blue", "green", "turquoise", "amber", "violet", "white"}:
+        if self.led_ring_base_color not in LED_RING_COLOR_RGB:
             raise ConfigurationError("led_ring.base_color must be a supported named color")
         if self.led_ring_enabled and self.led_ring_led_count <= 0:
             raise ConfigurationError("led_ring.led_count must be positive when LED ring is enabled")

@@ -28,10 +28,14 @@ class WS2812BProvider:
         if self._strip is not None:
             return
         try:
-            from rpi_ws281x import PixelStrip
+            from rpi_ws281x import Color, PixelStrip, ws
         except ImportError as error:
             raise RuntimeError("rpi-ws281x is not installed; install PHOS with the led-ring extra") from error
-        strip = PixelStrip(self._led_count, self._gpio_pin, brightness=255)
+        # Color accepts logical RGB; the explicit strip type performs the
+        # standard WS2812B GRB ordering on the wire.
+        strip = PixelStrip(self._led_count, self._gpio_pin, brightness=255,
+                           strip_type=ws.WS2811_STRIP_GRB)
+        self._color = Color
         strip.begin()
         self._strip = strip
 
@@ -41,7 +45,7 @@ class WS2812BProvider:
         if len(pixels) != self._led_count:
             raise ValueError("WS2812B pixel count does not match configured LED count")
         for index, (red, green, blue) in enumerate(pixels):
-            self._strip.setPixelColor(index, (int(red) << 16) | (int(green) << 8) | int(blue))
+            self._strip.setPixelColor(index, self._color(int(red), int(green), int(blue)))
         self._strip.show()
 
     def close(self) -> None:
