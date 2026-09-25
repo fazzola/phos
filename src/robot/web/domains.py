@@ -13,6 +13,7 @@ DOMAINS = {
     "display": {"title": "Display & Appearance", "description": "Display size, animation timing and eye appearance; iris theme applies on configuration reload."},
     "vision": {"title": "Vision", "description": "Local camera tracking, face detection and an optional display-only diagnostic preview."},
     "expression": {"title": "Expression Recognition", "description": "Select a provider and configure observations, model preprocessing and cloud request limits."},
+    "sensors": {"title": "Sensors", "description": "BME280/BMP280 environmental and CCS811 air-quality readings and configuration. All sensor settings require Restart PHOS."},
     "logging": {"title": "Logging", "description": "Log level, destination and expression diagnostics. SDK credential/request debug output remains suppressed; no credential or payload logging controls are provided."},
     "security": {"title": "Web Administration / Security", "description": "Enable administration and manage your administrator password separately from runtime settings."},
     "status": {"title": "System / Status", "description": "Read-only active configuration metadata and saved configuration status. Lifecycle actions are on a separate System actions page; robot health is not monitored."},
@@ -21,6 +22,8 @@ DOMAINS = {
 # Paths select fields that already exist in the canonical document. A trailing
 # dot selects a whole implemented section; all other entries select one field.
 GROUPS = {
+    "sensors": [("environmental", "Environmental sensor", ("sensors.environmental.",), None),
+                ("ccs811", "CCS811 air quality", ("sensors.ccs811.",), None)],
     "network": [("listener", "Administration address", ("web.host", "web.port"), None)],
     "display": [("display", "Display", ("display.",), None),
                 ("behavior", "Eye behavior", ("behavior.",), None)],

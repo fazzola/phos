@@ -90,8 +90,7 @@ class TkEyeDisplay(EyeDisplay):
         self._preview_photo = None
         self._preview_next_at = 0.0
         self._preview_failed = False
-        self._preview_image_item = None
-        self._preview_overlay_items = []
+        self._preview_discard_pending = False
 
     def open(self, width: int, height: int, *, fullscreen: bool) -> None:
         if self._root is not None:
@@ -129,11 +128,12 @@ class TkEyeDisplay(EyeDisplay):
             self._draw_preview(preview, settings, frame.width, frame.height)
         else:
             self._preview_photo = None
-            self._preview_image_item = None
-            self._preview_overlay_items = []
             if self._preview_future is not None:
-                self._preview_future.cancel()
-                self._preview_future = None
+                # A running encoder cannot be cancelled. Keep its slot occupied
+                # until it finishes, even across rapid preview off/on reloads.
+                self._preview_discard_pending = True
+                if self._preview_future.cancel() or self._preview_future.done():
+                    self._preview_future = None
 
     def poll_keys(self) -> List[str]:
         if self._root is not None:
@@ -252,8 +252,9 @@ class TkEyeDisplay(EyeDisplay):
         if self._preview_future is not None and self._preview_future.done():
             try:
                 _width, _height, encoded = self._preview_future.result()
-                self._preview_photo = self._tk.PhotoImage(data=encoded, format="PPM")
-                self._preview_failed = False
+                if not self._preview_discard_pending:
+                    self._preview_photo = self._tk.PhotoImage(data=encoded, format="PPM")
+                    self._preview_failed = False
             except Exception:
                 self._preview_photo = None
                 if not self._preview_failed:
@@ -265,6 +266,7 @@ class TkEyeDisplay(EyeDisplay):
             if len(shape) >= 2:
                 target_width = max(80, int(display_width * settings.scale))
                 self._preview_future = self._preview_executor.submit(_encode_preview_ppm, preview.frame, target_width)
+                self._preview_discard_pending = False
                 self._preview_next_at = now + 1.0 / settings.max_fps
         if self._preview_photo is None:
             return
@@ -301,6 +303,8 @@ def _encode_preview_ppm(frame, target_width):
     height, width = frame.shape[:2]
     target_height = max(1, round(height * target_width / width))
     small = cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
+    # Preview arrays follow the existing OpenCV BGR contract; PPM requires RGB.
+    small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
     header = f"P6 {target_width} {target_height} 255\n".encode("ascii")
     # Tk's PPM reader requires raw binary data, not base64 text.
     return target_width, target_height, header + small.tobytes()

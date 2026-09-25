@@ -50,8 +50,9 @@ Camera
   -> Robot Core
   -> BehaviorEngine
   -> FaceState
-  -> EyeRenderer ────────────────────┐
-  -> latest local preview snapshot ──┴→ EyeDisplay composition
+  -> EyeRenderer -> EyeDisplay composition
+
+Vision latest preview snapshot -> PhosRuntime -> EyeDisplay composition
 ```
 
 Vision observes. Behavior interprets observations in the context of PHOS's own `RobotState`. `EyeRenderer` consumes only `FaceState` and handles rendering/animation details. The display adapter may compose an optional local diagnostic preview from a UI-neutral snapshot supplied by `PhosRuntime`; it never accesses camera or Vision providers.
@@ -207,7 +208,7 @@ remote-control/API/MCP/Voice services remain deferred after 1.0.0.
 
 `robot.lifecycle.LifecycleService` owns the active-configuration snapshot and
 allowed status/reload/restart operations. Reload validates the full canonical
-file before applying logging level and iris appearance through their
+file before applying logging level, iris appearance and camera preview through their
 application-service boundaries. Other changes remain pending. The parent process serves a bounded local process channel to the web
 worker; adapters cannot submit shell commands, paths or arbitrary configuration
 payloads. Future API/MCP surfaces must use the same policy service.
@@ -215,7 +216,10 @@ payloads. Future API/MCP surfaces must use the same policy service.
 The supplied user systemd service owns process replacement. A confirmed restart
 requests graceful runtime shutdown and exit code 75; systemd restarts the same
 entry point. The web adapter neither runs OS commands nor spawns replacements.
-Manual launches reject browser restart. OS reboot and general remote control
+Runtime subsystem and web-worker failures propagate as nonzero process exits for
+systemd recovery. Preview reload is acknowledged after camera start/stop acceptance;
+failed starts release partially acquired camera resources, and shutdown drains
+preview tasks and supervisor waiters. Manual launches reject browser restart. OS reboot and general remote control
 remain out of scope. See installation for display-session environment and service
 permissions. Status reflects configured values, not a new health-monitoring layer.
 
@@ -230,3 +234,66 @@ Tk draws layered eye-body, iris, pupil and highlight primitives without a
 raster-processing pipeline. Iris appearance can be applied live through the
 configuration lifecycle and render-loop queue; display geometry/backend changes
 still require PHOS restart.
+
+
+## Environmental sensor service
+
+The separately approved BME280/BMP280 addition follows:
+
+```text
+BME280 / BMP280 -> selected hardware provider -> EnvironmentalSensorService
+        -> PhosRuntime.sensor_status -> LifecycleService status snapshot
+        -> existing local process channel -> authenticated Web Admin Sensors
+```
+
+`robot.sensors` owns the provider-neutral contract, immutable measurements and
+latest-state service. The `robot.hardware` adapters alone know the SMBus/driver APIs.
+`hardware.environmental.environmental_provider_type` centralizes selection and
+capabilities. Both return `EnvironmentalReading` with temperature/pressure and
+nullable `humidity_percent`; BMP280 must return null, BME280 must supply humidity.
+The service validates that invariant using declared available measurements.
+The runtime constructs and starts/stops the service without sensor decisions in
+Core, BehaviorEngine, EyeRenderer or Vision. Future compatible environmental
+providers reuse this boundary; other kinds of sensors need their own typed
+measurements rather than forcing them into temperature/humidity/pressure fields.
+
+One daemon worker serializes all provider calls; disabled means no worker,
+provider construction, vendor imports or I2C open. It retries initialization after
+failures, retains no history and exposes only finite valid current measurements.
+Snapshot metadata includes active sensor type, available measurements, availability/status, UTC last success, monotonic age
+and sanitized error type. Failed or stale snapshots contain no current values.
+A blocked native call cannot stop the render loop or grow a work queue; stop
+signals the worker and awaits at most one second. The owner closes the bus when
+I/O returns; process exit releases it if stuck. No concurrent bus close is used.
+
+All settings are restart-only under existing lifecycle classification. Save and
+Reload do not restart any subsystem. Only an explicitly requested PHOS restart
+reinitializes hardware. The Sensors page reads in-memory state via shared services,
+never imports a driver or infers availability from saved enabled/address values.
+The existing authenticated process channel carries the snapshot; no new API or
+IPC operation is exposed. See ADR-022, [hardware](hardware.md#bme280) and
+[configuration migration](development.md#environmental-configuration-migration).
+
+
+### CCS811 air-quality extension
+
+`hardware.CCS811Provider → AirQualitySensorService → PhosRuntime.sensor_status`
+uses the same lifecycle status channel and authenticated Sensors page. An
+immutable `AirQualityReading` holds eCO2 ppm / TVOC ppb; environmental measurement
+interfaces remain unchanged. The two services reuse the existing worker algorithm
+through a private base, with typed reading hooks. Each enabled sensor has one
+worker and its adapter-owned smbus2 handle on bus 1. No rendering, Vision, web
+handler or BehaviorEngine accesses these adapters.
+
+Expected readiness/conditioning uses `SensorNotReady`, keeping the device open
+and polling at the configured interval. Faults use the shared reconnect/backoff;
+failed/stale readings are hidden and shutdown remains bounded per worker.
+A stalled warm-up poll also becomes unavailable after its freshness timeout.
+Disabled means no provider construction, imports or bus operations.
+
+Environmental compensation flows through the environmental service's immutable,
+fresh snapshot boundary to the air-quality service, then the provider. No driver
+references another driver. The UI receives only state/metadata. Missing humidity
+(including BMP280) or invalid/stale inputs restore device defaults; baseline
+persistence and behavior integration remain deferred. See ADR-023 and the
+[installation policy](installation.md#optional-ccs811-air-quality-sensor).

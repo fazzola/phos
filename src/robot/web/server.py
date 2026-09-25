@@ -98,3 +98,8 @@ class WebServer:
             self._thread.join(timeout=2)
         if self._channel is not None and (self._thread is None or not self._thread.is_alive()):
             self._channel.close()
+
+    def check_running(self):
+        """Make worker death a parent failure so the supervisor can recover."""
+        if self.config.web_enabled and (self.process is None or not self.process.is_alive()):
+            raise RuntimeError("Web administration worker stopped unexpectedly")

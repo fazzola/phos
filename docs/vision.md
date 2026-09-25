@@ -44,7 +44,8 @@ service. A single latest-frame reference and one bounded resize/encoding job
 prevent backlog; preview refresh is capped at 5 FPS by default. The resize runs
 off the Tk eye-render thread.
 
-The display passes raw binary PPM data to Tk. Preview encoding or image-loading
+The display converts the current BGR camera array to RGB only for presentation,
+then passes raw binary PPM data to Tk. Vision/model preprocessing is unchanged. Preview encoding or image-loading
 failures are logged as `Could not render camera preview` once per failure streak,
 so a missing overlay can be diagnosed without flooding the log or stopping eyes.
 
@@ -54,7 +55,9 @@ FPS and diagnostic labels without restarting PHOS. If the preview is the only
 Vision feature enabled, reload starts the existing Vision pipeline/camera once;
 disabling it releases that pipeline when face tracking and expression
 recognition are also disabled. Changing preview options while Vision is already
-running does not restart Vision or the camera. Camera/display geometry and
+running does not restart Vision or the camera. A failed preview start is reported
+without recording the enabled flag as applied; previously applied appearance
+changes remain active. Stopped pipelines clear their latest preview frame. Camera/display geometry and
 other Vision settings remain restart-required.
 
 ## FaceDetector
@@ -123,7 +126,8 @@ rectangular crops, so they are not directly comparable preprocessing baselines.
    the new continuity rules cannot reject a consistently detected background
    pattern merely because it is stable. Confirm the real face is in view using
    the camera preview separately if needed; stop PHOS before another process
-   acquires the camera. No preview/image storage is added to the runtime.
+   acquires the camera. The runtime supports the optional local preview described
+   above; no image storage is added.
 2. Move slowly left/right and nearer/farther. Look for `continuity_match`, modest
    crop-size changes, correct gaze, and consistently square crop coordinates.
    Inspect whether boxes cover the actual face; numeric stability is insufficient

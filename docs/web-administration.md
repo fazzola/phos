@@ -42,7 +42,8 @@ An explicit LAN interface IP is more restrictive than `0.0.0.0`, which binds all
 IPv4 interfaces. IPv6 literals are also accepted. Hostnames are not bind settings.
 No separate web CLI flags exist.
 
-Start from the Pi's graphical desktop session:
+Use the [user systemd service](installation.md#managed-startup-and-browser-restart)
+for production and browser restart. For a foreground diagnostic run:
 
 ```bash
 cd /home/pi/phos
@@ -89,6 +90,7 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Display & Appearance | Display dimensions, fps, fullscreen and transitions; blink/gaze intervals, gaze smoothing and reaction decay from `behavior`. |
 | Vision | Face tracking, camera resolution/cadence, face detection and optional display-only camera picture-in-picture preview. |
 | Expression Recognition | Provider selection/enabling and observation cadence/crop margin; smoothing; local ONNX model, labels and preprocessing; AWS region/confidence/timeouts; a separate cloud cost/rate-limit group. |
+| Sensors | Environmental type (BME280/BMP280) and CCS811 air quality, enable, I2C address, polling and stale timeout; read-only current readings, last update, age and sensor health from the parent runtime. All sensor settings require Restart PHOS. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
 | System / Status | Read-only PHOS version, configuration path, active expression provider/enabled state, last successful load/reload time, saved-versus-active comparison and restart-required fields. Live robot state is not monitored and AWS credential availability is not probed. |
@@ -112,7 +114,7 @@ The canonical model remains authoritative for all ranges, types and relationship
 see [the field reference](development.md#field-reference).
 
 Navigation is defined by a small domain registry, separate from the canonical
-schema. Future implemented subsystems can add areas there. Sensors, LED Ring,
+schema. Future implemented subsystems can add areas there. LED Ring,
 Audio, Voice, LLM, Home Assistant, Remote API and MCP have no settings or
 placeholder pages in this milestone.
 
@@ -210,11 +212,12 @@ procedure. Do not delete only `password.json` while the server is running.
   enabled-but-unreachable launch. Missing dependencies, invalid credential
   permissions and occupied ports must be fixed locally. Shutdown terminates
   the worker and releases its port, even if runtime startup fails. If the worker
-  crashes later, the robot continues; restart PHOS to recover administration.
+  crashes later, the parent shuts down and exits nonzero for supervisor recovery.
 - Filesystem access is trusted. The editor can select model/cascade/log paths
   within the privileges of the PHOS OS account. Run as a normal user, not root.
 - Configurations/credentials are atomically replaced, but there is no automatic
-  backup, cross-process edit lock, subsystem hot reload or high-availability service.
+  backup, cross-process edit lock, arbitrary subsystem hot reload or high-availability service. A dead web worker
+  now causes graceful parent shutdown and a nonzero exit for systemd recovery.
 
 Implementation uses [Flask security guidance](https://flask.palletsprojects.com/en/stable/web-security/),
 [Flask-WTF CSRF protection](https://flask-wtf.readthedocs.io/en/1.2.x/csrf/),
@@ -315,3 +318,73 @@ file edits; a file changed or hardware removed after validation can still cause
 startup to fail. Systemd bounds repeated startup failures; inspect its journal
 and repair locally as described in installation. A lifecycle channel failure
 reports unavailable rather than pretending that settings were applied.
+
+Preview reload failures are shown as errors and logged in the parent. Earlier
+successful appearance changes may already be active; inspect System actions
+after correcting the camera/dependency problem. Invalid JSON/schema applies
+nothing. An accepted preview configuration does not certify live image quality;
+check the physical display and logs. The lifecycle channel waits up to five
+seconds. If a native camera start takes longer, the action may still complete;
+the response reports uncertainty and the channel stays unavailable until PHOS
+restarts. Check locally rather than assuming the operation was cancelled.
+
+
+## Sensors — BME280 / BMP280
+
+After [I2C setup](installation.md#optional-environmental-sensor), open
+**Sensors**, select **Type → BME280** or **BMP280**, enable the sensor, choose the actual `0x76`/`0x77` address and save.
+Polling and stale timeout are seconds; the editor uses canonical validation.
+All changes, including timing and disable, require **System actions → Restart
+PHOS** (or a manual stop/start). Reload leaves them pending without touching
+sensor, display or Vision services. Saving enabled does not mean a sensor exists.
+
+The read-only panel reflects the parent sensor service at page load: temperature
+(°C), relative humidity (%) for BME280, and atmospheric/station pressure (hPa), last successful
+UTC update, age in seconds, and status. Refresh for another snapshot after saving
+any edits. This is not an automatically refreshing dashboard. No sensor driver
+runs in the web worker and no extra network sensor endpoint is introduced.
+
+BMP280 has no humidity sensor: its value is null and the panel shows **Not
+supported**, including when unavailable. The panel shows the active sensor type
+and uses explicit capabilities from runtime. A saved selection does not change
+the displayed active type/capabilities until restart.
+
+Status is disabled, starting, available, unavailable, stale or stopped. Failed
+and stale measurements are hidden, while last-update/age remain visible for
+diagnosis. Before the first successful read there is no timestamp. Missing
+libraries/hardware, wrong chip/address and I/O errors show unavailable; errors
+are sanitized to their exception type. Consult the Pi journal and installation
+troubleshooting. A broken parent channel shows status unavailable, never guessed
+values from saved configuration. Sensor failures do not change PHOS behavior.
+
+Selecting a sensor type does not install its driver. If the sensor error is
+`ModuleNotFoundError` and the Pi journal says `No module named 'bmp280'`, follow
+the [BMP280 driver recovery instructions](installation.md#missing-bmp280-driver)
+to install and verify the dependency in PHOS's virtual environment. Check the
+active configuration path under System / Status if the logged sensor type
+differs from the file you edited.
+
+
+### CCS811 air quality
+
+The same **Sensors** page has a **CCS811 air quality** configuration group:
+enabled, address (`0x5a`/`0x5b`), polling interval and stale timeout. Install its
+optional dependency and verify wiring using the
+[CCS811 setup instructions](installation.md#optional-ccs811-air-quality-sensor).
+Every setting requires **Save → System actions → Restart PHOS**; Reload leaves
+changes pending. The committed default is disabled.
+
+The read-only panel shows **eCO2 (estimated equivalent CO2), ppm**, **TVOC, ppb**,
+last successful UTC update, age, health and compensation input. eCO2 is not a
+direct NDIR CO2 measurement. Values are hidden during `warming_up`, unavailable,
+stale or disabled states; the initial timestamp is absent. Refresh for a new
+snapshot; this page does not acquire hardware or automatically stream readings.
+
+The runtime withholds readings for 20 minutes after initialization. A new
+sensor needs longer first-use conditioning; see installation. Missing DATA_READY
+keeps polling without restarting the conditioning period. Fault recovery or
+PHOS restart does initialize it again. Fresh BME280 temperature/humidity may
+supply compensation automatically. BMP280 lacks humidity; stale, failed or
+missing environmental data use clearly labeled device defaults. The panel
+reports the input last written, not a guarantee that the displayed gas sample
+already incorporates it. Consult the journal for hardware ERROR_ID diagnostics.

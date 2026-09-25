@@ -13,8 +13,8 @@ Hardware listed here does **not** imply that its software integration is already
 | Microphone            | Available            | Exact model/interface TBD                              | Future voice input                                                     | Exact model/interface still to document                                              |
 | Speaker               | Planned              | TBD                                                    | Future voice output                                                    | Not yet specified                                                                    |
 | Raspberry Pi Camera   | Available / working  | Raspberry Pi camera interface                          | Vision and face tracking                                               | Already used by the current PHOS Vision stack                                        |
-| BME280                | Available / selected | I2C preferred; SPI also supported by the sensor        | Ambient temperature, relative humidity, atmospheric pressure           | Intended to be connected directly to the Raspberry Pi                                |
-| Keyestudio SEN-CCS811 | Available / selected | I2C                                                    | Air-quality sensing: eCO2 and TVOC                                     | CCS811 reports **equivalent CO2 (eCO2)**, not direct NDIR CO2 measurement            |
+| BME280 | Software integrated; physical acceptance pending | I2C bus 1, 3.3 V logic | Temperature, relative humidity, atmospheric pressure | Exact breakout/address still to verify |
+| Keyestudio SEN-CCS811 | Software integrated; physical acceptance pending | I2C                                                    | Air-quality sensing: eCO2 and TVOC                                     | Software integrated; physical acceptance pending; eCO2 is not direct NDIR CO2            |
 | GY-521 (MPU-6050)     | Available / selected | I2C                                                    | 6-axis inertial sensing: 3-axis acceleration + 3-axis angular velocity | Intended for future motion/orientation awareness; exact software use not defined yet |
 | WS2812B RGB LED ring  | Available / selected | Single-wire addressable data; typically 5 V LED supply | Visual status / state indication through color and animation           | LED count, GPIO assignment, power budget, and physical placement still TBD           |
 | Servos/motors         | Planned              | TBD                                                    | Future physical movement                                               | Not yet specified                                                                    |
@@ -23,44 +23,102 @@ Hardware listed here does **not** imply that its software integration is already
 
 ### BME280
 
-PHOS will include a BME280 connected directly to the Raspberry Pi.
+PHOS supports a BME280 through `robot.hardware.bme280.BME280Provider` and the
+provider-neutral environmental service. Web Admin → Sensors shows temperature
+in °C, relative humidity in %, and station pressure in hPa (not sea-level adjusted).
+It does not affect behavior, eyes or Vision. Software tests use fakes; the exact
+breakout and physical installation have **not** been verified.
 
-Measurements:
+Expected wiring for a **3.3 V-compatible I2C breakout**, with the Pi powered off:
 
-- temperature;
-- relative humidity;
-- atmospheric pressure.
+| Breakout signal | Raspberry Pi 3 physical header pin | Function |
+| --- | --- | --- |
+| 3.3 V-compatible supply input | 1 | 3.3 V |
+| GND | 6 | Ground |
+| SDA | 3 | GPIO2 / SDA1 |
+| SCL | 5 | GPIO3 / SCL1 |
 
-Preferred connection for PHOS: **I2C**, unless a later hardware constraint makes SPI preferable.
+These are expected signal connections, not a claim about your module's pin order
+or VIN regulator. Check its schematic/labels before wiring. Pi GPIO uses 3.3 V
+logic; do not pull SDA/SCL up to 5 V. The bare BME280 supply is 1.71–3.6 V,
+with VDDIO 1.2–3.6 V; a breakout may add a regulator or level shifter, which must
+be checked independently. For exposed CSB/SDO, follow the board schematic:
+CSB high selects I2C; SDO low selects 0x76, high selects 0x77. Do not leave SDO
+floating or assume the breakout has particular pull-ups. Sources:
+[Bosch datasheet](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bme280-ds002.pdf),
+[driver wiring reference](https://bme280.readthedocs.io/en/latest/#gpio-pin-outs).
 
-The BME280 should eventually be exposed to the rest of PHOS through a hardware-neutral sensor abstraction. No behavior should be assigned to these measurements in this document.
+PHOS uses `/dev/i2c-1` and the configured `sensors.environmental.i2c_address` string,
+`"0x76"` or `"0x77"`. It does not scan or silently fall back to another address.
+The selected adapter checks register 0xD0: BME280 requires chip ID 0x60,
+BMP280 requires 0x58. A mismatched chip is unavailable; there is no automatic
+switch to another type. See [setup and bus verification](installation.md#optional-environmental-sensor).
+Place the sensor away from Pi/display heat and check readings against a reference;
+no enclosure-heating correction or calibration offset is applied.
 
-Possible future uses include environmental awareness, status reporting, Home Assistant exposure, and behavior/context inputs. These are future software decisions and are not part of the current hardware milestone.
+### BMP280
+
+PHOS also supports BMP280 through `robot.hardware.bmp280.BMP280Provider`, using
+exactly the same environmental service and I2C bus ownership as BME280. Select
+one sensor in **Web Admin → Sensors → Type**, save and Restart PHOS. BMP280
+measures temperature (°C) and station pressure (hPa); it has **no humidity
+sensor**. Its reading contains `humidity_percent: null`; the UI says **Not
+supported**, never 0%. Both adapters publish explicit available measurements.
+
+The 3.3 V-compatible I2C wiring assumptions in the BME280 table above apply to
+BMP280 breakouts too; confirm the actual board schematic and pin labels. Address
+is configurable as 0x76 or 0x77. Power off before changing modules. Follow the
+single [installation procedure](installation.md#optional-environmental-sensor)
+for dependencies, bus enablement and verification. Real BMP280 acceptance is pending.
 
 ### Keyestudio SEN-CCS811
 
-PHOS will include a Keyestudio SEN-CCS811 connected directly to the Raspberry Pi over **I2C**.
+PHOS supports CCS811 through `hardware.ccs811.CCS811Provider` and the shared
+sensor worker/lifecycle. It reports **eCO2 (estimated equivalent CO2), ppm**, and
+**TVOC (total volatile organic compounds), ppb**. eCO2 is inferred from gas
+sensor response, **not a direct NDIR CO2 measurement**. It is independent of
+BME280/BMP280 and can run alongside either. No behavior or display-eye reactions
+are attached to these observations. Physical module acceptance remains pending.
 
-Measurements provided by the CCS811 family:
+The exact board revision called SEN-CCS811 must be identified before wiring.
+The [Keyestudio KS0457 reference](https://wiki.keyestudio.com/KS0457_keyestudio_CCS811_Carbon_Dioxide_Air_Quality_Sensor)
+specifies **5 V module power**; do not confuse module VCC with bare-chip supply
+or assume its SDA/SCL pull-ups are Pi-compatible. Confirm the regulator, pull-ups
+and level shifting on the actual breakout. Pi-side SDA/SCL must use **3.3 V
+logic**; if the module side is 5 V, use suitable bidirectional I2C level shifting.
+Power off before wiring.
 
-- eCO2 (equivalent CO2);
-- TVOC (total volatile organic compounds).
+| Module signal | Raspberry Pi 3 physical pin / connection |
+| --- | --- |
+| GND | Pin 6, shared ground |
+| SDA | Pin 3 / GPIO2 / SDA1, at Pi-compatible logic level |
+| SCL | Pin 5 / GPIO3 / SCL1, at Pi-compatible logic level |
+| VCC | For confirmed KS0457 5 V input: pin 2 (5 V); only a verified 3.3 V-compatible breakout may use pin 1 instead |
+| nWAKE / WAK, if exposed | GND (or confirm the board already holds it low); PHOS does not drive a wake GPIO |
+| nRESET, if exposed | Keep deasserted using the board's documented pull-up; no PHOS GPIO connection |
+| nINT, if exposed | Unconnected; PHOS polls |
+| ADDR, if exposed | Strap per board schematic: low selects 0x5a, high selects 0x5b; do not leave floating |
 
-Important semantic rule: PHOS documentation and future UI/API names must not describe CCS811 eCO2 as a direct physical CO2 measurement. It is an estimated/equivalent CO2 value derived by the sensor.
-
-The exact Keyestudio module revision, supply requirements, pin labels, and I2C address/configuration must be verified from the physical board before GPIO wiring is finalized.
+The provider uses `/dev/i2c-1`, defaults to `0x5a`, also accepts `0x5b`, and
+checks HW_ID `0x81`. It never scans or changes address automatically. Separate
+worker-owned SMBus handles use the existing kernel I2C bus; no bit-banged bus,
+GPIO wake owner or interrupt worker is added. Native transactions stay in the
+hardware adapters. CCS811 requires clock stretching; verify sustained combined
+operation on the actual Pi/controller, beyond merely finding an address.
+See the [manufacturer driver wiring notes](https://github.com/sciosense/CCS811_driver)
+and [installation/conditioning procedure](installation.md#optional-ccs811-air-quality-sensor).
 
 ### Shared I2C bus
 
-BME280 and CCS811 are expected to share the Raspberry Pi I2C bus if their actual module configuration and addresses are compatible.
+BME280/BMP280 and CCS811 can share the Raspberry Pi I2C bus if their actual module configuration and addresses are compatible.
 
-Before integration:
+Before physical acceptance:
 
 - verify the exact I2C addresses of both physical modules;
 - verify module voltage requirements and whether each breakout includes regulation/level shifting;
 - document the Raspberry Pi pins used for SDA, SCL, power, and ground;
 - verify that I2C is enabled on Raspberry Pi OS;
-- avoid assigning addresses or GPIO pins in software documentation until verified on the real hardware.
+- distinguish the expected BME280 wiring above from the as-built wiring verified on the real hardware.
 
 ## Inertial sensor
 
@@ -131,9 +189,7 @@ Provider-neutral reading or command
 PHOS core / state / behavior integration
 ```
 
-Examples of future abstractions may include environmental sensor readings and an addressable-light output interface, but their exact APIs must be decided when those milestones begin.
-
-The current hardware update does **not** authorize implementation of those abstractions yet.
+The implemented environmental and air-quality providers/services are described in [architecture](architecture.md#environmental-sensor-service). They publish read-only state, without behavior integration. Other sensors and light-output abstractions remain deferred.
 
 ## Wiring information still to record
 
@@ -176,9 +232,9 @@ Already operational:
 - 800x600 PHOS display/eyes;
 - Raspberry Pi Camera and face tracking.
 
-Selected for the next hardware-integration planning phase, but **not yet integrated in software**:
+BME280/BMP280 and CCS811 software integration is implemented; wiring, address and real readings await Pi acceptance.
 
-- BME280;
-- Keyestudio SEN-CCS811;
+Selected but **not yet integrated in software**:
+
 - GY-521 (MPU-6050);
 - WS2812B RGB LED ring.

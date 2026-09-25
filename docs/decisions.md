@@ -229,3 +229,79 @@ default, local to the PHOS display, never persisted or served over the network,
 and is live-reloadable without restarting PHOS or an already-running camera and
 Vision pipeline. Enabling preview may start the dormant existing pipeline;
 disabling it releases the camera only when no other Vision feature uses it.
+
+### 1.0.0 hardening clarification (ADR-018/021)
+
+Release hardening preserves the existing scope and boundaries. Runtime/worker
+failures must exit nonzero so the documented supervisor can recover. Preview
+reload acknowledges camera lifecycle acceptance before recording active settings;
+failed/cancelled starts release resources. Previously successful appearance
+changes remain recorded if a later hardware application fails. Invalid canonical
+configuration still applies nothing. The committed preview default remains off.
+Deprecated, functional CLI overrides remain during the ADR-015 migration; they
+are not a second persisted configuration or the production launch path.
+
+
+## ADR-022 — Optional BME280 environmental service
+
+**Status:** Accepted (explicit BME280 integration request, separately approved
+follow-on to the frozen 1.0.0 baseline).
+
+Use a small synchronous `EnvironmentalSensorProvider` contract and immutable
+`EnvironmentalReading` (temperature °C, relative humidity %, pressure hPa).
+The BME280 adapter owns I2C bus 1 via optional RPi.bme280/smbus2; vendor imports
+are lazy. A dedicated single worker owns device initialization/read/close and
+publishes a lock-protected, in-memory latest snapshot through the sensor service.
+No hardware call runs in the asyncio renderer or a web request. Failures retry
+with bounded backoff and rate-limited warnings; stale/failed readings are never
+presented as current. Native calls cannot be safely interrupted, so shutdown
+bounds its wait without concurrent close or replacement workers.
+
+Canonical `sensors.bme280` is disabled by default; every field requires restart.
+The new required section follows the existing explicit config-merge migration
+policy. Runtime exposes a read-only snapshot via the existing lifecycle status
+channel to the authenticated Sensors editor. It adds no network control API,
+behavior input, event stream or general dashboard. CCS811, GY-521, LED ring,
+voice, MCP and Home Assistant remain deferred. Real Pi acceptance is separate
+from fake-provider tests; the 1.0.0 release history/version is not rewritten.
+
+
+### ADR-022 extension — selectable BME280 / BMP280
+
+**Status:** Accepted (explicit environmental sensor extension request).
+
+Replace the BME280-specific configuration block with `sensors.environmental`
+plus a required `type` selector. Preserve common settings and the explicit
+configuration migration policy. Every sensor change still requires restart.
+The provider-neutral reading has nullable `humidity_percent`; BME280 provides
+humidity, BMP280 cannot. Runtime status includes type and explicit measurement
+capabilities even when disabled/unavailable; Web Admin renders unsupported
+humidity distinctly from unavailable readings.
+
+Keep RPi.bme280 for BME280; its sampling API requires humidity registers. Add
+Pimoroni bmp280 for BMP280, reusing worker-owned smbus2 bus 1 and the existing
+service, retry, freshness and lifecycle boundaries. Strict chip IDs prevent
+silent reinterpretation. No behavior integration or other sensor scope is added.
+
+
+## ADR-023 — CCS811 through the existing sensor service pattern
+
+**Status:** Accepted (explicit CCS811 integration request).
+
+Add `AirQualitySensorProvider` / immutable `AirQualityReading` for eCO2 ppm and
+TVOC ppb alongside the environmental contract. eCO2 is estimated equivalent
+CO2, never direct NDIR CO2. Reuse the established worker/retry/freshness/lifecycle
+implementation, without coupling sensors to behavior, Vision or rendering.
+Canonical `sensors.ccs811` defaults disabled, uses bus 1 and configurable
+0x5a/0x5b, and requires restart for all settings. Web Admin uses the existing
+service snapshot/configuration boundaries.
+
+Select the existing lightweight smbus2 dependency with a local register adapter
+based on ams DS000459, avoiding a new GPIO/I2C framework. Fixed mode 1 and a
+20-minute conditioning gate remain hardware policy. Expected no-data/warm-up
+polls retain initialization; physical failures retry with bounded backoff.
+Automatic compensation accepts fresh service-level temperature plus humidity,
+never assumes BMP280 humidity and restores device defaults on loss of source.
+No baseline persistence, firmware updating, GPIO wake control, GY-521, WS2812B
+or additional control surface is included. Exact breakout electrical validation,
+first-use burn-in and sustained Pi operation remain separate physical acceptance.

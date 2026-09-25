@@ -209,7 +209,7 @@ def test_cli_config_only_and_overrides_use_same_validation(document, tmp_path, m
     document["display"]["fps"] = 19
     path = write_config(tmp_path, document)
     seen = []
-    async def run(*, config, lifecycle=None):
+    async def run(*, config, lifecycle=None, web_server=None):
         seen.append(config)
     monkeypatch.setattr(main, "async_main", run)
     monkeypatch.setattr(main.logging, "basicConfig", lambda **kw: None)
