@@ -222,6 +222,18 @@ def test_display_appearance_theme_is_selectable_and_saved_canonically(setup):
     assert RuntimeConfig.from_file(path).iris_color == "violet"
 
 
+def test_led_ring_palette_is_exposed_and_selected_color_round_trips_through_web_admin(setup):
+    app, path, _ = setup
+    client = authorize(app)
+    page = client.get("/configuration/display").get_data(as_text=True)
+    expected = ("green", "red", "yellow", "blue", "violet", "white", "cyan", "turquoise", "orange", "magenta")
+    assert all(f'<option value="{color}"' in page for color in expected)
+    data = form(client, "display")
+    data["led_ring.base_color"] = "magenta"
+    assert client.post("/configuration/display", data=data).status_code == 302
+    assert RuntimeConfig.from_file(path).led_ring_base_color == "magenta"
+
+
 def test_stale_form_cannot_overwrite_new_save(setup):
     app, path, _ = setup
     client = authorize(app)

@@ -534,6 +534,13 @@ The normal PHOS user service sends bounded RGB frames to that socket and never
 opens `/dev/vcio` or `/dev/mem`. The service must report `active (running)` and
 the socket must exist before enabling PHOS LED output.
 
+The available LED base colors are green `#00FF40`, red `#FF1A1A`, yellow
+`#FFD400`, blue `#007BFF`, violet `#A020F0`, white `#FFFFFF`, cyan `#00E5FF`,
+turquoise `#00FFC8`, orange `#FF7A00`, and magenta `#FF00C8`. PHOS sends these
+as logical RGB and uniformly scales them for `brightness`; it does not apply
+gamma correction. The helper explicitly configures standard WS2812B `GRB` wire
+order, so do not reorder the configured palette values.
+
 Next update the deployed canonical `~/phos/config/phos.json` so its count and
 GPIO exactly match the helper. Replace its `led_ring` object with values for the
 actual ring; for a 12-pixel ring on BCM GPIO 18:
@@ -586,7 +593,7 @@ with low brightness. A driver, permission or write failure only disables ring
 output; PHOS eyes and other services continue.
 
 The ring is steady in its configured base color when neutral. Warm/curious use a
-gentle pulse, alert uses a short amber pulse, sleepy a dim violet fade and error
+gentle pulse, alert uses a short yellow pulse, sleepy a dim violet fade and error
 a steady red. Existing transient alert strength drives the alert pulse, so shake
 and impact require no direct IMU-to-LED coupling. Confirm the configured base
 color returns after an alert.

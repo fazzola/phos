@@ -90,7 +90,7 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Display & Appearance | Display dimensions, fps, fullscreen and transitions; blink/gaze intervals, gaze smoothing and reaction decay from `behavior`. |
 | Vision | Face tracking, camera resolution/cadence, face detection and optional display-only camera picture-in-picture preview. |
 | Expression Recognition | Provider selection/enabling and observation cadence/crop margin; smoothing; local ONNX model, labels and preprocessing; AWS region/confidence/timeouts; a separate cloud cost/rate-limit group. |
-| Display & Appearance | Display, eye behavior and WS2812B LED ring settings. LED pin/count require restart; enabled state, brightness, base color, visual-state following and update rate use Reload configuration. |
+| Display & Appearance | Display, eye behavior and WS2812B LED ring settings. The ring selector offers saturated green, red, yellow, blue, violet, white, cyan, turquoise, orange and magenta. LED pin/count require restart; enabled state, brightness, base color, visual-state following and update rate use Reload configuration. |
 | Sensors | Environmental type (BME280/BMP280), CCS811 air quality and GY-521/MPU-6050 motion: enable, I2C address, polling and stale timeout; read-only current readings, last update, age and sensor health from the parent runtime. Hardware settings require Restart PHOS; IMU interpretation settings use Reload configuration. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
@@ -257,7 +257,7 @@ state changes also require CSRF protection.
 | Operation | Effect |
 | --- | --- |
 | Save on a domain page | Validates and atomically persists the full canonical JSON. Does not change active settings. |
-| Reload configuration | Reads that same file, validates every setting and active path with startup's model, then applies logging level, iris theme and all `vision.camera_preview` settings through shared runtime services. Shows applied fields and remaining restart-required fields. |
+| Reload configuration | Reads that same file, validates every setting and active path with startup's model, then applies logging level, iris theme, LED ring visual settings and all `vision.camera_preview` settings through shared runtime services. Shows applied fields and remaining restart-required fields. |
 | Restart PHOS | Requires the managed service and explicit confirmation. Validates the saved file, requests graceful application shutdown, then systemd starts PHOS again from disk. |
 
 If any setting/path is invalid, Reload applies **nothing**, including logging

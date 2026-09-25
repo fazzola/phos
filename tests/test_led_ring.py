@@ -4,7 +4,8 @@ import time
 from types import SimpleNamespace
 
 from robot.ui import FaceState, LEDRingController, LEDRingSettings, VisualAccent
-from robot.ui.led_ring import led_frame
+from robot.config import LED_RING_COLOR_RGB
+from robot.ui.led_ring import led_frame, scale_rgb
 from robot.hardware.ws2812b import WS2812BProvider
 from robot.hardware.ws2812b import LEDRingSocketProvider
 
@@ -40,6 +41,23 @@ def test_alert_frame_returns_to_configured_baseline_after_transient_state():
     restored = led_frame(FaceState(), settings(base_color="green"), 2)
     assert alert.pixels != baseline.pixels
     assert restored.semantic_state == "neutral" and restored.pixels == baseline.pixels
+
+
+def test_named_palette_is_exact_saturated_and_distinct():
+    assert LED_RING_COLOR_RGB == {
+        "green": (0, 255, 64), "red": (255, 26, 26), "yellow": (255, 212, 0),
+        "blue": (0, 123, 255), "violet": (160, 32, 240), "white": (255, 255, 255),
+        "cyan": (0, 229, 255), "turquoise": (0, 255, 200), "orange": (255, 122, 0),
+        "magenta": (255, 0, 200),
+    }
+    assert len(set(LED_RING_COLOR_RGB.values())) == len(LED_RING_COLOR_RGB)
+    assert LED_RING_COLOR_RGB["white"] == (255, 255, 255)
+
+
+def test_brightness_scales_each_rgb_channel_without_channel_swapping():
+    assert scale_rgb((100, 200, 50), .3) == (30, 60, 15)
+    frame = led_frame(FaceState(), settings(base_color="red", brightness=1, follow_visual_state=False), 0)
+    assert frame.pixels[0] == LED_RING_COLOR_RGB["red"]
 
 
 class FakeProvider:
@@ -78,19 +96,21 @@ def test_controller_initializes_writes_and_live_reloads_visual_settings():
     assert controller.snapshot()["semantic_state"] == "alert"
 
 
-def test_ws2812b_provider_is_lazy_and_encodes_rgb_without_hardware(monkeypatch):
+def test_ws2812b_provider_is_lazy_and_encodes_rgb_with_grb_transport_without_hardware(monkeypatch):
     calls = []
     class Strip:
-        def __init__(self, count, pin, brightness): calls.append(("init", count, pin, brightness))
+        def __init__(self, count, pin, brightness, strip_type): calls.append(("init", count, pin, brightness, strip_type))
         def begin(self): calls.append(("begin",))
         def setPixelColor(self, index, color): calls.append(("pixel", index, color))
         def show(self): calls.append(("show",))
-    monkeypatch.setitem(sys.modules, "rpi_ws281x", SimpleNamespace(PixelStrip=Strip))
+    monkeypatch.setitem(sys.modules, "rpi_ws281x", SimpleNamespace(
+        PixelStrip=Strip, Color=lambda red, green, blue: (red << 16) | (green << 8) | blue,
+        ws=SimpleNamespace(WS2811_STRIP_GRB="GRB")))
     provider = WS2812BProvider(led_count=2, gpio_pin=18)
     provider.start()
     provider.write(((1, 2, 3), (4, 5, 6)))
     provider.close()
-    assert calls == [("init", 2, 18, 255), ("begin",), ("pixel", 0, 0x010203),
+    assert calls == [("init", 2, 18, 255, "GRB"), ("begin",), ("pixel", 0, 0x010203),
                      ("pixel", 1, 0x040506), ("show",), ("pixel", 0, 0), ("pixel", 1, 0), ("show",)]
 
 

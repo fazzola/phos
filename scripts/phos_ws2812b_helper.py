@@ -27,7 +27,7 @@ def main():
     if settings.count <= 0 or not 0 <= settings.pin <= 27:
         raise SystemExit("--count must be positive and --pin must be BCM GPIO 0 through 27")
     from grp import getgrnam
-    from rpi_ws281x import PixelStrip
+    from rpi_ws281x import Color, PixelStrip, ws
     path = Path(settings.socket)
     path.unlink(missing_ok=True)
     server = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -35,7 +35,10 @@ def main():
     server.settimeout(.5)
     os.chown(path, 0, getgrnam(settings.group).gr_gid)
     os.chmod(path, 0o660)
-    strip = PixelStrip(settings.count, settings.pin, brightness=255)
+    # The helper receives logical RGB from PHOS. WS2812B uses GRB bytes on
+    # the wire, which rpi-ws281x handles through this explicit strip type.
+    strip = PixelStrip(settings.count, settings.pin, brightness=255,
+                       strip_type=ws.WS2811_STRIP_GRB)
     strip.begin()
     running = True
     def stop(*_):
@@ -52,7 +55,7 @@ def main():
                 for index, color in enumerate(pixels):
                     if not isinstance(color, list) or len(color) != 3 or any(type(channel) is not int or not 0 <= channel <= 255 for channel in color):
                         break
-                    strip.setPixelColor(index, (color[0] << 16) | (color[1] << 8) | color[2])
+                    strip.setPixelColor(index, Color(*color))
                 else:
                     strip.show()
             except (socket.timeout, OSError, ValueError, json.JSONDecodeError):
