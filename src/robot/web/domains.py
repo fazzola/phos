@@ -13,7 +13,7 @@ DOMAINS = {
     "display": {"title": "Display & Appearance", "description": "Display size, animation timing and eye appearance; iris theme applies on configuration reload."},
     "vision": {"title": "Vision", "description": "Local camera tracking, face detection and an optional display-only diagnostic preview."},
     "expression": {"title": "Expression Recognition", "description": "Select a provider and configure observations, model preprocessing and cloud request limits."},
-    "sensors": {"title": "Sensors", "description": "Environmental, air-quality and MPU-6050 motion readings and configuration. All sensor settings require Restart PHOS."},
+    "sensors": {"title": "Sensors", "description": "Environmental, air-quality and MPU-6050 motion readings and configuration. Hardware settings require Restart PHOS; IMU motion settings support Reload configuration."},
     "logging": {"title": "Logging", "description": "Log level, destination and expression diagnostics. SDK credential/request debug output remains suppressed; no credential or payload logging controls are provided."},
     "security": {"title": "Web Administration / Security", "description": "Enable administration and manage your administrator password separately from runtime settings."},
     "status": {"title": "System / Status", "description": "Read-only active configuration metadata and saved configuration status. Lifecycle actions are on a separate System actions page; robot health is not monitored."},

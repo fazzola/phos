@@ -90,7 +90,7 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Display & Appearance | Display dimensions, fps, fullscreen and transitions; blink/gaze intervals, gaze smoothing and reaction decay from `behavior`. |
 | Vision | Face tracking, camera resolution/cadence, face detection and optional display-only camera picture-in-picture preview. |
 | Expression Recognition | Provider selection/enabling and observation cadence/crop margin; smoothing; local ONNX model, labels and preprocessing; AWS region/confidence/timeouts; a separate cloud cost/rate-limit group. |
-| Sensors | Environmental type (BME280/BMP280), CCS811 air quality and GY-521/MPU-6050 motion: enable, I2C address, polling and stale timeout; read-only current readings, last update, age and sensor health from the parent runtime. All sensor settings require Restart PHOS. |
+| Sensors | Environmental type (BME280/BMP280), CCS811 air quality and GY-521/MPU-6050 motion: enable, I2C address, polling and stale timeout; read-only current readings, last update, age and sensor health from the parent runtime. Hardware settings require Restart PHOS; IMU interpretation settings use Reload configuration. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
 | System / Status | Read-only PHOS version, configuration path, active expression provider/enabled state, last successful load/reload time, saved-versus-active comparison and restart-required fields. Live robot state is not monitored and AWS credential availability is not probed. |
@@ -401,3 +401,11 @@ means the adapter converted its ±2 g / ±250 °/s raw scale but did not require
 motionless startup calibration. Values are hidden whenever unavailable or stale;
 the page never opens I2C itself. Setup and Pi verification are in the
 [MPU-6050 installation guide](installation.md#optional-gy-521--mpu-6050-imu).
+
+IMU visual intensity and timing appear under **Display & Appearance → Eye
+behavior**. They are applied by **Reload configuration**. Persistent movement and
+tilt react while their motion state remains active; SHAKE and IMPACT use brief
+alert overlays followed by smooth decay. `imu_tilt_eye_asymmetry_strength`
+mirrors horizontal tilt eye sizes; impact strength must exceed shake strength so
+the strongest alert remains unambiguous. Robot states such as
+sleeping, speaking and error retain priority.

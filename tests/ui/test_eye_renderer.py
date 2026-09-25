@@ -92,6 +92,7 @@ def test_invalid_face_state_values_are_safely_normalized():
     state = FaceState(
         background="not-a-colour",
         eye_open=100,
+        eye_asymmetry=100,
         squint=-2,
         pupil_x=4,
         pupil_y=-4,
@@ -102,6 +103,7 @@ def test_invalid_face_state_values_are_safely_normalized():
 
     assert state.background == "#10243A"
     assert state.eye_open == 1.25
+    assert state.eye_asymmetry == .5
     assert state.squint == 0.0
     assert state.pupil_x == 1.0
     assert state.pupil_y == -1.0
@@ -145,6 +147,31 @@ def test_expression_states_remain_face_state_driven():
 
     assert curious.eyes[0].radius_y != curious.eyes[1].radius_y
     assert surprised.eyes[0].radius_y > neutral.eyes[0].radius_y
+
+
+def test_explicit_eye_asymmetry_mirrors_eyes_and_overrides_expression_bias():
+    left = render(FaceState(expression=FaceExpression.CURIOUS, reaction_strength=1, eye_open=1.12,
+                            eye_asymmetry=.18))
+    right = render(FaceState(expression=FaceExpression.CURIOUS, reaction_strength=1, eye_open=1.12,
+                             eye_asymmetry=-.18))
+    symmetric = render(FaceState(expression=FaceExpression.CURIOUS, reaction_strength=1, eye_open=1.23,
+                                 eye_asymmetry=0))
+
+    assert left.eyes[0].radius_y > left.eyes[1].radius_y
+    assert right.eyes[1].radius_y > right.eyes[0].radius_y
+    assert left.eyes[0].radius_y == right.eyes[1].radius_y
+    assert left.eyes[1].radius_y == right.eyes[0].radius_y
+    assert symmetric.eyes[0].radius_y == symmetric.eyes[1].radius_y
+
+
+def test_explicit_eye_asymmetry_interpolates_each_eye_through_neutral():
+    renderer = EyeRenderer(transition_seconds=.2)
+    renderer.render(FaceState(eye_asymmetry=.18), timestamp=0)
+    halfway = renderer.render(FaceState(eye_asymmetry=-.18), timestamp=.1)
+    completed = renderer.render(FaceState(eye_asymmetry=-.18), timestamp=.2)
+
+    assert abs(halfway.eyes[0].radius_y - halfway.eyes[1].radius_y) < abs(completed.eyes[0].radius_y - completed.eyes[1].radius_y)
+    assert completed.eyes[1].radius_y > completed.eyes[0].radius_y
 
 
 def test_tk_draws_separate_eye_body_iris_pupil_and_highlights():

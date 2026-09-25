@@ -119,7 +119,7 @@ def test_runtime_imu_disabled_never_opens_provider(enabled):
     asyncio.run(exercise()); assert len(calls) == int(enabled)
 
 
-@pytest.mark.parametrize("field,value", [("enabled", 1), ("i2c_address", "0x67"), ("poll_interval_seconds", 0), ("stale_after_seconds", 5)])
+@pytest.mark.parametrize("field,value", [("enabled", 1), ("i2c_address", "0x67"), ("poll_interval_seconds", 0), ("stale_after_seconds", .05)])
 def test_imu_configuration_validation(field, value, tmp_path):
     document = load_document(); document["sensors"]["imu"][field] = value
     with pytest.raises(ConfigurationError): RuntimeConfig.from_dict(document, base_dir=tmp_path)
@@ -199,3 +199,143 @@ def test_interpreter_filters_noise_and_detects_shake_impact_and_cooldown():
     assert state is MotionState.IMPACT and event is None  # shake cooldown
     state, event = interpreter.observe(reading(z=30), 8)
     assert state is MotionState.IMPACT and event.state is MotionState.IMPACT
+
+
+def oriented(axis="x", angle=0, scale=1):
+    import math
+    values = {axis: 9.80665 * math.sin(math.radians(angle)) * scale,
+              "z": 9.80665 * math.cos(math.radians(angle)) * scale}
+    return reading(**values)
+
+
+def feed(interpreter, sample, start=0, count=30):
+    return [interpreter.observe(sample(i) if callable(sample) else sample, (start + i) * .05)[0]
+            for i in range(count)]
+
+
+@pytest.mark.parametrize("axis,angle,expected", [
+    ("x", -35, MotionState.TILT_LEFT), ("x", 35, MotionState.TILT_RIGHT),
+    ("y", 35, MotionState.TILT_FORWARD), ("y", -35, MotionState.TILT_BACK)])
+@pytest.mark.parametrize("scale", [1, 1.2])
+def test_sustained_normalized_tilts_win_over_movement(axis, angle, expected, scale):
+    interpreter = MotionInterpreter(motion_settings(confirmation_seconds=.3))
+    feed(interpreter, reading())
+    states = feed(interpreter, oriented(axis, angle, scale), start=30)
+    assert states[0] is MotionState.STILL  # no instantaneous transition
+    assert states[-10:] == [expected] * 10
+    assert feed(interpreter, reading(), start=60)[-1] is MotionState.STILL
+
+
+def test_level_movement_and_vibration():
+    interpreter = MotionInterpreter(motion_settings(confirmation_seconds=.3))
+    assert feed(interpreter, lambda i: reading(x=.3 * (-1)**i))[-1] is MotionState.STILL
+    assert feed(interpreter, reading(z=12), start=30)[-1] is MotionState.MOVING
+    assert feed(interpreter, reading(), start=60)[-1] is MotionState.STILL
+
+
+def test_tilt_hysteresis_and_temporal_confirmation():
+    interpreter = MotionInterpreter(motion_settings(confirmation_seconds=.3))
+    feed(interpreter, reading())
+    # A brief excursion does not establish a tilt or latch the exit threshold.
+    feed(interpreter, oriented(angle=40), start=30, count=2)
+    assert feed(interpreter, oriented(angle=20), start=32)[-1] is MotionState.STILL
+    assert feed(interpreter, oriented(angle=35), start=62)[-1] is MotionState.TILT_RIGHT
+    # Noise near the enter threshold cannot release an already confirmed tilt.
+    states = feed(interpreter, lambda i: oriented(angle=24 + (-1)**i), start=92)
+    assert set(states) == {MotionState.TILT_RIGHT}
+    assert feed(interpreter, oriented(angle=15), start=122)[-1] is MotionState.STILL
+
+
+def test_mounting_mapping_and_zero_gravity():
+    interpreter = MotionInterpreter(motion_settings(lateral_axis="-y", forward_axis="x", confirmation_seconds=.3))
+    assert feed(interpreter, oriented("y", 35))[-1] is MotionState.TILT_LEFT
+    assert feed(interpreter, reading(z=0), start=30, count=60)[-1] is MotionState.MOVING
+
+
+def test_priority_and_rate_limited_diagnostics(caplog):
+    interpreter = MotionInterpreter(motion_settings(confirmation_seconds=.3))
+    with caplog.at_level("DEBUG", logger="robot.motion"):
+        assert feed(interpreter, oriented(angle=35, scale=1.2))[-1] is MotionState.TILT_RIGHT
+        assert feed(interpreter, reading(z=12), start=30)[-1] is MotionState.MOVING
+    records = [record.message for record in caplog.records if "IMU motion" in record.message]
+    assert len(records) == 3
+    assert any("confirmed=tilt_right" in message and "tilt priority" in message for message in records)
+    assert any("tilt below enter/exit threshold" in message and "moving_metric=" in message for message in records)
+    assert interpreter.observe(reading(x=20, z=20), 3)[0] is MotionState.IMPACT
+    interpreter.observe(reading(gx=220), 3.05)
+    assert interpreter.observe(reading(gx=-220), 3.1)[0] is MotionState.SHAKE
+
+
+@pytest.mark.parametrize("changes", [
+    {"tilt_threshold_m_s2": 10}, {"tilt_exit_threshold_m_s2": 4},
+    {"tilt_exit_threshold_m_s2": 0}, {"tilt_exit_threshold_m_s2": float("nan")},
+    {"lateral_axis": "bad"}, {"lateral_axis": "-y"}, {"forward_axis": 1}])
+def test_tilt_configuration_validation(changes, tmp_path):
+    document = load_document()
+    document["sensors"]["imu"]["motion"].update(changes)
+    with pytest.raises(ConfigurationError):
+        RuntimeConfig.from_dict(document, base_dir=tmp_path)
+
+
+def test_new_tilt_settings_reload_and_reset_pending_evidence(tmp_path):
+    path = tmp_path / "phos.json"
+    RuntimeConfig(log_file=None).save(path)
+    interpreter = MotionInterpreter(motion_settings())
+    calls = []
+    from robot.runtime import _motion_settings
+    lifecycle = LifecycleService(path, RuntimeConfig.from_file(path))
+    def apply(config):
+        interpreter.configure(_motion_settings(config))
+        calls.append(config)
+    lifecycle.register_imu_motion_applier(apply)
+    interpreter.observe(oriented(angle=35), 0)
+    document = load_document(path)
+    document["sensors"]["imu"]["motion"].update(tilt_exit_threshold_m_s2=2.5, confirmation_seconds=.2,
+                                                lateral_axis="-y", forward_axis="x")
+    path.write_text(json.dumps(document))
+    result = lifecycle.execute("reload")
+    assert result["ok"] and not result["restart_required"] and len(result["applied"]) == 4
+    assert calls and interpreter._candidate is None
+    assert feed(interpreter, oriented("y", 35))[-1] is MotionState.TILT_LEFT
+
+
+def test_reload_reconfirms_hysteresis_for_unchanged_tilt():
+    settings = motion_settings(confirmation_seconds=.3)
+    interpreter = MotionInterpreter(settings)
+    assert feed(interpreter, oriented(angle=35))[-1] is MotionState.TILT_RIGHT
+    interpreter.configure(settings)
+    feed(interpreter, oriented(angle=35), start=30)
+    assert set(feed(interpreter, oriented(angle=20), start=60)) == {MotionState.TILT_RIGHT}
+
+
+def test_tilt_state_reaches_service_sink_even_during_event_cooldown():
+    now = [0.0]
+    sample = [reading()]
+    states = []
+    service = IMUSensorService(lambda: None, enabled=True, poll_interval_seconds=.05,
+                               stale_after_seconds=30, motion_settings=motion_settings(confirmation_seconds=.3),
+                               motion_state_sink=states.append, clock=lambda: now[0])
+    provider = SimpleNamespace(read=lambda: sample[0])
+    for value in (reading(z=12), oriented(angle=35), reading()):
+        sample[0] = value
+        for _ in range(20):
+            service._read(provider)
+            now[0] += .05
+    assert states == [MotionState.STILL, MotionState.MOVING, MotionState.TILT_RIGHT, MotionState.STILL]
+
+
+def test_noise_around_enter_does_not_confirm_tilt():
+    interpreter = MotionInterpreter(motion_settings(confirmation_seconds=.3))
+    feed(interpreter, reading())
+    states = feed(interpreter, lambda i: oriented(angle=24 + (-1)**i), start=30, count=100)
+    assert set(states) == {MotionState.STILL}
+
+
+def test_motion_editor_exposes_canonical_tuning_and_mounting():
+    from robot.web.configuration import editor_sections
+    groups = editor_sections(RuntimeConfig().to_dict())
+    motion = next(group for group in groups if group["name"] == "sensors.imu.motion")
+    fields = {field["name"].split(".")[-1]: field for field in motion["fields"]}
+    assert {"tilt_threshold_m_s2", "tilt_exit_threshold_m_s2", "confirmation_seconds"} <= fields.keys()
+    assert fields["lateral_axis"]["choices"] == ("x", "-x", "y", "-y", "z", "-z")
+    assert not any("filter" in name for name in fields)

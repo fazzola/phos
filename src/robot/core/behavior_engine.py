@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import random
 import time
@@ -10,15 +11,27 @@ from dataclasses import replace
 from typing import Callable, Optional
 
 from robot.ui.state import BlinkPhase, FaceExpression, FaceState, VisualAccent
+from robot.motion import MotionState
 
 from .behaviors import Behavior
 from .events import Event, EventBus
 from .runtime import STATE_CHANGED
 from .state import RobotState
 
+logger = logging.getLogger(__name__)
+
 VISION_EXPRESSION_STABLE = "vision.visual_expression_stable"
 VISION_FACE_LOST = "vision.face_lost"
 VISION_FACE_POSITION = "vision.face_position"
+IMU_MOTION_STATE = "imu.motion_state"
+
+_MOTION_TILT_OFFSETS = {
+    # pupil_x/pupil_y factor, base openness, left-eye asymmetry factor
+    MotionState.TILT_LEFT: (-1.0, 0.0, 1.12, 1.0),
+    MotionState.TILT_RIGHT: (1.0, 0.0, 1.12, -1.0),
+    MotionState.TILT_FORWARD: (0.0, -1.0, 1.23, 0.0),
+    MotionState.TILT_BACK: (0.0, 1.0, .82, 0.0),
+}
 
 
 class BehaviorEngine(Behavior):
@@ -34,6 +47,14 @@ class BehaviorEngine(Behavior):
         gaze_interval: tuple[float, float] = (2.5, 5.5),
         face_gaze_smoothing: float = 0.35,
         reaction_decay_per_second: float = 0.30,
+        imu_reaction_strength: float = .90,
+        imu_tilt_gaze_strength: float = .86,
+        imu_tilt_eye_asymmetry_strength: float = .18,
+        imu_shake_reaction_strength: float = .88,
+        imu_impact_reaction_strength: float = 1.0,
+        imu_shake_reaction_duration_seconds: float = 1.35,
+        imu_impact_reaction_duration_seconds: float = 1.0,
+        imu_reaction_cooldown_seconds: float = 2.0,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if blink_interval[0] <= 0 or blink_interval[1] < blink_interval[0]:
@@ -49,6 +70,10 @@ class BehaviorEngine(Behavior):
         self._gaze_interval = gaze_interval
         self._face_gaze_smoothing = face_gaze_smoothing
         self._reaction_decay_per_second = reaction_decay_per_second
+        self.configure_imu_reactions(imu_reaction_strength, imu_tilt_gaze_strength, imu_tilt_eye_asymmetry_strength,
+                                     imu_shake_reaction_strength, imu_impact_reaction_strength,
+                                     imu_shake_reaction_duration_seconds, imu_impact_reaction_duration_seconds,
+                                     imu_reaction_cooldown_seconds)
         self._clock = clock
         self._state = FaceState()
         self._robot_state = RobotState.IDLE
@@ -60,16 +85,40 @@ class BehaviorEngine(Behavior):
         self._last_reaction_update_at: Optional[float] = None
         self._surprise_armed = True
         self._surprise_last_at = float("-inf")
+        self._motion_state = MotionState.STILL
+        self._motion_transient = None
+        self._motion_last_at = float("-inf")
         self._unsubscribers: list[Callable[[], None]] = []
         self._task: Optional[asyncio.Task[None]] = None
 
     @property
     def face_state(self) -> FaceState:
-        return replace(
+        state = replace(
             self._state,
             blink_phase=self._blink_phase,
             blink_progress=self._blink_progress(self._clock()),
-        ).normalized()
+        )
+        return self._with_motion_reaction(state, self._clock()).normalized()
+
+    def configure_imu_reactions(self, strength, tilt_gaze_strength, tilt_eye_asymmetry_strength,
+                                shake_strength, impact_strength,
+                                shake_duration, impact_duration, cooldown):
+        if not all(0 <= value <= 1 for value in (strength, tilt_gaze_strength, shake_strength, impact_strength)):
+            raise ValueError("IMU reaction strengths must be between zero and one")
+        if not 0 <= tilt_eye_asymmetry_strength <= .5:
+            raise ValueError("IMU tilt eye asymmetry strength must be between zero and 0.5")
+        if impact_strength <= shake_strength:
+            raise ValueError("IMU impact reaction strength must exceed shake reaction strength")
+        if shake_duration <= 0 or impact_duration <= 0 or cooldown < 0:
+            raise ValueError("IMU reaction durations/cooldown are invalid")
+        self._imu_reaction_strength = strength
+        self._imu_tilt_gaze_strength = tilt_gaze_strength
+        self._imu_tilt_eye_asymmetry_strength = tilt_eye_asymmetry_strength
+        self._imu_shake_strength = shake_strength
+        self._imu_impact_strength = impact_strength
+        self._imu_shake_duration = shake_duration
+        self._imu_impact_duration = impact_duration
+        self._imu_cooldown = cooldown
 
     async def start(self) -> None:
         if self._task is not None:
@@ -79,6 +128,7 @@ class BehaviorEngine(Behavior):
             self._events.subscribe(VISION_EXPRESSION_STABLE, self._on_visual_expression),
             self._events.subscribe(VISION_FACE_POSITION, self._on_face_position),
             self._events.subscribe(VISION_FACE_LOST, self._on_face_lost),
+            self._events.subscribe(IMU_MOTION_STATE, self._on_motion_state),
         ]
         now = self._clock()
         self._next_blink_at = now + random.uniform(*self._blink_interval)
@@ -158,6 +208,70 @@ class BehaviorEngine(Behavior):
             pupil_x=_smooth(self._state.pupil_x, target_x, self._face_gaze_smoothing),
             pupil_y=_smooth(self._state.pupil_y, target_y, self._face_gaze_smoothing),
         )
+
+    async def _on_motion_state(self, event: Event) -> None:
+        try:
+            state = MotionState(event.data["state"])
+        except (KeyError, ValueError, TypeError):
+            return
+        self._motion_state = state
+        if state not in {MotionState.SHAKE, MotionState.IMPACT}:
+            if state is MotionState.MOVING:
+                logger.debug("IMU behavior state=moving gaze=(0.00,0.00) eye_open=1.16 strength=%.2f",
+                             self._imu_reaction_strength * .70)
+            elif state in _MOTION_TILT_OFFSETS:
+                x, y, eye_open, eye_factor = _MOTION_TILT_OFFSETS[state]
+                asymmetry = eye_factor * self._imu_tilt_eye_asymmetry_strength
+                logger.debug("IMU behavior state=%s gaze=(%.2f,%.2f) eye_open=%.2f asymmetry=%.2f strength=%.2f",
+                             state.value, x * self._imu_tilt_gaze_strength, y * self._imu_tilt_gaze_strength,
+                             eye_open, asymmetry, self._imu_reaction_strength * .62)
+            else:
+                logger.debug("IMU behavior state=%s", state.value)
+            return
+        now = self._clock()
+        if now - self._motion_last_at < self._imu_cooldown:
+            return
+        self._motion_last_at = now
+        self._motion_transient = (state, now)
+        logger.debug("IMU behavior transient=%s strength=%.2f duration=%.2fs", state.value,
+                     self._imu_shake_strength if state is MotionState.SHAKE else self._imu_impact_strength,
+                     self._imu_shake_duration if state is MotionState.SHAKE else self._imu_impact_duration)
+
+    def _with_motion_reaction(self, state: FaceState, now: float) -> FaceState:
+        """Apply IMU intent only below RobotState priority, without UI geometry."""
+        if self._robot_state is not RobotState.IDLE:
+            return state
+        transient = self._motion_transient
+        if transient is not None:
+            kind, started_at = transient
+            duration = self._imu_shake_duration if kind is MotionState.SHAKE else self._imu_impact_duration
+            elapsed = max(0.0, now - started_at)
+            if elapsed >= duration:
+                self._motion_transient = None
+            else:
+                hold = duration * .55
+                peak_strength = self._imu_shake_strength if kind is MotionState.SHAKE else self._imu_impact_strength
+                strength = peak_strength if elapsed <= hold else peak_strength * (duration - elapsed) / (duration - hold)
+                eye_open = 1.18 if kind is MotionState.SHAKE else 1.25
+                lateral = .68 if kind is MotionState.SHAKE else -.76
+                return replace(state, eye_open=eye_open, pupil_x=lateral, pupil_y=-.18,
+                               eye_asymmetry=0.0,
+                               expression=FaceExpression.SURPRISED, accent=VisualAccent.ALERT,
+                               reaction_strength=max(state.reaction_strength, strength))
+        if self._motion_state is MotionState.MOVING:
+            return replace(state, eye_open=max(state.eye_open, 1.16), eye_asymmetry=0.0, pupil_x=0.0, pupil_y=0.0,
+                           expression=FaceExpression.CURIOUS,
+                           reaction_strength=max(state.reaction_strength, self._imu_reaction_strength * .70))
+        gaze = self._imu_tilt_gaze_strength
+        if self._motion_state in _MOTION_TILT_OFFSETS:
+            x_factor, y_factor, openness, eye_factor = _MOTION_TILT_OFFSETS[self._motion_state]
+            x, y = x_factor * gaze, y_factor * gaze
+            asymmetry = eye_factor * self._imu_tilt_eye_asymmetry_strength
+            return replace(state, pupil_x=x, pupil_y=y, eye_open=max(state.eye_open, openness) if openness >= 1 else min(state.eye_open, openness),
+                           eye_asymmetry=asymmetry,
+                           expression=FaceExpression.CURIOUS, accent=VisualAccent.CURIOUS,
+                           reaction_strength=max(state.reaction_strength, self._imu_reaction_strength * .62))
+        return state
 
     async def _animation_loop(self) -> None:
         while True:

@@ -384,5 +384,25 @@ remain pending.
 
 The follow-on motion interpreter derives stable STILL, MOVING, tilt, SHAKE and
 IMPACT observations from IMU service samples only. Its configurable thresholds
-are live-reloadable; hardware configuration remains restart-only. These events
-are visible in Web Admin status but have no behavior or eye-rendering effect.
+are live-reloadable; hardware configuration remains restart-only. Their raw
+status is visible in Web Admin.
+
+The approved follow-on now routes stable IMU motion state changes through Core
+to BehaviorEngine. It produces visible FaceState-only tilt, movement, shake and
+impact reactions; no IMU-to-renderer, GPIO or LED connection exists. Behavior
+parameters reload live, while Core states retain priority.
+
+Tilt interpretation now uses normalized filtered gravity ahead of MOVING, with
+exit hysteresis, explicit signed mounting axes and temporal confirmation.
+Canonical polling is 20 Hz; deployment migration and Pi verification are in the
+MPU-6050 installation guide. Hardware acceptance remains pending.
+
+IMU visual intent is deliberately amplified for the 800×600 display: persistent
+movement and tilts stay active while observed, while shake and impact use alert
+overlays with hold then decay. Impact has the strongest allowed FaceState eye
+opening and reaction strength. All visual tuning remains live-reloadable.
+
+Horizontal IMU tilt now has explicit mirrored eye asymmetry: TILT_LEFT opens the
+left eye and TILT_RIGHT opens the right. Forward/back and transient IMU alerts
+keep equal eye sizes. The renderer receives only signed FaceState intent and
+smoothly interpolates left/right openings independently.

@@ -327,7 +327,7 @@ class IMUSensorService(_SensorService):
 
     def __init__(self, provider_factory: Callable[[], IMUSensorProvider], *,
                  enabled, poll_interval_seconds, stale_after_seconds, motion_settings: MotionSettings,
-                 clock=time.monotonic):
+                 motion_state_sink=lambda state: None, clock=time.monotonic):
         super().__init__(provider_factory, enabled=enabled,
                          poll_interval_seconds=poll_interval_seconds,
                          stale_after_seconds=stale_after_seconds, sensor_type="mpu6050",
@@ -337,6 +337,7 @@ class IMUSensorService(_SensorService):
         self._motion = MotionInterpreter(motion_settings)
         self._motion_state = None
         self._motion_last_event = None
+        self._motion_state_sink = motion_state_sink
 
     def configure_motion(self, settings: MotionSettings):
         """Update interpretation parameters without touching the IMU provider."""
@@ -347,12 +348,15 @@ class IMUSensorService(_SensorService):
         reading = provider.read()
         if not isinstance(reading, IMUReading):
             raise ValueError("Provider did not return an IMU reading")
-        state, event = self._motion.observe(reading, self._clock())
         with self._lock:
+            state, event = self._motion.observe(reading, self._clock())
+            changed = state is not self._motion_state
             self._motion_state = state
             if event is not None:
                 self._motion_last_event = {"state": event.state.value,
                                            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        if changed:
+            self._motion_state_sink(state)
         return reading
 
     def _snapshot_details(self, status):

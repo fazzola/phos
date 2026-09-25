@@ -17,11 +17,21 @@ PREVIEW_RELOADABLE = frozenset({
     "vision.camera_preview.show_expression", "vision.camera_preview.show_confidence",
 })
 IMU_MOTION_RELOADABLE = frozenset({
+    "sensors.imu.motion.tilt_exit_threshold_m_s2",
+    "sensors.imu.motion.lateral_axis",
+    "sensors.imu.motion.forward_axis",
     "sensors.imu.motion.movement_threshold_m_s2", "sensors.imu.motion.tilt_threshold_m_s2",
     "sensors.imu.motion.shake_threshold_deg_s", "sensors.imu.motion.impact_threshold_m_s2",
     "sensors.imu.motion.confirmation_seconds", "sensors.imu.motion.cooldown_seconds",
 })
-RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE})
+IMU_BEHAVIOR_RELOADABLE = frozenset({
+    "behavior.imu_reaction_strength", "behavior.imu_tilt_gaze_strength",
+    "behavior.imu_tilt_eye_asymmetry_strength",
+    "behavior.imu_shake_reaction_strength", "behavior.imu_impact_reaction_strength",
+    "behavior.imu_shake_reaction_duration_seconds", "behavior.imu_impact_reaction_duration_seconds",
+    "behavior.imu_reaction_cooldown_seconds",
+})
+RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE, *IMU_BEHAVIOR_RELOADABLE})
 
 
 def changed_fields(active, saved, prefix=""):
@@ -54,6 +64,7 @@ class LifecycleService:
         self._apply_appearance = None
         self._apply_camera_preview = None
         self._apply_imu_motion = None
+        self._apply_imu_behavior = None
         self._sensor_status = None
         self._clock = clock
         self._lock = RLock()
@@ -71,6 +82,10 @@ class LifecycleService:
     def register_imu_motion_applier(self, applier):
         with self._lock:
             self._apply_imu_motion = applier
+
+    def register_imu_behavior_applier(self, applier):
+        with self._lock:
+            self._apply_imu_behavior = applier
 
     @property
     def restart_due(self):
@@ -126,6 +141,10 @@ class LifecycleService:
                     saved["sensors"]["imu"]["motion"], "sensors.imu.motion")
                 if motion_paths and self._apply_imu_motion is None:
                     return {"ok": False, "error": "Runtime IMU motion service is not ready. No settings were applied; retry reload shortly."}
+                behavior_paths = [path for path in changed_fields(self.active["behavior"], saved["behavior"], "behavior")
+                                  if path in IMU_BEHAVIOR_RELOADABLE]
+                if behavior_paths and self._apply_imu_behavior is None:
+                    return {"ok": False, "error": "Runtime IMU behavior service is not ready. No settings were applied; retry reload shortly."}
                 if self.active["display"]["iris_color"] != saved["display"]["iris_color"]:
                     try:
                         self._apply_appearance(config)
@@ -151,6 +170,11 @@ class LifecycleService:
                                 "error": "IMU motion settings could not be applied. No IMU hardware was reinitialized; retry reload or restart PHOS."}
                     self.active["sensors"]["imu"]["motion"] = deepcopy(saved["sensors"]["imu"]["motion"])
                     applied.extend(motion_paths)
+                if behavior_paths:
+                    self._apply_imu_behavior(config)
+                    for path in behavior_paths:
+                        self.active["behavior"][path.rsplit(".", 1)[1]] = saved["behavior"][path.rsplit(".", 1)[1]]
+                    applied.extend(behavior_paths)
                 if self.active["logging"]["level"] != saved["logging"]["level"]:
                     self._set_log_level(saved["logging"]["level"])
                     self.active["logging"]["level"] = saved["logging"]["level"]

@@ -66,7 +66,9 @@ class ConfigurationService:
 
 
 # Presentation hints only. Field structure and validation belong to robot.config.
-CHOICES = {"sensors.ccs811.i2c_address": ("0x5a", "0x5b"),
+CHOICES = {"sensors.imu.motion.lateral_axis": ("x", "-x", "y", "-y", "z", "-z"),
+           "sensors.imu.motion.forward_axis": ("x", "-x", "y", "-y", "z", "-z"),
+           "sensors.ccs811.i2c_address": ("0x5a", "0x5b"),
            "sensors.imu.i2c_address": ("0x68", "0x69"),
            "sensors.environmental.type": ("bme280", "bmp280"),
            "expression.provider": ("local", "aws"),
@@ -77,11 +79,11 @@ CHOICES = {"sensors.ccs811.i2c_address": ("0x5a", "0x5b"),
 HELP = {
     "sensors.ccs811": "CCS811: estimated equivalent CO2 (eCO2, ppm), not direct NDIR CO2; TVOC (ppb). Disabled by default. I2C bus 1. Readings withheld during 20-minute conditioning after initialization. Poll interval 1–3600 seconds; stale timeout must be longer, at most 86400 seconds. Fresh environmental temperature/humidity are used automatically when available; BMP280 cannot supply humidity. Save, then Restart PHOS for every change.",
     "sensors.imu": "GY-521 / MPU-6050: acceleration in m/s² and angular velocity in °/s. I2C bus 1; AD0 selects 0x68 or 0x69. Hardware settings require Restart PHOS. Motion thresholds below are provider-neutral, apply after Save → Reload configuration, and do not reopen I2C.",
-    "sensors.imu.motion": "Motion interpretation: movement is acceleration magnitude away from gravity; tilt uses filtered X/Y gravity components; shake requires opposite high-rate gyro samples; impact uses total acceleration. Confirmation prevents single-sample state changes; cooldown limits repeated events. No behavior reaction is implemented.",
+    "sensors.imu.motion": "Priority: impact, shake, sustained tilt, moving, still. Tilt enter/exit thresholds are normalized gravity components in m/s² (4 ≈ 24°, 3 ≈ 18°). Exit must be below enter. Confirmation is seconds. Signed mounting axes map positive acceleration to right/forward; choose distinct axes. Save → Reload configuration applies all motion settings. See installation guide for mounting and diagnostics.",
     "sensors.environmental": "BME280: temperature, humidity, pressure. BMP280: temperature and pressure; humidity not supported. I2C bus 1. Disabled by default. Poll interval: 1–3600 seconds; stale timeout must be longer (at most 86400 seconds). Save, then Restart PHOS to apply any sensor change. No sensor hot reload.",
     "web": "Disabled by default. Use the Pi's LAN IP or 0.0.0.0 for trusted LAN access. Restart after changing these settings.",
     "display": "Display dimensions are pixels; fps controls animation cadence. Iris color is a named eye theme and applies after configuration reload. Display geometry and fullscreen changes require restart.",
-    "behavior": "Timing pairs are minimum, maximum in seconds. Smoothing controls gaze response.",
+    "behavior": "Timing pairs are minimum, maximum in seconds. IMU reaction strength controls persistent moving/tilt emphasis; tilt gaze uses normalized safe pupil range. Tilt eye asymmetry splits horizontal tilt eye openness equally and mirrors left/right. Shake and impact have separate strengths (impact must be stronger), each with hold then smooth decay. These IMU behavior settings apply after Save → Reload configuration; they do not reopen I2C.",
     "vision": "Tracking uses the local camera. Resolution is width, height in pixels. Preview is local to the PHOS display, disabled by default and applies after System → Reload configuration without restarting PHOS.",
     "vision.camera_preview": "Preview frames stay in memory and appear only on the PHOS display. Scale is a fraction of display width; maximum FPS is capped at 10. Preview changes apply after configuration reload and do not restart Vision unless the camera must be started or stopped for the new enabled state.",
     "vision.detector": "Leave cascade path blank for platform discovery. Minimum size is width, height in pixels.",

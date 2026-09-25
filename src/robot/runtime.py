@@ -11,10 +11,12 @@ from robot.hardware.environmental import environmental_provider_type
 from robot.hardware.ccs811 import CCS811Provider
 from robot.hardware.mpu6050 import MPU6050Provider
 from robot.motion import MotionSettings
+from robot.motion import MotionState
 from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorService,
                            AirQualitySensorProvider, AirQualitySensorService,
                            IMUSensorProvider, IMUSensorService)
 from robot.core import BehaviorEngine, Event, EventBus, RobotCore, RobotState, STATE_CHANGED
+from robot.core.behavior_engine import IMU_MOTION_STATE
 from robot.ui import CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, TkEyeDisplay
 from robot.ui.runtime import EyeRenderLoop
 from robot.vision import (
@@ -64,9 +66,25 @@ class PhosRuntime:
         self._started = False
         self._vision_started = False
 
+    def publish_motion_state(self, state: MotionState) -> None:
+        loop = self._loop
+        if loop is None or self._stopping:
+            return
+        def publish():
+            task = asyncio.create_task(self.core.events.publish(Event(IMU_MOTION_STATE, {"state": state.value})))
+            task.add_done_callback(_log_motion_publish_failure)
+        loop.call_soon_threadsafe(publish)
+
     def apply_appearance(self, config: RuntimeConfig) -> None:
         """Apply validated appearance through the display runtime boundary."""
         self._eye_render_loop.request_appearance(iris_color=config.iris_color)
+
+    def apply_imu_behavior(self, config: RuntimeConfig) -> None:
+        self._behavior_engine.configure_imu_reactions(
+            config.imu_reaction_strength, config.imu_tilt_gaze_strength, config.imu_tilt_eye_asymmetry_strength,
+            config.imu_shake_reaction_strength, config.imu_impact_reaction_strength,
+            config.imu_shake_reaction_duration_seconds, config.imu_impact_reaction_duration_seconds,
+            config.imu_reaction_cooldown_seconds)
 
     def sensor_status(self) -> dict:
         """Read-only application boundary, safe for the lifecycle thread."""
@@ -320,6 +338,13 @@ def build_runtime(
         core.events, blink_interval=config.blink_interval_seconds,
         gaze_interval=config.gaze_interval_seconds, face_gaze_smoothing=config.face_gaze_smoothing,
         reaction_decay_per_second=config.reaction_decay_per_second,
+        imu_reaction_strength=config.imu_reaction_strength, imu_tilt_gaze_strength=config.imu_tilt_gaze_strength,
+        imu_tilt_eye_asymmetry_strength=config.imu_tilt_eye_asymmetry_strength,
+        imu_shake_reaction_strength=config.imu_shake_reaction_strength,
+        imu_impact_reaction_strength=config.imu_impact_reaction_strength,
+        imu_shake_reaction_duration_seconds=config.imu_shake_reaction_duration_seconds,
+        imu_impact_reaction_duration_seconds=config.imu_impact_reaction_duration_seconds,
+        imu_reaction_cooldown_seconds=config.imu_reaction_cooldown_seconds,
     )
     vision_holder = {"pipeline": vision_pipeline}
     eye_render_loop = EyeRenderLoop(
@@ -361,19 +386,23 @@ def build_runtime(
     if config.ccs811_enabled:
         logger.info("CCS811 enabled: I2C bus 1, address %s, polling every %s seconds",
                     config.ccs811_i2c_address, config.ccs811_poll_interval_seconds)
+    runtime_holder = {}
     imu = IMUSensorService(
         imu_provider_factory if imu_provider_factory is not None else
         lambda: MPU6050Provider(address=int(config.imu_i2c_address, 16)),
         enabled=config.imu_enabled, poll_interval_seconds=config.imu_poll_interval_seconds,
         stale_after_seconds=config.imu_stale_after_seconds,
         motion_settings=_motion_settings(config),
+        motion_state_sink=lambda state: runtime_holder["runtime"].publish_motion_state(state),
     )
     if config.imu_enabled:
         logger.info("MPU-6050 enabled: I2C bus 1, address %s, polling every %s seconds",
                     config.imu_i2c_address, config.imu_poll_interval_seconds)
-    return PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
+    runtime = PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
                        config=config, vision_forced=injected_vision, sensor_service=sensors,
                        air_quality_service=air_quality, imu_service=imu)
+    runtime_holder["runtime"] = runtime
+    return runtime
 
 
 def _motion_settings(config: RuntimeConfig) -> MotionSettings:
@@ -382,7 +411,14 @@ def _motion_settings(config: RuntimeConfig) -> MotionSettings:
                           config.imu_motion_shake_threshold_deg_s,
                           config.imu_motion_impact_threshold_m_s2,
                           config.imu_motion_confirmation_seconds,
-                          config.imu_motion_cooldown_seconds)
+                          config.imu_motion_cooldown_seconds,
+                          config.imu_motion_tilt_exit_threshold_m_s2,
+                          config.imu_motion_lateral_axis, config.imu_motion_forward_axis)
+
+
+def _log_motion_publish_failure(task):
+    if not task.cancelled() and task.exception() is not None:
+        logger.exception("IMU motion event handling failed", exc_info=task.exception())
 
 
 def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optional[VisionPipeline]:

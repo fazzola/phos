@@ -16,7 +16,15 @@
     "blink_interval_seconds": [3.5, 6.5],
     "gaze_interval_seconds": [2.5, 5.5],
     "face_gaze_smoothing": 0.35,
-    "reaction_decay_per_second": 0.30
+    "reaction_decay_per_second": 0.30,
+    "imu_reaction_strength": 0.90,
+    "imu_tilt_gaze_strength": 0.86,
+    "imu_tilt_eye_asymmetry_strength": 0.18,
+    "imu_shake_reaction_strength": 0.88,
+    "imu_impact_reaction_strength": 1.0,
+    "imu_shake_reaction_duration_seconds": 1.35,
+    "imu_impact_reaction_duration_seconds": 1.0,
+    "imu_reaction_cooldown_seconds": 2.0
   },
   "vision": {
     "face_tracking_enabled": false,
@@ -92,14 +100,17 @@
     "imu": {
       "enabled": false,
       "i2c_address": "0x68",
-      "poll_interval_seconds": 5.0,
+      "poll_interval_seconds": 0.05,
       "stale_after_seconds": 30.0,
       "motion": {
         "movement_threshold_m_s2": 1.5,
         "tilt_threshold_m_s2": 4.0,
+        "tilt_exit_threshold_m_s2": 3.0,
+        "lateral_axis": "x",
+        "forward_axis": "y",
         "shake_threshold_deg_s": 180.0,
         "impact_threshold_m_s2": 25.0,
-        "confirmation_seconds": 1.0,
+        "confirmation_seconds": 0.3,
         "cooldown_seconds": 2.0
       }
     }

@@ -66,6 +66,9 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
             motion_applier = getattr(runtime, "apply_imu_motion", None)
             if motion_applier is not None:
                 lifecycle.register_imu_motion_applier(motion_applier)
+            behavior_applier = getattr(runtime, "apply_imu_behavior", None)
+            if behavior_applier is not None:
+                lifecycle.register_imu_behavior_applier(behavior_applier)
             sensor_status = getattr(runtime, "sensor_status", None)
             if sensor_status is not None:
                 lifecycle.register_sensor_status(sensor_status)
