@@ -40,22 +40,16 @@ def _install_shutdown_handlers(loop: asyncio.AbstractEventLoop, stop_event: asyn
             pass
 
 
-async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web_server=None) -> None:
+async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None) -> None:
     stop_event = asyncio.Event()
     _install_shutdown_handlers(asyncio.get_running_loop(), stop_event)
     async def watch_restart():
         while not stop_event.is_set():
-            if web_server is not None:
-                try:
-                    web_server.check_running()
-                except RuntimeError:
-                    stop_event.set()
-                    raise
             if lifecycle is not None and lifecycle.restart_due:
                 stop_event.set()
                 return
             await asyncio.sleep(.1)
-    watcher = asyncio.create_task(watch_restart()) if lifecycle is not None or web_server is not None else None
+    watcher = asyncio.create_task(watch_restart()) if lifecycle is not None else None
     try:
         runtime = build_application(config=config)
         if lifecycle is not None:
@@ -63,12 +57,7 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
             preview_applier = getattr(runtime, "apply_camera_preview", None)
             if preview_applier is not None:
                 lifecycle.register_camera_preview_applier(preview_applier)
-            sensor_status = getattr(runtime, "sensor_status", None)
-            if sensor_status is not None:
-                lifecycle.register_sensor_status(sensor_status)
         await runtime.run(stop_event)
-        if watcher is not None and watcher.done():
-            watcher.result()
     finally:
         if watcher is not None:
             watcher.cancel()
@@ -177,7 +166,7 @@ def main() -> None:
     # even when runtime startup or execution fails.
     from robot.web.server import WebServer
     with WebServer(config_path, config) as web:
-        asyncio.run(async_main(config=config, lifecycle=web.lifecycle, web_server=web))
+        asyncio.run(async_main(config=config, lifecycle=web.lifecycle))
     if web.lifecycle.restart_at is not None:
         raise SystemExit(RESTART_EXIT_CODE)
 

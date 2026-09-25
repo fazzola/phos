@@ -134,14 +134,6 @@ _SCHEMA = {
                   "swap_rb": "expression_swap_rb", "grayscale": "expression_grayscale"},
         "aws": "cloud_expression",
     },
-    "sensors": {"environmental": {"type": "environmental_type",
-                           "enabled": "environmental_enabled",
-                           "i2c_address": "environmental_i2c_address",
-                           "poll_interval_seconds": "environmental_poll_interval_seconds",
-                           "stale_after_seconds": "environmental_stale_after_seconds"},
-                "ccs811": {"enabled": "ccs811_enabled", "i2c_address": "ccs811_i2c_address",
-                           "poll_interval_seconds": "ccs811_poll_interval_seconds",
-                           "stale_after_seconds": "ccs811_stale_after_seconds"}},
     "logging": {"level": "log_level", "file": "log_file", "expression_diagnostics": "expression_diagnostics"},
 }
 _PATH_FIELDS = {"expression_model_path", "cascade_path", "log_file"}
@@ -182,15 +174,6 @@ class RuntimeConfig:
     it overlays canonical settings. File/dict loading requires the full schema.
     """
 
-    environmental_type: str
-    environmental_enabled: bool
-    environmental_i2c_address: str
-    environmental_poll_interval_seconds: float
-    environmental_stale_after_seconds: float
-    ccs811_enabled: bool
-    ccs811_i2c_address: str
-    ccs811_poll_interval_seconds: float
-    ccs811_stale_after_seconds: float
     web_enabled: bool
     web_host: str
     web_port: int
@@ -342,20 +325,6 @@ class RuntimeConfig:
                     or (maximum is not None and value > maximum)):
                 raise ConfigurationError(f"{name}: invalid number/range")
 
-        if not isinstance(self.environmental_type, str) or self.environmental_type not in {"bme280", "bmp280"}:
-            raise ConfigurationError("sensors.environmental.type must be bme280 or bmp280")
-        number("environmental_poll_interval_seconds", minimum=1, inclusive=True, maximum=3600)
-        number("environmental_stale_after_seconds", maximum=86400)
-        if self.environmental_stale_after_seconds <= self.environmental_poll_interval_seconds:
-            raise ConfigurationError("sensors.environmental.stale_after_seconds must exceed poll_interval_seconds")
-        if not isinstance(self.environmental_i2c_address, str) or self.environmental_i2c_address not in {"0x76", "0x77"}:
-            raise ConfigurationError("sensors.environmental.i2c_address must be 0x76 or 0x77")
-        number("ccs811_poll_interval_seconds", minimum=1, inclusive=True, maximum=3600)
-        number("ccs811_stale_after_seconds", maximum=86400)
-        if self.ccs811_stale_after_seconds <= self.ccs811_poll_interval_seconds:
-            raise ConfigurationError("sensors.ccs811.stale_after_seconds must exceed poll_interval_seconds")
-        if not isinstance(self.ccs811_i2c_address, str) or self.ccs811_i2c_address not in {"0x5a", "0x5b"}:
-            raise ConfigurationError("sensors.ccs811.i2c_address must be 0x5a or 0x5b")
         number("web_port", integer=True, maximum=65535)
         try:
             ipaddress.ip_address(self.web_host)
@@ -375,7 +344,7 @@ class RuntimeConfig:
         number("face_gaze_smoothing", maximum=1)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("ccs811_enabled", "environmental_enabled", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
+        for name in ("web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
                      "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
                      "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
             if type(getattr(self, name)) is not bool:

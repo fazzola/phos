@@ -13,15 +13,12 @@ def test_preview_passes_binary_ppm_to_tk_and_draws_image(monkeypatch):
     pixels = b"\x00\x80\xff" * 2
     small = SimpleNamespace(tobytes=lambda: pixels)
     resize = Mock(return_value=small)
-    convert = Mock(return_value=small)
     monkeypatch.setitem(__import__("sys").modules, "cv2",
-                        SimpleNamespace(resize=resize, INTER_AREA=3,
-                                        cvtColor=convert, COLOR_BGR2RGB=4))
+                        SimpleNamespace(resize=resize, INTER_AREA=3))
     frame = SimpleNamespace(shape=(2, 4, 3))
     encoded = _encode_preview_ppm(frame, 2)
     assert encoded == (2, 1, b"P6 2 1 255\n" + pixels)
     resize.assert_called_once_with(frame, (2, 1), interpolation=3)
-    convert.assert_called_once_with(small, 4)
 
     photo = SimpleNamespace(width=lambda: 2, height=lambda: 1)
     display = TkEyeDisplay()
@@ -56,21 +53,3 @@ def test_preview_failure_is_logged_once_until_recovery(caplog):
     display._preview_future.set_result((2, 1, b"P6 2 1 255\n" + b"\x00" * 6))
     display._draw_preview(preview, settings, 800, 600)
     assert not display._preview_failed
-
-
-def test_toggling_preview_does_not_queue_work_behind_running_encoder():
-    display = TkEyeDisplay()
-    display._root = Mock()
-    display._canvas = Mock()
-    display._preview_executor = Mock()
-    pending = Future()
-    pending.set_running_or_notify_cancel()
-    display._preview_future = pending
-    frame = SimpleNamespace(background='black', eyes=[], width=800, height=600)
-    preview = CameraPreviewView(SimpleNamespace(shape=(480, 640, 3)))
-    for _ in range(10):
-        display.draw(frame)
-        display.draw(frame, preview, CameraPreviewSettings(enabled=True))
-    assert display._preview_future is pending
-    display._preview_executor.submit.assert_not_called()
-    assert display._preview_discard_pending

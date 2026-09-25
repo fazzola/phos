@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from typing import Callable, Optional
 
 from robot.config import RuntimeConfig
-from robot.hardware.environmental import environmental_provider_type
-from robot.hardware.ccs811 import CCS811Provider
-from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorService,
-                           AirQualitySensorProvider, AirQualitySensorService)
 from robot.core import BehaviorEngine, Event, EventBus, RobotCore, RobotState, STATE_CHANGED
 from robot.ui import CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, TkEyeDisplay
 from robot.ui.runtime import EyeRenderLoop
@@ -39,8 +36,6 @@ class PhosRuntime:
         vision_pipeline: Optional[VisionPipeline] = None,
         config: Optional[RuntimeConfig] = None,
         vision_forced: bool = False,
-        sensor_service: Optional[EnvironmentalSensorService] = None,
-        air_quality_service: Optional[AirQualitySensorService] = None,
     ) -> None:
         self.core = core
         self._behavior_engine = behavior_engine
@@ -48,13 +43,9 @@ class PhosRuntime:
         self._vision_pipeline = vision_pipeline
         self._config = config
         self._vision_forced = vision_forced
-        self._sensor_service = sensor_service
-        self._air_quality_service = air_quality_service
         self._loop = None
         self._vision_changed: Optional[asyncio.Event] = None
         self._vision_lock = asyncio.Lock()
-        self._preview_tasks = set()
-        self._stopping = False
         self._unsubscribers: list[Callable[[], None]] = []
         self._started = False
         self._vision_started = False
@@ -63,56 +54,21 @@ class PhosRuntime:
         """Apply validated appearance through the display runtime boundary."""
         self._eye_render_loop.request_appearance(iris_color=config.iris_color)
 
-    def sensor_status(self) -> dict:
-        """Read-only application boundary, safe for the lifecycle thread."""
-        state = {"environmental": self._sensor_service.snapshot()} if self._sensor_service is not None else {}
-        if self._air_quality_service is not None:
-            state["ccs811"] = self._air_quality_service.snapshot()
-        return state
-
     def apply_camera_preview(self, config: RuntimeConfig) -> None:
-        """Apply from the lifecycle thread and acknowledge runtime acceptance."""
-        loop = self._loop
-        if loop is None or not self._started or self._stopping:
-            raise RuntimeError("PHOS runtime is not ready for preview reload")
-        try:
-            caller_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            caller_loop = None
-        if caller_loop is loop:
-            raise RuntimeError("Preview reload must use the lifecycle thread")
-        future = asyncio.run_coroutine_threadsafe(self._apply_camera_preview(config), loop)
-        # The IPC client bounds its response wait and reports an in-flight result
-        # as uncertain. Keep this acknowledgement tied to actual completion:
-        # native camera startup may outlast the HTTP request. Shutdown cancels
-        # and drains the task, so it cannot start a camera after runtime exit.
-        future.result()
+        """Queue preview configuration through runtime and display boundaries."""
+        self._eye_render_loop.request_preview_settings(_preview_settings(config))
+        names = ("camera_preview_enabled", "camera_preview_position", "camera_preview_scale",
+                 "camera_preview_max_fps", "camera_preview_show_face_box",
+                 "camera_preview_show_expression", "camera_preview_show_confidence")
+        if self._config is not None:
+            self._config = replace(self._config, **{name: getattr(config, name) for name in names})
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._queue_preview_reconcile)
 
-    async def _apply_camera_preview(self, config):
-        task = asyncio.current_task()
-        self._preview_tasks.add(task)
-        try:
-            async with self._vision_lock:
-                if self._stopping or not self._started:
-                    raise RuntimeError("PHOS runtime is stopping")
-                names = ("camera_preview_enabled", "camera_preview_position", "camera_preview_scale",
-                         "camera_preview_max_fps", "camera_preview_show_face_box",
-                         "camera_preview_show_expression", "camera_preview_show_confidence")
-                previous = self._config
-                updated = RuntimeConfig.from_dict(previous.to_dict(), base_dir=previous._base_dir,
-                    overrides={name: getattr(config, name) for name in names})
-                # Validate the effective configuration, retaining pending restart fields.
-                self._config = updated
-                try:
-                    await self._reconcile_vision_preview()
-                    self._eye_render_loop.request_preview_settings(_preview_settings(updated))
-                except BaseException:
-                    self._config = previous
-                    if self._vision_pipeline is not None:
-                        self._vision_pipeline.configure_preview(previous.camera_preview_enabled)
-                    raise
-        finally:
-            self._preview_tasks.discard(task)
+    def _queue_preview_reconcile(self):
+        if self._vision_changed is not None:
+            self._vision_changed.set()
+        asyncio.create_task(self._reconcile_vision_preview())
 
     async def _supervise_vision(self):
         while True:
@@ -124,13 +80,10 @@ class PhosRuntime:
                 continue
             wait_task = asyncio.create_task(self._vision_pipeline.wait())
             change_task = asyncio.create_task(self._vision_changed.wait())
-            try:
-                done, _ = await asyncio.wait((wait_task, change_task), return_when=asyncio.FIRST_COMPLETED)
-            finally:
-                for task in (wait_task, change_task):
-                    if not task.done():
-                        task.cancel()
-                await asyncio.gather(wait_task, change_task, return_exceptions=True)
+            done, pending = await asyncio.wait((wait_task, change_task), return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
             if change_task in done:
                 self._vision_changed.clear()
                 if not self._vision_started:
@@ -151,48 +104,36 @@ class PhosRuntime:
     async def _reconcile_vision_preview(self) -> None:
         if self._vision_pipeline is None or self._config is None:
             return
-        configure_preview = getattr(self._vision_pipeline, "configure_preview", None)
-        if configure_preview is not None:
-            configure_preview(self._config.camera_preview_enabled)
-        wanted = self._config.vision_enabled or self._vision_forced
-        if wanted and not self._vision_started:
-            self._vision_started = True
-            try:
-                await self._vision_pipeline.start()
-                logger.info("PHOS vision pipeline started for camera preview")
-            except BaseException:
-                # Camera ownership may already have been acquired before failure.
+        async with self._vision_lock:
+            configure_preview = getattr(self._vision_pipeline, "configure_preview", None)
+            if configure_preview is not None:
+                configure_preview(self._config.camera_preview_enabled)
+            wanted = self._config.vision_enabled or self._vision_forced
+            if wanted and not self._vision_started:
+                try:
+                    await self._vision_pipeline.start()
+                    self._vision_started = True
+                    logger.info("PHOS vision pipeline started for camera preview")
+                    if self._vision_changed is not None:
+                        self._vision_changed.set()
+                except Exception:
+                    self._vision_started = False
+                    logger.exception("Could not start the optional camera preview")
+            elif not wanted and self._vision_started:
                 await self._vision_pipeline.stop()
                 self._vision_started = False
-                raise
-            finally:
-                self._vision_changed.set()
-        elif not wanted and self._vision_started:
-            # Tell the supervisor before awaiting stop, which completes wait().
-            self._vision_started = False
-            self._vision_changed.set()
-            try:
-                await self._vision_pipeline.stop()
-            except BaseException:
-                # Retain ownership so final shutdown retries cleanup.
-                self._vision_started = True
-                self._vision_changed.set()
-                raise
-            logger.info("PHOS vision pipeline stopped after preview was disabled")
+                logger.info("PHOS vision pipeline stopped after preview was disabled")
+                if self._vision_changed is not None:
+                    self._vision_changed.set()
 
     async def start(self) -> None:
         if self._started:
             raise RuntimeError("PHOS runtime is already running.")
         self._unsubscribers = [self.core.events.subscribe(STATE_CHANGED, self._log_state_transition)]
-        self._stopping = False
         self._loop = asyncio.get_running_loop()
         self._vision_changed = asyncio.Event()
         try:
             await self.core.start()
-            if self._sensor_service is not None:
-                await self._sensor_service.start()
-            if self._air_quality_service is not None:
-                await self._air_quality_service.start()
             logger.info("PHOS core, behavior engine, and renderer started")
             if self._vision_pipeline is not None and self._config is not None and (self._config.vision_enabled or self._vision_forced):
                 # Stop must also release a partially started camera/pipeline.
@@ -232,7 +173,6 @@ class PhosRuntime:
                 except Exception as error:
                     logger.exception("PHOS subsystem failed", exc_info=error)
                     await self._transition_to_error(type(error).__name__)
-                    raise
         finally:
             for task in [stop_task, *supervisors]:
                 if not task.done():
@@ -241,16 +181,6 @@ class PhosRuntime:
             await self.stop()
 
     async def stop(self) -> None:
-        self._stopping = True
-        tasks = tuple(self._preview_tasks)
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        self._loop = None
-        if self._air_quality_service is not None:
-            await self._air_quality_service.stop()
-        if self._sensor_service is not None:
-            await self._sensor_service.stop()
         if self._vision_started and self._vision_pipeline is not None:
             try:
                 await self._vision_pipeline.stop()
@@ -288,10 +218,8 @@ def build_runtime(
     eye_display: Optional[EyeDisplay] = None,
     vision_pipeline: Optional[VisionPipeline] = None,
     vision_factory: Optional[Callable[[EventBus], VisionPipeline]] = None,
-    sensor_provider_factory: Optional[Callable[[], EnvironmentalSensorProvider]] = None,
-    air_quality_provider_factory: Optional[Callable[[], AirQualitySensorProvider]] = None,
 ) -> PhosRuntime:
-    """Compose a runtime; tests may inject Vision, display and sensor providers."""
+    """Compose a runtime; tests may inject a fake VisionPipeline/display."""
     if vision_pipeline is not None and vision_factory is not None:
         raise ValueError("Provide either vision_pipeline or vision_factory, not both.")
     config = RuntimeConfig.from_file() if config is None else config
@@ -321,35 +249,13 @@ def build_runtime(
         vision_factory(core.events) if vision_factory is not None else _build_configured_vision(config, core.events)
     )
     vision_holder["pipeline"] = resolved_vision
-    provider_type = environmental_provider_type(config.environmental_type)
-    sensors = EnvironmentalSensorService(
-        sensor_provider_factory if sensor_provider_factory is not None else
-        lambda: provider_type(address=int(config.environmental_i2c_address, 16)),
-        sensor_type=config.environmental_type,
-        available_measurements=provider_type.available_measurements,
-        enabled=config.environmental_enabled,
-        poll_interval_seconds=config.environmental_poll_interval_seconds,
-        stale_after_seconds=config.environmental_stale_after_seconds,
-    )
-    if config.environmental_enabled:
-        logger.info("%s enabled: I2C bus 1, address %s, polling every %s seconds",
-                    config.environmental_type.upper(), config.environmental_i2c_address, config.environmental_poll_interval_seconds)
-    air_quality = AirQualitySensorService(
-        air_quality_provider_factory if air_quality_provider_factory is not None else
-        lambda: CCS811Provider(address=int(config.ccs811_i2c_address, 16)),
-        enabled=config.ccs811_enabled, poll_interval_seconds=config.ccs811_poll_interval_seconds,
-        stale_after_seconds=config.ccs811_stale_after_seconds, compensation_supplier=sensors.compensation,
-    )
-    if config.ccs811_enabled:
-        logger.info("CCS811 enabled: I2C bus 1, address %s, polling every %s seconds",
-                    config.ccs811_i2c_address, config.ccs811_poll_interval_seconds)
     return PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
-                       config=config, vision_forced=injected_vision, sensor_service=sensors, air_quality_service=air_quality)
+                       config=config, vision_forced=injected_vision)
 
 
 def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optional[VisionPipeline]:
-    # Construct a dormant owner for later preview reload; constructors do not
-    # import camera/OpenCV dependencies or acquire hardware.
+    if not (config.vision_enabled or config.web_enabled):
+        return None
     expression_provider = None
     smoother = None
     if config.expression_enabled and config.expression_provider == "aws":

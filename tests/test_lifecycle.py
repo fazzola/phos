@@ -287,23 +287,3 @@ def test_deployment_contract_and_restart_capability(runtime, monkeypatch):
     assert WebServer(path, config).lifecycle.restart_supported
     monkeypatch.delenv("PHOS_SERVICE_MANAGED")
     assert not WebServer(path, config).lifecycle.restart_supported
-
-
-def test_preview_failure_preserves_earlier_appearance_and_pending_restart(runtime):
-    path, service, logs, _ = runtime
-    appearance = []
-    service.register_appearance_applier(lambda c: appearance.append(c.iris_color))
-    def fail(_config):
-        raise RuntimeError('camera failed')
-    service.register_camera_preview_applier(fail)
-    update(path, lambda d: (d['display'].update(iris_color='amber', fps=20),
-                            d['vision']['camera_preview'].update(enabled=True),
-                            d['logging'].update(level='DEBUG')))
-    result = service.execute('reload')
-    assert not result['ok']
-    assert result['applied'] == ['display.iris_color']
-    assert appearance == ['amber'] and not logs
-    assert result['active']['display']['iris_color'] == 'amber'
-    assert not result['active']['vision']['camera_preview']['enabled']
-    assert result['restart_required'] == ['display.fps']
-    assert result['reloadable'] == ['logging.level', 'vision.camera_preview.enabled']

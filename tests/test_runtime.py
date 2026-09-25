@@ -318,8 +318,7 @@ def test_vision_failure_transitions_to_error_and_releases_camera():
             eye_display=MemoryEyeDisplay(),
             vision_factory=lambda events: make_vision(events, camera),
         )
-        with pytest.raises(RuntimeError, match="camera unavailable"):
-            await runtime.run(asyncio.Event())
+        await runtime.run(asyncio.Event())
         return runtime.core.state, camera
 
     state, camera = asyncio.run(exercise())
@@ -374,102 +373,4 @@ def test_partial_vision_startup_releases_camera_and_core(cancel):
             await task
         assert camera.stopped and not runtime.core.is_running
         assert not runtime._unsubscribers
-    asyncio.run(exercise())
-
-
-def test_preview_only_reload_starts_stops_and_restarts_one_camera(monkeypatch, tmp_path):
-    from robot.config import load_document
-    import json
-
-    async def exercise():
-        camera = FakeCamera()
-        pipeline = make_face_tracking(None, camera)
-        monkeypatch.setattr('robot.runtime._build_configured_vision', lambda *args: pipeline)
-        # Exercise config-relative paths, which dataclasses.replace would rebase.
-        document = load_document()
-        document['logging']['file'] = 'runtime.log'
-        path = tmp_path / 'phos.json'
-        path.write_text(json.dumps(document))
-        config = RuntimeConfig.from_file(path)
-        runtime = build_runtime(config=config, eye_display=MemoryEyeDisplay())
-        stop = asyncio.Event()
-        runner = asyncio.create_task(runtime.run(stop))
-        while not runtime._started:
-            await asyncio.sleep(0)
-        enabled = RuntimeConfig.from_dict(config.to_dict(), base_dir=tmp_path,
-                                          overrides={'camera_preview_enabled': True})
-        for _ in range(2):
-            await asyncio.to_thread(runtime.apply_camera_preview, enabled)
-            await asyncio.sleep(.02)
-            assert runtime._vision_started and pipeline.preview_snapshot is not None
-            assert runtime._config.resolve_path(runtime._config.log_file) == tmp_path / 'runtime.log'
-            await asyncio.to_thread(runtime.apply_camera_preview, config)
-            await asyncio.sleep(.02)
-            assert not runtime._vision_started and pipeline.preview_snapshot is None
-            assert not runner.done()
-        stop.set()
-        await runner
-        assert not runtime._preview_tasks
-        # Supervisor child waiters must be cancelled, not abandoned on shutdown.
-        assert not [t for t in asyncio.all_tasks() if t is not asyncio.current_task() and not t.done()]
-    asyncio.run(exercise())
-
-
-def test_failed_preview_reload_releases_camera_and_does_not_report_applied(monkeypatch, tmp_path):
-    import json
-    from robot.config import load_document
-    from robot.lifecycle import LifecycleService
-
-    async def exercise():
-        class FailingCamera(FakeCamera):
-            async def start(self):
-                self.started = True
-                raise RuntimeError('camera startup failed')
-        camera = FailingCamera()
-        pipeline = make_face_tracking(None, camera)
-        monkeypatch.setattr('robot.runtime._build_configured_vision', lambda *args: pipeline)
-        document = load_document()
-        document['logging']['file'] = None
-        path = tmp_path / 'phos.json'
-        path.write_text(json.dumps(document))
-        config = RuntimeConfig.from_file(path)
-        runtime = build_runtime(config=config, eye_display=MemoryEyeDisplay())
-        await runtime.start()
-        service = LifecycleService(path, config)
-        service.register_camera_preview_applier(runtime.apply_camera_preview)
-        document['vision']['camera_preview']['enabled'] = True
-        path.write_text(json.dumps(document))
-        result = await asyncio.to_thread(service.execute, 'reload')
-        assert not result['ok'] and not result['applied']
-        assert not service.active['vision']['camera_preview']['enabled']
-        assert not runtime._config.camera_preview_enabled
-        assert camera.started and camera.stopped
-        assert runtime.core.is_running and not runtime._vision_started
-        await runtime.stop()
-    asyncio.run(exercise())
-
-
-def test_shutdown_cancels_inflight_preview_start_and_releases_camera(monkeypatch):
-    async def exercise():
-        entered = asyncio.Event()
-        class SlowCamera(FakeCamera):
-            async def start(self):
-                self.started = True
-                entered.set()
-                await asyncio.Event().wait()
-        camera = SlowCamera()
-        pipeline = make_face_tracking(None, camera)
-        monkeypatch.setattr('robot.runtime._build_configured_vision', lambda *args: pipeline)
-        runtime = build_runtime(config=RuntimeConfig(), eye_display=MemoryEyeDisplay())
-        await runtime.start()
-        reload = asyncio.create_task(asyncio.to_thread(runtime.apply_camera_preview,
-                                                       RuntimeConfig(camera_preview_enabled=True)))
-        await asyncio.wait_for(entered.wait(), 1)
-        await runtime.stop()
-        result = await asyncio.gather(reload, return_exceptions=True)
-        assert isinstance(result[0], BaseException)
-        assert camera.stopped and not runtime._preview_tasks
-        assert not runtime.core.is_running
-        with pytest.raises(RuntimeError, match='not ready'):
-            runtime.apply_camera_preview(RuntimeConfig())
     asyncio.run(exercise())
