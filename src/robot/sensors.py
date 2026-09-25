@@ -14,6 +14,8 @@ from threading import Event, Lock, Thread
 import time
 from typing import Callable, Protocol
 
+from robot.motion import MotionInterpreter, MotionSettings, tilt_direction
+
 logger = logging.getLogger(__name__)
 
 
@@ -324,19 +326,39 @@ class IMUSensorService(_SensorService):
     _label = "IMU sensor"
 
     def __init__(self, provider_factory: Callable[[], IMUSensorProvider], *,
-                 enabled, poll_interval_seconds, stale_after_seconds, clock=time.monotonic):
+                 enabled, poll_interval_seconds, stale_after_seconds, motion_settings: MotionSettings,
+                 clock=time.monotonic):
         super().__init__(provider_factory, enabled=enabled,
                          poll_interval_seconds=poll_interval_seconds,
                          stale_after_seconds=stale_after_seconds, sensor_type="mpu6050",
                          available_measurements=("acceleration_x_m_s2", "acceleration_y_m_s2", "acceleration_z_m_s2",
                                                  "angular_velocity_x_deg_s", "angular_velocity_y_deg_s",
                                                  "angular_velocity_z_deg_s"), clock=clock)
+        self._motion = MotionInterpreter(motion_settings)
+        self._motion_state = None
+        self._motion_last_event = None
+
+    def configure_motion(self, settings: MotionSettings):
+        """Update interpretation parameters without touching the IMU provider."""
+        with self._lock:
+            self._motion.configure(settings)
 
     def _read(self, provider):
         reading = provider.read()
         if not isinstance(reading, IMUReading):
             raise ValueError("Provider did not return an IMU reading")
+        state, event = self._motion.observe(reading, self._clock())
+        with self._lock:
+            self._motion_state = state
+            if event is not None:
+                self._motion_last_event = {"state": event.state.value,
+                                           "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         return reading
 
     def _snapshot_details(self, status):
-        return {"calibration": "factory_scale_only" if status in {"available", "starting"} else None}
+        active = status == "available"
+        state = self._motion_state if active else None
+        return {"calibration": "factory_scale_only" if status in {"available", "starting"} else None,
+                "motion_state": state.value if state is not None else None,
+                "tilt_direction": tilt_direction(state) if state is not None else None,
+                "last_motion_event": self._motion_last_event if active else None}

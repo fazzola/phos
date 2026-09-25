@@ -9,9 +9,22 @@ import pytest
 from robot.config import ConfigurationError, RuntimeConfig, load_document
 from robot.hardware.mpu6050 import MPU6050Provider
 from robot.lifecycle import LifecycleService
+from robot.motion import MotionInterpreter, MotionSettings, MotionState
 from robot.runtime import build_runtime
 from robot.sensors import IMUReading, IMUSensorService
 from robot.ui import MemoryEyeDisplay
+
+
+def motion_settings(**changes):
+    values = dict(movement_threshold_m_s2=1.5, tilt_threshold_m_s2=4.0,
+                  shake_threshold_deg_s=180, impact_threshold_m_s2=25,
+                  confirmation_seconds=1, cooldown_seconds=2)
+    values.update(changes)
+    return MotionSettings(**values)
+
+
+def reading(*, x=0, y=0, z=9.80665, gx=0, gy=0, gz=0):
+    return IMUReading(x, y, z, gx, gy, gz)
 
 
 class Bus:
@@ -80,7 +93,8 @@ class Steps:
 
 def test_imu_service_transient_failure_recovers_and_serializes():
     provider = FakeIMU(fail=True)
-    sensor = IMUSensorService(lambda: provider, enabled=True, poll_interval_seconds=5, stale_after_seconds=30)
+    sensor = IMUSensorService(lambda: provider, enabled=True, poll_interval_seconds=5, stale_after_seconds=30,
+                               motion_settings=motion_settings())
     sensor._stop = Steps(2); sensor._run()
     state = sensor.snapshot()
     assert state["available"] and state["measurements"] == {"acceleration_x_m_s2": 1, "acceleration_y_m_s2": 2, "acceleration_z_m_s2": 3, "angular_velocity_x_deg_s": 4, "angular_velocity_y_deg_s": 5, "angular_velocity_z_deg_s": 6}
@@ -111,6 +125,14 @@ def test_imu_configuration_validation(field, value, tmp_path):
     with pytest.raises(ConfigurationError): RuntimeConfig.from_dict(document, base_dir=tmp_path)
 
 
+@pytest.mark.parametrize("field,value", [("movement_threshold_m_s2", 0), ("tilt_threshold_m_s2", float("nan")),
+    ("shake_threshold_deg_s", -1), ("impact_threshold_m_s2", 1), ("confirmation_seconds", 0),
+    ("cooldown_seconds", -1)])
+def test_invalid_motion_configuration_is_rejected(field, value, tmp_path):
+    document = load_document(); document["sensors"]["imu"]["motion"][field] = value
+    with pytest.raises(ConfigurationError): RuntimeConfig.from_dict(document, base_dir=tmp_path)
+
+
 def test_imu_restart_policy(tmp_path):
     path = tmp_path / "phos.json"; RuntimeConfig(log_file=None).save(path)
     lifecycle = LifecycleService(path, RuntimeConfig.from_file(path))
@@ -118,4 +140,62 @@ def test_imu_restart_policy(tmp_path):
     document["sensors"]["imu"].update(enabled=True, i2c_address="0x69", poll_interval_seconds=10, stale_after_seconds=60)
     path.write_text(json.dumps(document)); result = lifecycle.execute("reload")
     assert result["ok"] and result["applied"] == []
-    assert result["restart_required"] == sorted("sensors.imu." + name for name in document["sensors"]["imu"])
+    assert result["restart_required"] == ["sensors.imu.enabled", "sensors.imu.i2c_address",
+                                           "sensors.imu.poll_interval_seconds", "sensors.imu.stale_after_seconds"]
+
+
+def test_motion_thresholds_reload_without_reopening_imu(tmp_path):
+    path = tmp_path / "phos.json"; RuntimeConfig(log_file=None).save(path)
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    calls = []
+    lifecycle.register_imu_motion_applier(lambda candidate: calls.append(candidate.imu_motion_impact_threshold_m_s2))
+    document = load_document(path); document["sensors"]["imu"]["motion"]["impact_threshold_m_s2"] = 30
+    path.write_text(json.dumps(document)); result = lifecycle.execute("reload")
+    assert result["ok"] and result["applied"] == ["sensors.imu.motion.impact_threshold_m_s2"]
+    assert not result["restart_required"] and calls == [30]
+
+
+def test_runtime_applies_motion_settings_without_reopening_imu():
+    provider = FakeIMU()
+    async def exercise():
+        runtime = build_runtime(config=RuntimeConfig(imu_enabled=True), eye_display=MemoryEyeDisplay(),
+                                imu_provider_factory=lambda: provider)
+        await runtime.start()
+        try:
+            for _ in range(100):
+                if runtime.sensor_status()["imu"]["available"]: break
+                await asyncio.sleep(.01)
+            runtime.apply_imu_motion(RuntimeConfig(imu_motion_impact_threshold_m_s2=30))
+            return runtime._imu_service._motion._settings.impact_threshold_m_s2
+        finally:
+            await runtime.stop()
+    assert asyncio.run(exercise()) == 30
+    assert provider.starts == provider.closes == 1
+
+
+def test_interpreter_requires_confirmation_for_still_movement_and_tilts():
+    def confirmed(sample):
+        interpreter = MotionInterpreter(motion_settings())
+        assert interpreter.observe(reading(), 0)[0] is MotionState.STILL
+        for now in range(1, 6):
+            state, event = interpreter.observe(sample, now)
+        return state, event
+    assert confirmed(reading(x=-7))[0] is MotionState.TILT_LEFT
+    assert confirmed(reading(x=7))[0] is MotionState.TILT_RIGHT
+    assert confirmed(reading(y=7))[0] is MotionState.TILT_FORWARD
+    assert confirmed(reading(y=-7))[0] is MotionState.TILT_BACK
+    assert confirmed(reading(z=13))[0] is MotionState.MOVING
+
+
+def test_interpreter_filters_noise_and_detects_shake_impact_and_cooldown():
+    interpreter = MotionInterpreter(motion_settings(confirmation_seconds=.5, cooldown_seconds=2))
+    for now, value in enumerate((.4, -.5, .3, -.4)):
+        assert interpreter.observe(reading(x=value), now)[0] is MotionState.STILL
+    assert interpreter.observe(reading(gx=220), 5)[0] is MotionState.STILL
+    state, event = interpreter.observe(reading(gx=-220), 5.5)
+    assert state is MotionState.SHAKE and event.state is MotionState.SHAKE
+    state, event = interpreter.observe(reading(z=30), 6)
+    assert state is MotionState.IMPACT and event is None  # shake cooldown
+    state, event = interpreter.observe(reading(z=30), 8)
+    assert state is MotionState.IMPACT and event.state is MotionState.IMPACT

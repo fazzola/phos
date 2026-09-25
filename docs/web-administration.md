@@ -392,9 +392,11 @@ already incorporates it. Consult the journal for hardware ERROR_ID diagnostics.
 ### GY-521 / MPU-6050 motion
 
 The **GY-521 / MPU-6050 motion** group edits enabled state, `0x68`/`0x69` address,
-polling and stale timeout. Save then use **System actions → Restart PHOS**. The
+polling and stale timeout, which require **System actions → Restart PHOS**. Its
+motion threshold subgroup is live-reloadable: save then use **Reload
+configuration**, without resetting the sensor. The
 read-only panel shows acceleration X/Y/Z in m/s² and angular velocity X/Y/Z in
-°/s, timestamp, age and status. `Factory scale only; no offset calibration`
+°/s, interpreted motion state, tilt direction, last event, timestamp, age and status. `Factory scale only; no offset calibration`
 means the adapter converted its ±2 g / ±250 °/s raw scale but did not require a
 motionless startup calibration. Values are hidden whenever unavailable or stale;
 the page never opens I2C itself. Setup and Pi verification are in the

@@ -318,3 +318,12 @@ existing runtime status and Web Admin boundaries. Use smbus2 directly and fixed
 ±2 g / ±250 °/s scales; do not add automatic offset calibration, orientation
 fusion, interrupts, gestures or behavior integration. Physical wiring and board
 acceptance remain separate from this implementation.
+
+### ADR-024 extension — Motion interpretation
+
+Add a lightweight, pure `MotionInterpreter` after raw IMU readings. It produces
+debounced STILL, MOVING, four tilt, SHAKE and IMPACT observations with a bounded
+low-pass filter, temporal confirmation and event cooldown. Thresholds are
+canonical `sensors.imu.motion` settings and reload through the runtime service
+without touching I2C. No behavior, rendering, orientation fusion or hardware
+interrupt contract is introduced.

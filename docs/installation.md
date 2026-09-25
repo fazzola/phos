@@ -411,6 +411,17 @@ expect one acceleration axis to include gravity. No orientation, sensor fusion o
 behavior response is implemented. If CCS811 shares bus 1, retain its documented
 10 kHz `i2c_arm_baudrate` setting.
 
+The default motion interpreter uses 1.5 m/s² movement, 4.0 m/s² tilt, 180 °/s
+shake and 25 m/s² impact thresholds, plus one second confirmation and a two
+second event cooldown. Movement compares acceleration magnitude with gravity;
+tilt compares filtered X/Y gravity components. A shake requires opposite high
+gyro samples and impact uses the raw total acceleration. Adjust these in Web
+Admin → Sensors → GY-521 / MPU-6050 motion, save, then use **Reload
+configuration**; only I2C enable/address/poll settings require Restart PHOS.
+Tilt labels assume the GY-521 is mounted with its printed X/Y axes aligned to
+PHOS's left/right and forward/back axes; verify that physical mounting before
+using the labels externally.
+
 For Pi acceptance, verify the detected address and WHO_AM_I, stable six-axis
 values, wrong-address recovery, a restart, and coexistence with every connected
 I2C sensor. Record board revision and wiring before treating it as accepted.

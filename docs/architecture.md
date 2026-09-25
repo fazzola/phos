@@ -308,3 +308,14 @@ only reads snapshots and edits canonical `sensors.imu` settings. No BehaviorEngi
 EyeRenderer or Vision component receives IMU readings. The adapter applies fixed
 ±2 g / ±250 °/s scale factors only; offset calibration, fusion and orientation are
 outside this capability.
+
+### Motion interpretation extension
+
+`IMUReading → MotionInterpreter → MotionState / MotionEvent` is a pure,
+provider-neutral layer between IMU state and future consumers. It never accesses
+the MPU-6050, GPIO, Web handlers, Vision, EyeRenderer or BehaviorEngine. The IMU
+worker supplies timestamped samples and exposes only the current interpreted
+state and last event through the existing status boundary. `STILL`, `MOVING`,
+four tilt directions, `SHAKE` and `IMPACT` are semantic observations only; no
+PHOS behavior consumes them yet. Motion settings reload into the interpreter
+without reopening the I2C provider.

@@ -10,6 +10,7 @@ from robot.config import RuntimeConfig
 from robot.hardware.environmental import environmental_provider_type
 from robot.hardware.ccs811 import CCS811Provider
 from robot.hardware.mpu6050 import MPU6050Provider
+from robot.motion import MotionSettings
 from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorService,
                            AirQualitySensorProvider, AirQualitySensorService,
                            IMUSensorProvider, IMUSensorService)
@@ -75,6 +76,12 @@ class PhosRuntime:
         if self._imu_service is not None:
             state["imu"] = self._imu_service.snapshot()
         return state
+
+    def apply_imu_motion(self, config: RuntimeConfig) -> None:
+        """Apply validated interpretation settings without reopening the IMU."""
+        if self._imu_service is None:
+            raise RuntimeError("IMU service is not configured")
+        self._imu_service.configure_motion(_motion_settings(config))
 
     def apply_camera_preview(self, config: RuntimeConfig) -> None:
         """Apply from the lifecycle thread and acknowledge runtime acceptance."""
@@ -359,6 +366,7 @@ def build_runtime(
         lambda: MPU6050Provider(address=int(config.imu_i2c_address, 16)),
         enabled=config.imu_enabled, poll_interval_seconds=config.imu_poll_interval_seconds,
         stale_after_seconds=config.imu_stale_after_seconds,
+        motion_settings=_motion_settings(config),
     )
     if config.imu_enabled:
         logger.info("MPU-6050 enabled: I2C bus 1, address %s, polling every %s seconds",
@@ -366,6 +374,15 @@ def build_runtime(
     return PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
                        config=config, vision_forced=injected_vision, sensor_service=sensors,
                        air_quality_service=air_quality, imu_service=imu)
+
+
+def _motion_settings(config: RuntimeConfig) -> MotionSettings:
+    return MotionSettings(config.imu_motion_movement_threshold_m_s2,
+                          config.imu_motion_tilt_threshold_m_s2,
+                          config.imu_motion_shake_threshold_deg_s,
+                          config.imu_motion_impact_threshold_m_s2,
+                          config.imu_motion_confirmation_seconds,
+                          config.imu_motion_cooldown_seconds)
 
 
 def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optional[VisionPipeline]:
