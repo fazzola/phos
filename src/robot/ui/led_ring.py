@@ -8,21 +8,19 @@ from threading import Event, Lock, Thread
 import time
 from typing import Callable, Optional, Tuple
 
+from robot.config import LED_RING_COLOR_RGB
 from robot.hardware.ws2812b import LEDRingProvider, RGB
 
 from .state import FaceState, VisualAccent
 
 logger = logging.getLogger(__name__)
 
-_COLORS = {
-    "cyan": (40, 206, 235), "blue": (73, 133, 255), "green": (65, 205, 125),
-    "turquoise": (35, 200, 175), "amber": (244, 171, 61), "violet": (166, 112, 245),
-    "white": (218, 236, 246),
-}
 _ACCENT_COLORS = {
-    VisualAccent.WARM: (48, 226, 178), VisualAccent.CURIOUS: (79, 195, 248),
-    VisualAccent.ALERT: (255, 191, 72), VisualAccent.SLEEPY: (173, 145, 248),
-    VisualAccent.ERROR: (255, 93, 111),
+    VisualAccent.WARM: LED_RING_COLOR_RGB["turquoise"],
+    VisualAccent.CURIOUS: LED_RING_COLOR_RGB["cyan"],
+    VisualAccent.ALERT: LED_RING_COLOR_RGB["yellow"],
+    VisualAccent.SLEEPY: LED_RING_COLOR_RGB["violet"],
+    VisualAccent.ERROR: LED_RING_COLOR_RGB["red"],
 }
 
 
@@ -44,11 +42,16 @@ class LEDRingFrame:
     pixels: Tuple[RGB, ...]
 
 
+def scale_rgb(color: RGB, brightness: float) -> RGB:
+    """Scale all logical RGB channels equally; transport conversion is elsewhere."""
+    return tuple(round(channel * brightness) for channel in color)
+
+
 def led_frame(state: FaceState, settings: LEDRingSettings, now: float) -> LEDRingFrame:
     """Map UI-neutral semantic intent to a small, uniform LED effect."""
     state = state.normalized()
     accent = state.accent if settings.follow_visual_state else VisualAccent.NEUTRAL
-    color = _ACCENT_COLORS.get(accent, _COLORS[settings.base_color])
+    color = _ACCENT_COLORS.get(accent, LED_RING_COLOR_RGB[settings.base_color])
     effect, multiplier = "steady", 1.0
     if accent in {VisualAccent.WARM, VisualAccent.CURIOUS}:
         effect, multiplier = "pulse", .88 + .12 * (1 + math.sin(now * (1.5 if accent is VisualAccent.WARM else 1.0))) / 2
@@ -59,7 +62,7 @@ def led_frame(state: FaceState, settings: LEDRingSettings, now: float) -> LEDRin
     elif accent is VisualAccent.ERROR:
         effect, multiplier = "steady", .85
     scale = max(0.0, min(1.0, settings.brightness * multiplier))
-    pixel = tuple(round(channel * scale) for channel in color)
+    pixel = scale_rgb(color, scale)
     return LEDRingFrame(accent.value, effect, (pixel,) * settings.led_count)
 
 

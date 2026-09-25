@@ -171,7 +171,7 @@ Intended role:
 - potentially complement states such as listening, thinking, speaking, sleeping, warning, or error.
 
 The controller uses uniform, lightweight effects: configured base color is
-steady for neutral; warm and curious pulse gently; alert pulses amber; sleepy
+steady for neutral; warm and curious pulse gently; alert pulses yellow; sleepy
 fades dim violet; error is steady red. The normal semantic alert state covers
 short IMU shake/impact behavior through its existing transient FaceState intent.
 
@@ -197,6 +197,14 @@ or the ring's documentation requires it; do not power a substantial ring from a
 Pi GPIO pin. Connect the Pi ground and LED supply ground together. A 3.3 V to 5 V
 data-level shifter may be needed for reliable operation; add sensible data-line
 protection and supply decoupling according to the actual ring documentation.
+
+The LED palette is logical RGB: green `#00FF40`, red `#FF1A1A`, yellow
+`#FFD400`, blue `#007BFF`, violet `#A020F0`, white `#FFFFFF`, cyan `#00E5FF`,
+turquoise `#00FFC8`, orange `#FF7A00`, and magenta `#FF00C8`. Brightness scales
+all three logical RGB channels equally; PHOS applies no gamma correction or
+per-channel normalization. The WS2812B adapter explicitly selects the library's
+`WS2811_STRIP_GRB` transport order, so application and configuration values stay
+RGB and must not be manually channel-swapped.
 
 `led_ring.gpio_pin` and `led_ring.led_count` are hardware settings and require
 restart. Because the selected driver requires mailbox/physical-memory access, a
