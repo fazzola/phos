@@ -23,9 +23,9 @@ To keep a separate deployment copy, copy the full canonical file, edit it and
 pass its path explicitly. Keep deployment changes out of commits if inappropriate.
 No file may contain credentials.
 
-The six required sections are `web`, `display`, `behavior`, `vision`, `expression`
-(with `smoothing`, `local`, `aws`) and `logging`. `vision` includes `detector`.
-There are no speculative runtime/voice/sensor sections. Every field in the
+The eight required sections are `web`, `display`, `led_ring`, `behavior`, `vision`, `expression`
+(with `smoothing`, `local`, `aws`), `sensors` (with `environmental`, `ccs811` and `imu`) and `logging`. `vision` includes `detector`.
+Only the implemented environmental, CCS811 and MPU-6050 services have sensor configuration; there are no speculative runtime/voice settings. Every field in the
 canonical file is required, including null values and inactive-provider settings;
 a missing value is an error, not a second default hidden in code.
 
@@ -36,8 +36,15 @@ must be finite; booleans must be JSON booleans, not strings or numbers.
 
 | Section | Fields and purpose |
 | --- | --- |
+| `sensors.environmental` | `type`: `"bme280"` or `"bmp280"`; `enabled`: boolean; `i2c_address`: string `"0x76"` or `"0x77"` on bus 1; `poll_interval_seconds`: finite 1–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All five require PHOS restart. |
+| `sensors.ccs811` | `enabled`: boolean; `i2c_address`: canonical lowercase `"0x5a"` or `"0x5b"`, bus 1; `poll_interval_seconds`: finite 1–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All four require PHOS restart. |
+| `sensors.imu` | `enabled`: boolean; `i2c_address`: canonical lowercase `"0x68"` or `"0x69"`, bus 1; `poll_interval_seconds`: finite 0.05–3600 seconds; `stale_after_seconds`: finite, greater than poll interval and at most 86400 seconds. All four require PHOS restart. |
+| `sensors.imu.motion` | `movement_threshold_m_s2`, `tilt_threshold_m_s2`, `shake_threshold_deg_s`, `impact_threshold_m_s2`, `confirmation_seconds`, `cooldown_seconds`: finite thresholds/timing. Impact must exceed movement. Also required: `tilt_exit_threshold_m_s2` (positive, below enter; both at most standard gravity), and distinct signed `lateral_axis` / `forward_axis` mounting axes. All motion fields are live-reloadable and do not reinitialize I2C. See installation for normalized threshold semantics. |
+| `led_ring` | `enabled`: boolean; `led_count`: 0–1024 integer, positive when enabled; `gpio_pin`: GPIO 0–27; `brightness`: 0–1; `base_color` and `imu_animation_color`: named PHOS palette colors; `follow_visual_state`: boolean; `update_rate_hz`: 1–30. IMU effects add directional/shake/impact strengths (0–1; impact exceeds shake), fill speed, sector size, and physical `bottom_led_index` / `forward_led_index` / `clockwise` mapping (`forward_led_index` is the physical top). Left starts at the left quarter and fills clockwise; right mirrors it from the right quarter. Back grows in two fronts from bottom; forward grows in two fronts from top. Every fill replaces only reached underlying pixels; STILL resolves the current persistent environmental or base state rather than forcing base color. Changing animation color applies live and affects the next rendered frame. Pin/count require restart; all other fields are live-reloadable. Brightness uniformly scales logical RGB channels; WS2812B GRB ordering is handled only by the provider. |
+| `behavior` IMU fields | `imu_reaction_strength`, `imu_tilt_gaze_strength`, `imu_shake_reaction_strength`, and `imu_impact_reaction_strength`: 0–1; impact strength must exceed shake strength. `imu_tilt_eye_asymmetry_strength`: 0–0.5 signed-eye delta. Shake/impact duration: 0.1–30 seconds; cooldown: 0–3600 seconds. These eight fields are live-reloadable. |
+| `behavior.environmental` | Optional temperature/eCO2/TVOC interpretation. Temperature enter/exit values provide hysteresis; warning/bad eCO2 and TVOC thresholds ascend. Confirmation and recovery are positive seconds. All fields are live-reloadable and never reopen sensor hardware. |
 | `web` | `enabled`: start the administration worker; `host`: IPv4/IPv6 bind address; `port`: integer 1–65535. See the [web manual](web-administration.md). |
-| `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration; `iris_color`: one of cyan, blue, green, turquoise, amber, violet or white. Iris theme is a renderer style choice and applies after validated configuration reload. |
+| `display` | `width`, `height`: positive integer pixel dimensions; `fps`: positive integer display cadence; `fullscreen`: fullscreen startup; `transition_seconds`: positive renderer interpolation duration; `iris_color`: one of cyan, blue, green, turquoise, amber, violet or white. `base_visual_source` is `manual`, `environment`, or `state`. `environment_overlays_enabled` controls semantic sweat/snow/haze decorations; they never change eye geometry, iris, or LED output. These display fields are live-reloadable. |
 | `behavior` | `blink_interval_seconds`, `gaze_interval_seconds`: positive ascending `[minimum, maximum]` timing ranges; `face_gaze_smoothing`: gaze smoothing coefficient in (0,1]; `reaction_decay_per_second`: positive visual reaction decay. |
 | `vision` | `face_tracking_enabled`: camera/tracking without expression inference; `camera_resolution`: positive integer `[width,height]`; `capture_fps`, `detection_fps`: positive capture/detection cadences. `camera_preview` controls optional display-only picture-in-picture, disabled by default; all its fields (enabled, corner position, scale 0.1–0.4, maximum FPS 1–10 and three diagnostic toggles) are live-reloadable. |
 | `vision.detector` | `cascade_path`: custom readable Haar file or null for existing platform discovery; `scale_factor`: pyramid scale greater than 1; `min_neighbors`: nonnegative integer detection support; `min_size`: positive pixel pair no larger than the camera resolution. |
@@ -161,7 +168,13 @@ read/edit/validate/save boundary. It never accepts/stores/displays AWS credentia
 as normal settings. Its separate password store is not runtime configuration.
 Save does not apply settings. The lifecycle service can reload logging level,
 `display.iris_color` and all `vision.camera_preview` fields through runtime and
-display boundaries; other persisted changes require restart.
+display boundaries; other persisted changes require restart. Preview reload
+waits for runtime acceptance and preserves config-relative paths. The IPC client
+bounds its response wait to five seconds; a slow native camera start can finish
+after that timeout, so an unavailable response explicitly reports uncertainty
+and retires the channel until PHOS restarts. A hardware apply failure is reported; earlier successful appearance
+changes remain active and pending fields remain visible. This differs from an
+invalid configuration, which applies nothing.
 The editor may call `from_dict(..., check_paths=False)` to repair a removed model
 path; schema/types/ranges are still validated. Startup and saves always validate
 active paths.
@@ -215,3 +228,73 @@ parent-owned service. Confirmation/authentication remain adapter responsibilitie
 validation and restart capability policy are shared. Test both the service and
 adapter guards. Infrastructure service markers are deployment metadata, not
 ordinary JSON settings. No new runtime configuration section is needed.
+
+
+### Environmental configuration migration
+
+For an existing BME280 deployment, rename `sensors.bme280` to
+`sensors.environmental`, retain its four existing values and add `"type": "bme280"`.
+Do not retain both blocks. To use BMP280 choose `"type": "bmp280"`; humidity is
+unsupported. The Python RuntimeConfig fields now use the `environmental_` prefix.
+
+When updating a deployment without sensor settings, merge the complete `sensors` object from
+`config/phos.json` into its existing JSON, preserving other settings. The new
+section and all five fields are required even when disabled. As with previous
+schema additions, missing fields fail validation; no silent overlay/migration or
+second set of defaults is introduced. `run_pi.sh` preserves deployed JSON and
+does not perform this merge. Validate locally before restarting the service.
+No new CLI flags are added. Save/Reload classify every sensor difference as
+restart-required; unrelated services are not restarted by either action.
+
+Hardware-free sensor checks: `.venv/bin/python -m pytest -q tests/test_sensors.py`.
+The adapter uses lazy optional imports; disabled operation and ordinary tests
+need neither Linux I2C access nor the driver packages. Fake drivers test address,
+chip ID, calibration and unit mapping; the service tests failure recovery,
+staleness, polling and bounded shutdown independently of physical hardware.
+
+
+### CCS811 configuration migration
+
+Merge the complete `sensors.ccs811` block from the canonical JSON into an existing
+deployment; preserve `sensors.environmental`. All four fields are required,
+including when disabled. Default values live only in `config/phos.json`.
+The typed surface uses the `ccs811_` prefix; no CLI overrides were added. Save
+and Reload do not reinitialize the device or change poll timing. Use Restart PHOS.
+
+`AirQualityReading` carries integer `eco2_ppm` and `tvoc_ppb`; invalid values are
+rejected before publication. Device-specific ranges live in the CCS811 adapter.
+The shared worker handles lifecycle, stale values, retry/backoff and bounded
+shutdown for both sensor services. `SensorNotReady` preserves initialization
+and communicates conditioning/no new data; physical faults recreate the provider.
+Compensation passes an immutable `EnvironmentalCompensation` from a fresh
+service snapshot; it never invokes environmental hardware from the air-quality
+worker. Temperature must be within -25–50 °C and humidity within 0–100% for this
+compensation boundary. BMP280, disabled/failed/stale or out-of-range sources
+supply no compensation, restoring device defaults. Device constants such as
+conditioning/drive mode are adapter protocol policy, not duplicate JSON defaults.
+
+Run `.venv/bin/python -m pytest -q tests/test_air_quality.py tests/test_sensors.py`
+and the full suite. Tests use fake time, bus registers and providers, covering
+conditioning without a 20-minute sleep. See the
+[installation guide](installation.md#optional-ccs811-air-quality-sensor) for
+physical verification and dependency commands.
+
+### MPU-6050 configuration migration
+
+Merge the complete `sensors.imu` block from canonical JSON into an existing
+deployment, preserving the environmental and CCS811 blocks. The typed surface
+uses the `imu_` prefix. All four fields are required even when disabled and are
+restart-only. `IMUReading` contains finite acceleration values in m/s² and
+angular velocity values in °/s. It has no persisted calibration state: the
+adapter applies fixed factory scale factors only. Run
+`.venv/bin/python -m pytest -q tests/test_imu.py` before Pi validation.
+
+### Tilt interpretation configuration migration
+
+Add `tilt_exit_threshold_m_s2`, `lateral_axis` and `forward_axis` from canonical
+`sensors.imu.motion` to existing deployments; missing fields fail validation.
+The existing tilt enter key is preserved but now refers to a normalized gravity
+component. Review enter/exit together. For responsive operation, adopt the
+canonical IMU poll interval and confirmation duration; polling requires restart,
+motion thresholds/mounting require only reload. See the installation guide for
+axis verification and DEBUG diagnostics.

@@ -18,6 +18,24 @@ if not DEFAULT_CONFIG_PATH.is_file():
     DEFAULT_CONFIG_PATH = Path(sys.prefix) / "share" / "phos" / "config" / "phos.json"
 
 
+# Logical RGB values sent by PHOS.  The WS2812B adapter owns conversion to its
+# GRB wire format, so these values must never be rearranged for a particular
+# ring.  Keep this separate from the display-only iris theme palette.
+LED_RING_COLOR_RGB = {
+    "green": (0, 255, 64),
+    "red": (255, 26, 26),
+    "yellow": (255, 212, 0),
+    "blue": (0, 123, 255),
+    "violet": (160, 32, 240),
+    "white": (255, 255, 255),
+    "cyan": (0, 229, 255),
+    "turquoise": (0, 255, 200),
+    "orange": (255, 122, 0),
+    "magenta": (255, 0, 200),
+}
+LED_RING_COLOR_CHOICES = tuple(LED_RING_COLOR_RGB)
+
+
 class ConfigurationError(ValueError):
     """Invalid settings, reported before any subsystem is constructed."""
 
@@ -110,9 +128,32 @@ _SCHEMA = {
     "web": {"enabled": "web_enabled", "host": "web_host", "port": "web_port"},
     "display": {"width": "display_width", "height": "display_height", "fps": "display_fps",
                 "fullscreen": "fullscreen", "transition_seconds": "display_transition_seconds",
-                "iris_color": "iris_color"},
+                "iris_color": "iris_color", "base_visual_source": "base_visual_source",
+                "environment_overlays_enabled": "environment_overlays_enabled"},
+    "led_ring": {"enabled": "led_ring_enabled", "led_count": "led_ring_led_count",
+                 "gpio_pin": "led_ring_gpio_pin", "brightness": "led_ring_brightness",
+                 "base_color": "led_ring_base_color", "follow_visual_state": "led_ring_follow_visual_state",
+                 "update_rate_hz": "led_ring_update_rate_hz", "imu_reactions_enabled": "led_ring_imu_reactions_enabled",
+                 "directional_strength": "led_ring_directional_strength", "directional_sector_size": "led_ring_directional_sector_size",
+                 "shake_strength": "led_ring_shake_strength", "impact_strength": "led_ring_impact_strength",
+                 "imu_animation_color": "led_ring_imu_animation_color",
+                 "directional_animation_speed": "led_ring_directional_animation_speed",
+                 "bottom_led_index": "led_ring_bottom_led_index", "forward_led_index": "led_ring_forward_led_index", "clockwise": "led_ring_clockwise"},
     "behavior": {"blink_interval_seconds": "blink_interval_seconds", "gaze_interval_seconds": "gaze_interval_seconds",
-                 "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second"},
+                 "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second",
+                 "imu_reaction_strength": "imu_reaction_strength", "imu_tilt_gaze_strength": "imu_tilt_gaze_strength",
+                 "imu_tilt_eye_asymmetry_strength": "imu_tilt_eye_asymmetry_strength",
+                 "imu_shake_reaction_strength": "imu_shake_reaction_strength",
+                 "imu_impact_reaction_strength": "imu_impact_reaction_strength",
+                 "imu_shake_reaction_duration_seconds": "imu_shake_reaction_duration_seconds",
+                 "imu_impact_reaction_duration_seconds": "imu_impact_reaction_duration_seconds",
+                 "imu_reaction_cooldown_seconds": "imu_reaction_cooldown_seconds",
+                 "environmental": {"enabled": "environmental_behavior_enabled",
+                    "cold_enter_temperature": "cold_enter_temperature", "cold_exit_temperature": "cold_exit_temperature",
+                    "warm_enter_temperature": "warm_enter_temperature", "warm_exit_temperature": "warm_exit_temperature",
+                    "air_quality_warning_eco2": "air_quality_warning_eco2", "air_quality_warning_tvoc": "air_quality_warning_tvoc",
+                    "air_quality_bad_eco2": "air_quality_bad_eco2", "air_quality_bad_tvoc": "air_quality_bad_tvoc",
+                    "confirmation_seconds": "environmental_confirmation_seconds", "recovery_seconds": "environmental_recovery_seconds"}},
     "vision": {"face_tracking_enabled": "face_tracking_enabled", "camera_resolution": "camera_resolution",
                "capture_fps": "vision_capture_fps", "detection_fps": "face_detection_fps",
                "camera_preview": {"enabled": "camera_preview_enabled", "position": "camera_preview_position",
@@ -134,6 +175,26 @@ _SCHEMA = {
                   "swap_rb": "expression_swap_rb", "grayscale": "expression_grayscale"},
         "aws": "cloud_expression",
     },
+    "sensors": {"environmental": {"type": "environmental_type",
+                           "enabled": "environmental_enabled",
+                           "i2c_address": "environmental_i2c_address",
+                           "poll_interval_seconds": "environmental_poll_interval_seconds",
+                           "stale_after_seconds": "environmental_stale_after_seconds"},
+                "ccs811": {"enabled": "ccs811_enabled", "i2c_address": "ccs811_i2c_address",
+                           "poll_interval_seconds": "ccs811_poll_interval_seconds",
+                           "stale_after_seconds": "ccs811_stale_after_seconds"},
+                "imu": {"enabled": "imu_enabled", "i2c_address": "imu_i2c_address",
+                        "poll_interval_seconds": "imu_poll_interval_seconds",
+                        "stale_after_seconds": "imu_stale_after_seconds",
+                        "motion": {"movement_threshold_m_s2": "imu_motion_movement_threshold_m_s2",
+                                   "tilt_exit_threshold_m_s2": "imu_motion_tilt_exit_threshold_m_s2",
+                                   "lateral_axis": "imu_motion_lateral_axis",
+                                   "forward_axis": "imu_motion_forward_axis",
+                                   "tilt_threshold_m_s2": "imu_motion_tilt_threshold_m_s2",
+                                   "shake_threshold_deg_s": "imu_motion_shake_threshold_deg_s",
+                                   "impact_threshold_m_s2": "imu_motion_impact_threshold_m_s2",
+                                   "confirmation_seconds": "imu_motion_confirmation_seconds",
+                                   "cooldown_seconds": "imu_motion_cooldown_seconds"}}},
     "logging": {"level": "log_level", "file": "log_file", "expression_diagnostics": "expression_diagnostics"},
 }
 _PATH_FIELDS = {"expression_model_path", "cascade_path", "log_file"}
@@ -174,6 +235,28 @@ class RuntimeConfig:
     it overlays canonical settings. File/dict loading requires the full schema.
     """
 
+    environmental_type: str
+    environmental_enabled: bool
+    environmental_i2c_address: str
+    environmental_poll_interval_seconds: float
+    environmental_stale_after_seconds: float
+    ccs811_enabled: bool
+    ccs811_i2c_address: str
+    ccs811_poll_interval_seconds: float
+    ccs811_stale_after_seconds: float
+    imu_enabled: bool
+    imu_i2c_address: str
+    imu_poll_interval_seconds: float
+    imu_stale_after_seconds: float
+    imu_motion_movement_threshold_m_s2: float
+    imu_motion_tilt_exit_threshold_m_s2: float
+    imu_motion_lateral_axis: str
+    imu_motion_forward_axis: str
+    imu_motion_tilt_threshold_m_s2: float
+    imu_motion_shake_threshold_deg_s: float
+    imu_motion_impact_threshold_m_s2: float
+    imu_motion_confirmation_seconds: float
+    imu_motion_cooldown_seconds: float
     web_enabled: bool
     web_host: str
     web_port: int
@@ -183,10 +266,48 @@ class RuntimeConfig:
     fullscreen: bool
     display_transition_seconds: float
     iris_color: str
+    base_visual_source: str
+    environment_overlays_enabled: bool
+    led_ring_enabled: bool
+    led_ring_led_count: int
+    led_ring_gpio_pin: int
+    led_ring_brightness: float
+    led_ring_base_color: str
+    led_ring_follow_visual_state: bool
+    led_ring_update_rate_hz: float
+    led_ring_imu_reactions_enabled: bool
+    led_ring_directional_strength: float
+    led_ring_directional_sector_size: int
+    led_ring_shake_strength: float
+    led_ring_impact_strength: float
+    led_ring_imu_animation_color: str
+    led_ring_directional_animation_speed: float
+    led_ring_bottom_led_index: int
+    led_ring_forward_led_index: int
+    led_ring_clockwise: bool
     blink_interval_seconds: Tuple[float, float]
     gaze_interval_seconds: Tuple[float, float]
     face_gaze_smoothing: float
     reaction_decay_per_second: float
+    imu_reaction_strength: float
+    imu_tilt_gaze_strength: float
+    imu_tilt_eye_asymmetry_strength: float
+    imu_shake_reaction_strength: float
+    imu_impact_reaction_strength: float
+    imu_shake_reaction_duration_seconds: float
+    imu_impact_reaction_duration_seconds: float
+    imu_reaction_cooldown_seconds: float
+    environmental_behavior_enabled: bool
+    cold_enter_temperature: float
+    cold_exit_temperature: float
+    warm_enter_temperature: float
+    warm_exit_temperature: float
+    air_quality_warning_eco2: int
+    air_quality_warning_tvoc: int
+    air_quality_bad_eco2: int
+    air_quality_bad_tvoc: int
+    environmental_confirmation_seconds: float
+    environmental_recovery_seconds: float
     face_tracking_enabled: bool
     camera_preview_enabled: bool
     camera_preview_position: str
@@ -325,6 +446,65 @@ class RuntimeConfig:
                     or (maximum is not None and value > maximum)):
                 raise ConfigurationError(f"{name}: invalid number/range")
 
+        if not isinstance(self.environmental_type, str) or self.environmental_type not in {"bme280", "bmp280"}:
+            raise ConfigurationError("sensors.environmental.type must be bme280 or bmp280")
+        number("environmental_poll_interval_seconds", minimum=1, inclusive=True, maximum=3600)
+        number("environmental_stale_after_seconds", maximum=86400)
+        if self.environmental_stale_after_seconds <= self.environmental_poll_interval_seconds:
+            raise ConfigurationError("sensors.environmental.stale_after_seconds must exceed poll_interval_seconds")
+        if not isinstance(self.environmental_i2c_address, str) or self.environmental_i2c_address not in {"0x76", "0x77"}:
+            raise ConfigurationError("sensors.environmental.i2c_address must be 0x76 or 0x77")
+        number("ccs811_poll_interval_seconds", minimum=1, inclusive=True, maximum=3600)
+        number("ccs811_stale_after_seconds", maximum=86400)
+        if self.ccs811_stale_after_seconds <= self.ccs811_poll_interval_seconds:
+            raise ConfigurationError("sensors.ccs811.stale_after_seconds must exceed poll_interval_seconds")
+        if not isinstance(self.ccs811_i2c_address, str) or self.ccs811_i2c_address not in {"0x5a", "0x5b"}:
+            raise ConfigurationError("sensors.ccs811.i2c_address must be 0x5a or 0x5b")
+        number("imu_poll_interval_seconds", minimum=.05, inclusive=True, maximum=3600)
+        number("imu_stale_after_seconds", maximum=86400)
+        if self.imu_stale_after_seconds <= self.imu_poll_interval_seconds:
+            raise ConfigurationError("sensors.imu.stale_after_seconds must exceed poll_interval_seconds")
+        if not isinstance(self.imu_i2c_address, str) or self.imu_i2c_address not in {"0x68", "0x69"}:
+            raise ConfigurationError("sensors.imu.i2c_address must be 0x68 or 0x69")
+        for name in ("imu_motion_movement_threshold_m_s2", "imu_motion_tilt_threshold_m_s2",
+                     "imu_motion_shake_threshold_deg_s", "imu_motion_impact_threshold_m_s2",
+                     "imu_motion_confirmation_seconds"):
+            number(name, minimum=.01, inclusive=True, maximum=1000)
+        number("imu_motion_tilt_threshold_m_s2", minimum=.01, inclusive=True, maximum=9.80665)
+        number("imu_motion_tilt_exit_threshold_m_s2", minimum=.01, inclusive=True, maximum=9.80665)
+        if self.imu_motion_tilt_exit_threshold_m_s2 >= self.imu_motion_tilt_threshold_m_s2:
+            raise ConfigurationError("IMU tilt exit threshold must be below enter threshold")
+        axes = (self.imu_motion_lateral_axis, self.imu_motion_forward_axis)
+        if any(not isinstance(axis, str) or axis not in {"x", "y", "z", "-x", "-y", "-z"} for axis in axes):
+            raise ConfigurationError("IMU mounting axes must be signed x, y or z")
+        if axes[0][-1] == axes[1][-1]:
+            raise ConfigurationError("IMU mounting axes must be distinct")
+        number("imu_motion_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
+        if self.imu_motion_impact_threshold_m_s2 <= self.imu_motion_movement_threshold_m_s2:
+            raise ConfigurationError("sensors.imu.motion.impact_threshold_m_s2 must exceed movement_threshold_m_s2")
+        number("led_ring_led_count", minimum=0, inclusive=True, maximum=1024, integer=True)
+        number("led_ring_gpio_pin", minimum=0, inclusive=True, maximum=27, integer=True)
+        number("led_ring_brightness", minimum=0, inclusive=True, maximum=1)
+        number("led_ring_update_rate_hz", minimum=1, inclusive=True, maximum=30)
+        number("led_ring_directional_strength", inclusive=True, maximum=1)
+        number("led_ring_shake_strength", inclusive=True, maximum=1)
+        number("led_ring_impact_strength", inclusive=True, maximum=1)
+        number("led_ring_directional_animation_speed", minimum=.1, inclusive=True, maximum=30)
+        if self.led_ring_impact_strength <= self.led_ring_shake_strength:
+            raise ConfigurationError("LED ring impact strength must exceed shake strength")
+        number("led_ring_directional_sector_size", minimum=1, inclusive=True, maximum=64, integer=True)
+        number("led_ring_forward_led_index", minimum=0, inclusive=True, maximum=1023, integer=True)
+        number("led_ring_bottom_led_index", minimum=0, inclusive=True, maximum=1023, integer=True)
+        if self.led_ring_led_count and self.led_ring_forward_led_index >= self.led_ring_led_count:
+            raise ConfigurationError("led_ring.forward_led_index must be below led_count")
+        if self.led_ring_led_count and self.led_ring_bottom_led_index >= self.led_ring_led_count:
+            raise ConfigurationError("led_ring.bottom_led_index must be below led_count")
+        if self.led_ring_base_color not in LED_RING_COLOR_RGB:
+            raise ConfigurationError("led_ring.base_color must be a supported named color")
+        if self.led_ring_imu_animation_color not in LED_RING_COLOR_RGB:
+            raise ConfigurationError("led_ring.imu_animation_color must be a supported named color")
+        if self.led_ring_enabled and self.led_ring_led_count <= 0:
+            raise ConfigurationError("led_ring.led_count must be positive when LED ring is enabled")
         number("web_port", integer=True, maximum=65535)
         try:
             ipaddress.ip_address(self.web_host)
@@ -342,9 +522,29 @@ class RuntimeConfig:
             number(name)
         number("detector_scale_factor", minimum=1)
         number("face_gaze_smoothing", maximum=1)
+        number("imu_reaction_strength", inclusive=True, maximum=1)
+        number("imu_tilt_gaze_strength", inclusive=True, maximum=1)
+        number("imu_tilt_eye_asymmetry_strength", minimum=0, inclusive=True, maximum=.5)
+        number("imu_shake_reaction_strength", inclusive=True, maximum=1)
+        number("imu_impact_reaction_strength", inclusive=True, maximum=1)
+        if self.imu_impact_reaction_strength <= self.imu_shake_reaction_strength:
+            raise ConfigurationError("IMU impact reaction strength must exceed shake reaction strength")
+        number("imu_shake_reaction_duration_seconds", minimum=.1, inclusive=True, maximum=30)
+        number("imu_impact_reaction_duration_seconds", minimum=.1, inclusive=True, maximum=30)
+        number("imu_reaction_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
+        for name in ("cold_enter_temperature", "cold_exit_temperature", "warm_enter_temperature", "warm_exit_temperature"):
+            number(name, minimum=-50, inclusive=True, maximum=80)
+        if not self.cold_enter_temperature < self.cold_exit_temperature < self.warm_exit_temperature < self.warm_enter_temperature:
+            raise ConfigurationError("Environmental temperature thresholds must ascend with hysteresis")
+        for name in ("air_quality_warning_eco2", "air_quality_warning_tvoc", "air_quality_bad_eco2", "air_quality_bad_tvoc"):
+            number(name, minimum=1, inclusive=True, maximum=100000, integer=True)
+        if self.air_quality_warning_eco2 >= self.air_quality_bad_eco2 or self.air_quality_warning_tvoc >= self.air_quality_bad_tvoc:
+            raise ConfigurationError("Environmental air-quality thresholds must ascend")
+        for name in ("environmental_confirmation_seconds", "environmental_recovery_seconds"):
+            number(name, minimum=1, inclusive=True, maximum=86400)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
+        for name in ("ccs811_enabled", "environmental_enabled", "environmental_behavior_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "led_ring_imu_reactions_enabled", "led_ring_clockwise", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
                      "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
                      "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
             if type(getattr(self, name)) is not bool:
@@ -367,6 +567,10 @@ class RuntimeConfig:
             "cyan", "blue", "green", "turquoise", "amber", "violet", "white"
         }:
             raise ConfigurationError("display.iris_color must be cyan, blue, green, turquoise, amber, violet or white")
+        if self.base_visual_source not in {"manual", "environment", "state"}:
+            raise ConfigurationError("display.base_visual_source must be manual, environment or state")
+        if type(self.environment_overlays_enabled) is not bool:
+            raise ConfigurationError("display.environment_overlays_enabled must be a boolean")
         if not isinstance(self.camera_preview_position, str) or self.camera_preview_position not in {
             "top_left", "top_right", "bottom_left", "bottom_right"
         }:

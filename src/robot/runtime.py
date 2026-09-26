@@ -3,13 +3,26 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from dataclasses import replace
+import logging
+import time
 from typing import Callable, Optional
 
 from robot.config import RuntimeConfig
-from robot.core import BehaviorEngine, Event, EventBus, RobotCore, RobotState, STATE_CHANGED
-from robot.ui import CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, TkEyeDisplay
+from robot.hardware.environmental import environmental_provider_type
+from robot.hardware.ccs811 import CCS811Provider
+from robot.hardware.mpu6050 import MPU6050Provider
+from robot.hardware.ws2812b import LEDRingProvider, LEDRingSocketProvider
+from robot.motion import MotionSettings
+from robot.motion import MotionState
+from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorService,
+                           AirQualitySensorProvider, AirQualitySensorService,
+                           IMUSensorProvider, IMUSensorService)
+from robot.core import (BehaviorEngine, EnvironmentalInterpreter, EnvironmentalSettings, Event, EventBus,
+                        RobotCore, RobotState, STATE_CHANGED)
+from robot.core.behavior_engine import ENVIRONMENTAL_STATE_CHANGED, IMU_MOTION_STATE
+from robot.ui import (CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, LEDRingController,
+                      LEDRingSettings, TkEyeDisplay)
 from robot.ui.runtime import EyeRenderLoop
 from robot.vision import (
     ExpressionSmoother,
@@ -36,6 +49,10 @@ class PhosRuntime:
         vision_pipeline: Optional[VisionPipeline] = None,
         config: Optional[RuntimeConfig] = None,
         vision_forced: bool = False,
+        sensor_service: Optional[EnvironmentalSensorService] = None,
+        air_quality_service: Optional[AirQualitySensorService] = None,
+        imu_service: Optional[IMUSensorService] = None,
+        led_ring_controller: Optional[LEDRingController] = None,
     ) -> None:
         self.core = core
         self._behavior_engine = behavior_engine
@@ -43,32 +60,139 @@ class PhosRuntime:
         self._vision_pipeline = vision_pipeline
         self._config = config
         self._vision_forced = vision_forced
+        self._sensor_service = sensor_service
+        self._air_quality_service = air_quality_service
+        self._imu_service = imu_service
+        self._led_ring_controller = led_ring_controller
+        self._environmental_interpreter = None
         self._loop = None
         self._vision_changed: Optional[asyncio.Event] = None
         self._vision_lock = asyncio.Lock()
+        self._preview_tasks = set()
+        self._stopping = False
         self._unsubscribers: list[Callable[[], None]] = []
         self._started = False
         self._vision_started = False
+
+    def publish_motion_state(self, state: MotionState) -> None:
+        loop = self._loop
+        if loop is None or self._stopping:
+            return
+        def publish():
+            task = asyncio.create_task(self.core.events.publish(Event(IMU_MOTION_STATE, {"state": state.value})))
+            task.add_done_callback(_log_motion_publish_failure)
+        loop.call_soon_threadsafe(publish)
+
+    def publish_environmental_state(self, state, reason, temperature_overlay=None, air_quality_overlay=None) -> None:
+        loop = self._loop
+        if loop is None or self._stopping:
+            return
+        def publish():
+            task = asyncio.create_task(self.core.events.publish(Event(ENVIRONMENTAL_STATE_CHANGED,
+                {"state": state.value, "reason": reason,
+                 "temperature_overlay": getattr(temperature_overlay, "value", "none"),
+                 "air_quality_overlay": getattr(air_quality_overlay, "value", "none")})))
+            task.add_done_callback(_log_motion_publish_failure)
+        loop.call_soon_threadsafe(publish)
 
     def apply_appearance(self, config: RuntimeConfig) -> None:
         """Apply validated appearance through the display runtime boundary."""
         self._eye_render_loop.request_appearance(iris_color=config.iris_color)
 
-    def apply_camera_preview(self, config: RuntimeConfig) -> None:
-        """Queue preview configuration through runtime and display boundaries."""
-        self._eye_render_loop.request_preview_settings(_preview_settings(config))
-        names = ("camera_preview_enabled", "camera_preview_position", "camera_preview_scale",
-                 "camera_preview_max_fps", "camera_preview_show_face_box",
-                 "camera_preview_show_expression", "camera_preview_show_confidence")
-        if self._config is not None:
-            self._config = replace(self._config, **{name: getattr(config, name) for name in names})
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._queue_preview_reconcile)
+    def apply_imu_behavior(self, config: RuntimeConfig) -> None:
+        self._behavior_engine.configure_imu_reactions(
+            config.imu_reaction_strength, config.imu_tilt_gaze_strength, config.imu_tilt_eye_asymmetry_strength,
+            config.imu_shake_reaction_strength, config.imu_impact_reaction_strength,
+            config.imu_shake_reaction_duration_seconds, config.imu_impact_reaction_duration_seconds,
+            config.imu_reaction_cooldown_seconds)
 
-    def _queue_preview_reconcile(self):
-        if self._vision_changed is not None:
-            self._vision_changed.set()
-        asyncio.create_task(self._reconcile_vision_preview())
+    def apply_environmental_behavior(self, config: RuntimeConfig) -> None:
+        if self._environmental_interpreter is None:
+            raise RuntimeError("Environmental behavior service is not configured")
+        self._environmental_interpreter.configure(_environmental_settings(config))
+
+    def apply_base_visual_source(self, config: RuntimeConfig) -> None:
+        self._behavior_engine.configure_base_visual_source(config.base_visual_source)
+
+    def apply_environment_overlays(self, config: RuntimeConfig) -> None:
+        self._behavior_engine.configure_environment_overlays(config.environment_overlays_enabled)
+
+    def apply_led_ring(self, config: RuntimeConfig) -> None:
+        if self._led_ring_controller is None:
+            raise RuntimeError("LED ring service is not configured")
+        # Pin/count changes remain pending restart, so never pass saved hardware
+        # values to an already-open provider during a visual-only reload.
+        active = self._config
+        settings = _led_settings(config)
+        if active is not None:
+            settings = replace(settings, led_count=active.led_ring_led_count, gpio_pin=active.led_ring_gpio_pin)
+        self._led_ring_controller.configure(settings)
+
+    def sensor_status(self) -> dict:
+        """Read-only application boundary, safe for the lifecycle thread."""
+        state = {"environmental": self._sensor_service.snapshot()} if self._sensor_service is not None else {}
+        if self._air_quality_service is not None:
+            state["ccs811"] = self._air_quality_service.snapshot()
+        if self._imu_service is not None:
+            state["imu"] = self._imu_service.snapshot()
+        if self._led_ring_controller is not None:
+            state["led_ring"] = self._led_ring_controller.snapshot()
+        if self._environmental_interpreter is not None:
+            state["environmental_behavior"] = {"state": self._environmental_interpreter.state.value,
+                                                "reason": self._environmental_interpreter.reason,
+                                                "temperature_overlay": self._environmental_interpreter.temperature_overlay.value,
+                                                "air_quality_overlay": self._environmental_interpreter.air_quality_overlay.value}
+        return state
+
+    def apply_imu_motion(self, config: RuntimeConfig) -> None:
+        """Apply validated interpretation settings without reopening the IMU."""
+        if self._imu_service is None:
+            raise RuntimeError("IMU service is not configured")
+        self._imu_service.configure_motion(_motion_settings(config))
+
+    def apply_camera_preview(self, config: RuntimeConfig) -> None:
+        """Apply from the lifecycle thread and acknowledge runtime acceptance."""
+        loop = self._loop
+        if loop is None or not self._started or self._stopping:
+            raise RuntimeError("PHOS runtime is not ready for preview reload")
+        try:
+            caller_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            caller_loop = None
+        if caller_loop is loop:
+            raise RuntimeError("Preview reload must use the lifecycle thread")
+        future = asyncio.run_coroutine_threadsafe(self._apply_camera_preview(config), loop)
+        # The IPC client bounds its response wait and reports an in-flight result
+        # as uncertain. Keep this acknowledgement tied to actual completion:
+        # native camera startup may outlast the HTTP request. Shutdown cancels
+        # and drains the task, so it cannot start a camera after runtime exit.
+        future.result()
+
+    async def _apply_camera_preview(self, config):
+        task = asyncio.current_task()
+        self._preview_tasks.add(task)
+        try:
+            async with self._vision_lock:
+                if self._stopping or not self._started:
+                    raise RuntimeError("PHOS runtime is stopping")
+                names = ("camera_preview_enabled", "camera_preview_position", "camera_preview_scale",
+                         "camera_preview_max_fps", "camera_preview_show_face_box",
+                         "camera_preview_show_expression", "camera_preview_show_confidence")
+                previous = self._config
+                updated = RuntimeConfig.from_dict(previous.to_dict(), base_dir=previous._base_dir,
+                    overrides={name: getattr(config, name) for name in names})
+                # Validate the effective configuration, retaining pending restart fields.
+                self._config = updated
+                try:
+                    await self._reconcile_vision_preview()
+                    self._eye_render_loop.request_preview_settings(_preview_settings(updated))
+                except BaseException:
+                    self._config = previous
+                    if self._vision_pipeline is not None:
+                        self._vision_pipeline.configure_preview(previous.camera_preview_enabled)
+                    raise
+        finally:
+            self._preview_tasks.discard(task)
 
     async def _supervise_vision(self):
         while True:
@@ -80,10 +204,13 @@ class PhosRuntime:
                 continue
             wait_task = asyncio.create_task(self._vision_pipeline.wait())
             change_task = asyncio.create_task(self._vision_changed.wait())
-            done, pending = await asyncio.wait((wait_task, change_task), return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
+            try:
+                done, _ = await asyncio.wait((wait_task, change_task), return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for task in (wait_task, change_task):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(wait_task, change_task, return_exceptions=True)
             if change_task in done:
                 self._vision_changed.clear()
                 if not self._vision_started:
@@ -104,36 +231,52 @@ class PhosRuntime:
     async def _reconcile_vision_preview(self) -> None:
         if self._vision_pipeline is None or self._config is None:
             return
-        async with self._vision_lock:
-            configure_preview = getattr(self._vision_pipeline, "configure_preview", None)
-            if configure_preview is not None:
-                configure_preview(self._config.camera_preview_enabled)
-            wanted = self._config.vision_enabled or self._vision_forced
-            if wanted and not self._vision_started:
-                try:
-                    await self._vision_pipeline.start()
-                    self._vision_started = True
-                    logger.info("PHOS vision pipeline started for camera preview")
-                    if self._vision_changed is not None:
-                        self._vision_changed.set()
-                except Exception:
-                    self._vision_started = False
-                    logger.exception("Could not start the optional camera preview")
-            elif not wanted and self._vision_started:
+        configure_preview = getattr(self._vision_pipeline, "configure_preview", None)
+        if configure_preview is not None:
+            configure_preview(self._config.camera_preview_enabled)
+        wanted = self._config.vision_enabled or self._vision_forced
+        if wanted and not self._vision_started:
+            self._vision_started = True
+            try:
+                await self._vision_pipeline.start()
+                logger.info("PHOS vision pipeline started for camera preview")
+            except BaseException:
+                # Camera ownership may already have been acquired before failure.
                 await self._vision_pipeline.stop()
                 self._vision_started = False
-                logger.info("PHOS vision pipeline stopped after preview was disabled")
-                if self._vision_changed is not None:
-                    self._vision_changed.set()
+                raise
+            finally:
+                self._vision_changed.set()
+        elif not wanted and self._vision_started:
+            # Tell the supervisor before awaiting stop, which completes wait().
+            self._vision_started = False
+            self._vision_changed.set()
+            try:
+                await self._vision_pipeline.stop()
+            except BaseException:
+                # Retain ownership so final shutdown retries cleanup.
+                self._vision_started = True
+                self._vision_changed.set()
+                raise
+            logger.info("PHOS vision pipeline stopped after preview was disabled")
 
     async def start(self) -> None:
         if self._started:
             raise RuntimeError("PHOS runtime is already running.")
         self._unsubscribers = [self.core.events.subscribe(STATE_CHANGED, self._log_state_transition)]
+        self._stopping = False
         self._loop = asyncio.get_running_loop()
         self._vision_changed = asyncio.Event()
         try:
             await self.core.start()
+            if self._sensor_service is not None:
+                await self._sensor_service.start()
+            if self._air_quality_service is not None:
+                await self._air_quality_service.start()
+            if self._imu_service is not None:
+                await self._imu_service.start()
+            if self._led_ring_controller is not None:
+                self._led_ring_controller.start()
             logger.info("PHOS core, behavior engine, and renderer started")
             if self._vision_pipeline is not None and self._config is not None and (self._config.vision_enabled or self._vision_forced):
                 # Stop must also release a partially started camera/pipeline.
@@ -173,6 +316,7 @@ class PhosRuntime:
                 except Exception as error:
                     logger.exception("PHOS subsystem failed", exc_info=error)
                     await self._transition_to_error(type(error).__name__)
+                    raise
         finally:
             for task in [stop_task, *supervisors]:
                 if not task.done():
@@ -181,6 +325,20 @@ class PhosRuntime:
             await self.stop()
 
     async def stop(self) -> None:
+        self._stopping = True
+        tasks = tuple(self._preview_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._loop = None
+        if self._led_ring_controller is not None:
+            self._led_ring_controller.stop()
+        if self._air_quality_service is not None:
+            await self._air_quality_service.stop()
+        if self._imu_service is not None:
+            await self._imu_service.stop()
+        if self._sensor_service is not None:
+            await self._sensor_service.stop()
         if self._vision_started and self._vision_pipeline is not None:
             try:
                 await self._vision_pipeline.stop()
@@ -218,8 +376,12 @@ def build_runtime(
     eye_display: Optional[EyeDisplay] = None,
     vision_pipeline: Optional[VisionPipeline] = None,
     vision_factory: Optional[Callable[[EventBus], VisionPipeline]] = None,
+    sensor_provider_factory: Optional[Callable[[], EnvironmentalSensorProvider]] = None,
+    air_quality_provider_factory: Optional[Callable[[], AirQualitySensorProvider]] = None,
+    imu_provider_factory: Optional[Callable[[], IMUSensorProvider]] = None,
+    led_ring_provider_factory: Optional[Callable[[LEDRingSettings], LEDRingProvider]] = None,
 ) -> PhosRuntime:
-    """Compose a runtime; tests may inject a fake VisionPipeline/display."""
+    """Compose a runtime; tests may inject Vision, display and sensor providers."""
     if vision_pipeline is not None and vision_factory is not None:
         raise ValueError("Provide either vision_pipeline or vision_factory, not both.")
     config = RuntimeConfig.from_file() if config is None else config
@@ -230,7 +392,16 @@ def build_runtime(
         core.events, blink_interval=config.blink_interval_seconds,
         gaze_interval=config.gaze_interval_seconds, face_gaze_smoothing=config.face_gaze_smoothing,
         reaction_decay_per_second=config.reaction_decay_per_second,
+        imu_reaction_strength=config.imu_reaction_strength, imu_tilt_gaze_strength=config.imu_tilt_gaze_strength,
+        imu_tilt_eye_asymmetry_strength=config.imu_tilt_eye_asymmetry_strength,
+        imu_shake_reaction_strength=config.imu_shake_reaction_strength,
+        imu_impact_reaction_strength=config.imu_impact_reaction_strength,
+        imu_shake_reaction_duration_seconds=config.imu_shake_reaction_duration_seconds,
+        imu_impact_reaction_duration_seconds=config.imu_impact_reaction_duration_seconds,
+        imu_reaction_cooldown_seconds=config.imu_reaction_cooldown_seconds,
     )
+    behavior_engine.configure_base_visual_source(config.base_visual_source)
+    behavior_engine.configure_environment_overlays(config.environment_overlays_enabled)
     vision_holder = {"pipeline": vision_pipeline}
     eye_render_loop = EyeRenderLoop(
         EyeRenderer(width=config.display_width, height=config.display_height,
@@ -244,18 +415,107 @@ def build_runtime(
     )
     core.add_behavior(behavior_engine)
     core.add_behavior(eye_render_loop)
+    runtime_holder = {}
+    environmental_interpreter = EnvironmentalInterpreter(
+        _environmental_settings(config),
+        sink=lambda state, reason, temperature_overlay, air_quality_overlay: runtime_holder["runtime"].publish_environmental_state(
+            state, reason, temperature_overlay, air_quality_overlay),
+    )
     injected_vision = vision_pipeline is not None or vision_factory is not None
     resolved_vision = vision_pipeline or (
         vision_factory(core.events) if vision_factory is not None else _build_configured_vision(config, core.events)
     )
     vision_holder["pipeline"] = resolved_vision
-    return PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
-                       config=config, vision_forced=injected_vision)
+    provider_type = environmental_provider_type(config.environmental_type)
+    sensors = EnvironmentalSensorService(
+        sensor_provider_factory if sensor_provider_factory is not None else
+        lambda: provider_type(address=int(config.environmental_i2c_address, 16)),
+        sensor_type=config.environmental_type,
+        available_measurements=provider_type.available_measurements,
+        enabled=config.environmental_enabled,
+        poll_interval_seconds=config.environmental_poll_interval_seconds,
+        stale_after_seconds=config.environmental_stale_after_seconds,
+        reading_sink=lambda reading, now: environmental_interpreter.observe_environmental(reading.temperature_c, now=now),
+        unavailable_sink=lambda status: environmental_interpreter.unavailable(now=time.monotonic(),
+            source="environmental", status=status),
+    )
+    if config.environmental_enabled:
+        logger.info("%s enabled: I2C bus 1, address %s, polling every %s seconds",
+                    config.environmental_type.upper(), config.environmental_i2c_address, config.environmental_poll_interval_seconds)
+    air_quality = AirQualitySensorService(
+        air_quality_provider_factory if air_quality_provider_factory is not None else
+        lambda: CCS811Provider(address=int(config.ccs811_i2c_address, 16)),
+        enabled=config.ccs811_enabled, poll_interval_seconds=config.ccs811_poll_interval_seconds,
+        stale_after_seconds=config.ccs811_stale_after_seconds, compensation_supplier=sensors.compensation,
+        reading_sink=lambda reading, now: environmental_interpreter.observe_air_quality(reading.eco2_ppm, reading.tvoc_ppb, now=now),
+        unavailable_sink=lambda status: environmental_interpreter.unavailable(now=time.monotonic(),
+            source="air_quality", status=status),
+    )
+    if config.ccs811_enabled:
+        logger.info("CCS811 enabled: I2C bus 1, address %s, polling every %s seconds",
+                    config.ccs811_i2c_address, config.ccs811_poll_interval_seconds)
+    imu = IMUSensorService(
+        imu_provider_factory if imu_provider_factory is not None else
+        lambda: MPU6050Provider(address=int(config.imu_i2c_address, 16)),
+        enabled=config.imu_enabled, poll_interval_seconds=config.imu_poll_interval_seconds,
+        stale_after_seconds=config.imu_stale_after_seconds,
+        motion_settings=_motion_settings(config),
+        motion_state_sink=lambda state: runtime_holder["runtime"].publish_motion_state(state),
+    )
+    if config.imu_enabled:
+        logger.info("MPU-6050 enabled: I2C bus 1, address %s, polling every %s seconds",
+                    config.imu_i2c_address, config.imu_poll_interval_seconds)
+    led_ring = LEDRingController(
+        _led_settings(config), lambda: behavior_engine.face_state,
+        led_ring_provider_factory if led_ring_provider_factory is not None else
+        lambda settings: LEDRingSocketProvider(led_count=settings.led_count),
+    )
+    runtime = PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
+                       config=config, vision_forced=injected_vision, sensor_service=sensors,
+                       air_quality_service=air_quality, imu_service=imu, led_ring_controller=led_ring)
+    runtime_holder["runtime"] = runtime
+    runtime._environmental_interpreter = environmental_interpreter
+    return runtime
+
+
+def _motion_settings(config: RuntimeConfig) -> MotionSettings:
+    return MotionSettings(config.imu_motion_movement_threshold_m_s2,
+                          config.imu_motion_tilt_threshold_m_s2,
+                          config.imu_motion_shake_threshold_deg_s,
+                          config.imu_motion_impact_threshold_m_s2,
+                          config.imu_motion_confirmation_seconds,
+                          config.imu_motion_cooldown_seconds,
+                          config.imu_motion_tilt_exit_threshold_m_s2,
+                          config.imu_motion_lateral_axis, config.imu_motion_forward_axis)
+
+
+def _environmental_settings(config: RuntimeConfig) -> EnvironmentalSettings:
+    return EnvironmentalSettings(config.environmental_behavior_enabled, config.cold_enter_temperature,
+        config.cold_exit_temperature, config.warm_enter_temperature, config.warm_exit_temperature,
+        config.air_quality_warning_eco2, config.air_quality_warning_tvoc,
+        config.air_quality_bad_eco2, config.air_quality_bad_tvoc,
+        config.environmental_confirmation_seconds, config.environmental_recovery_seconds)
+
+
+def _led_settings(config: RuntimeConfig) -> LEDRingSettings:
+    return LEDRingSettings(config.led_ring_enabled, config.led_ring_led_count, config.led_ring_gpio_pin,
+                           config.led_ring_brightness, config.led_ring_base_color,
+                           config.led_ring_follow_visual_state, config.led_ring_update_rate_hz,
+                           config.led_ring_imu_reactions_enabled, config.led_ring_directional_strength,
+                           config.led_ring_directional_sector_size, config.led_ring_shake_strength,
+                           config.led_ring_impact_strength, config.led_ring_imu_animation_color, config.led_ring_directional_animation_speed,
+                           config.led_ring_bottom_led_index, config.led_ring_forward_led_index,
+                           config.led_ring_clockwise)
+
+
+def _log_motion_publish_failure(task):
+    if not task.cancelled() and task.exception() is not None:
+        logger.exception("IMU motion event handling failed", exc_info=task.exception())
 
 
 def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optional[VisionPipeline]:
-    if not (config.vision_enabled or config.web_enabled):
-        return None
+    # Construct a dormant owner for later preview reload; constructors do not
+    # import camera/OpenCV dependencies or acquire hardware.
     expression_provider = None
     smoother = None
     if config.expression_enabled and config.expression_provider == "aws":

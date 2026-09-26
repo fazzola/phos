@@ -13,6 +13,7 @@ DOMAINS = {
     "display": {"title": "Display & Appearance", "description": "Display size, animation timing and eye appearance; iris theme applies on configuration reload."},
     "vision": {"title": "Vision", "description": "Local camera tracking, face detection and an optional display-only diagnostic preview."},
     "expression": {"title": "Expression Recognition", "description": "Select a provider and configure observations, model preprocessing and cloud request limits."},
+    "sensors": {"title": "Sensors", "description": "Environmental, air-quality and MPU-6050 motion readings and configuration. Hardware settings require Restart PHOS; IMU motion settings support Reload configuration."},
     "logging": {"title": "Logging", "description": "Log level, destination and expression diagnostics. SDK credential/request debug output remains suppressed; no credential or payload logging controls are provided."},
     "security": {"title": "Web Administration / Security", "description": "Enable administration and manage your administrator password separately from runtime settings."},
     "status": {"title": "System / Status", "description": "Read-only active configuration metadata and saved configuration status. Lifecycle actions are on a separate System actions page; robot health is not monitored."},
@@ -21,8 +22,14 @@ DOMAINS = {
 # Paths select fields that already exist in the canonical document. A trailing
 # dot selects a whole implemented section; all other entries select one field.
 GROUPS = {
+    "sensors": [("environmental", "Environmental sensor", ("sensors.environmental.",), None),
+                ("ccs811", "CCS811 air quality", ("sensors.ccs811.",), None),
+                ("environmental-behavior", "Environmental behavior", ("behavior.environmental.",), None),
+                ("imu", "GY-521 / MPU-6050 motion", ("sensors.imu.",), None)],
     "network": [("listener", "Administration address", ("web.host", "web.port"), None)],
     "display": [("display", "Display", ("display.",), None),
+                ("led-ring", "WS2812B LED ring", ("led_ring.enabled", "led_ring.led_count", "led_ring.gpio_pin", "led_ring.brightness", "led_ring.base_color", "led_ring.follow_visual_state", "led_ring.update_rate_hz"), None),
+                ("imu-led-reactions", "IMU LED reactions", ("led_ring.imu_reactions_enabled", "led_ring.directional_strength", "led_ring.directional_sector_size", "led_ring.shake_strength", "led_ring.impact_strength", "led_ring.forward_led_index", "led_ring.clockwise"), None),
                 ("behavior", "Eye behavior", ("behavior.",), None)],
     "vision": [("vision", "Camera & tracking", ("vision.face_tracking_enabled", "vision.camera_resolution", "vision.capture_fps", "vision.detection_fps"), None),
                ("camera-preview", "Camera picture-in-picture preview", ("vision.camera_preview.",), None),

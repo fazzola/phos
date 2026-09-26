@@ -1,10 +1,11 @@
-# PHOS 1.0.0 — Raspberry Pi Robot
+# PHOS 1.1.0 — Raspberry Pi Robot
 
 ![PHOS robot](img/phos.png)
 
-Modular robot targeting Raspberry Pi 3. Version 1.0.0 includes animated eyes,
-face tracking, local/AWS expression observations and authenticated configuration
-administration. See the [release scope and limitations](docs/release-1.0.0.md),
+Modular robot targeting Raspberry Pi 3. Version 1.1.0 adds optional motion and
+environmental awareness, WS2812B feedback, environmental face overlays and
+their Web Admin controls to the animated-eyes/tracking baseline. See the
+[release scope and limitations](docs/release-1.1.0.md),
 [installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
 ## Contact
@@ -30,12 +31,17 @@ administration. See the [release scope and limitations](docs/release-1.0.0.md),
 4. Read `docs/roadmap.md`
 5. Read `docs/decisions.md`
 
-The 1.0.0 feature scope is frozen. Sensors, LEDs, voice, conversational AI,
-Home Assistant, remote control API and MCP remain explicitly deferred.
+The optional BME280/BMP280 and CCS811 sensors drive confirmed environmental
+behavior; CCS811 eCO2 is estimated/equivalent CO2, not direct NDIR CO2. The
+optional GY-521/MPU-6050 drives interpreted motion behavior, and the optional
+WS2812B ring renders semantic environmental color plus temporary IMU effects.
+All new hardware remains subject to the physical acceptance checklist. Voice,
+conversational AI, Home Assistant, remote control API and MCP remain deferred.
 
 ## Run PHOS
 
-From the repository root in a graphical Raspberry Pi OS desktop session:
+For production use the [user systemd service](docs/installation.md#managed-startup-and-browser-restart).
+For a foreground diagnostic run from a graphical Raspberry Pi OS desktop session:
 
 ```bash
 .venv/bin/python src/robot/main.py --config config/phos.json
@@ -50,6 +56,8 @@ Edit the file, then restart using the same command:
 
 - **Face tracking only:** set `vision.face_tracking_enabled` to `true`, keeping
   `expression.enabled` false. Install the camera/OpenCV dependencies first.
+- **Camera preview:** set `vision.camera_preview.enabled` to `true`, then reload.
+  The image appears on the robot display only, not in the browser.
 - **Local expressions:** set `expression.enabled` to `true` and
   `expression.provider` to `"local"`. The included `expression.local` settings
   describe MobileFaceNet; download the model following
@@ -77,9 +85,10 @@ field, precedence and migration. The same typed validation and atomic persistenc
 are reused by the optional [web administration interface](docs/web-administration.md).
 It provides authenticated section-based editing, local/AWS selection and password
 management. Web access is disabled by default; enable it only on a trusted LAN.
-Save writes configuration; System actions can reload logging level and eye
-appearance or request a confirmed restart through the [user systemd service](docs/installation.md#managed-startup-and-browser-restart).
-Other settings require restart; camera/provider hot reload and OS reboot are not implemented.
+Save writes configuration; System actions can reload logging level, iris color
+and camera-preview settings or request a confirmed restart through the [user systemd service](docs/installation.md#managed-startup-and-browser-restart).
+Preview can start/stop the existing camera owner when needed. Other settings,
+including expression provider and camera resolution, require restart. OS reboot is not implemented.
 
 ## Eye demo
 
@@ -99,4 +108,4 @@ The robot uses `LLMProvider` so the conversational brain can be OpenAI, Anthropi
 
 ## Agent guidance
 
-PHOS uses hierarchical repository instructions: start with `AGENTS.md`, then read any more-specific `AGENTS.md` under the subsystem being changed. Detailed architecture and accepted decisions live under `docs/`. The reusable Codex workflow skill is project-neutral and lives at `.codex/skills/architecture-first-coding-agent/SKILL.md`.
+PHOS uses hierarchical repository instructions: start with `AGENTS.md`, then read any more-specific `AGENTS.md` under the subsystem being changed. Detailed architecture and accepted decisions live under `docs/`. No external skill copy is required to work on this repository.

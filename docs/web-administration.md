@@ -8,7 +8,7 @@ require restarting PHOS.
 
 ## Install and enable
 
-Use the [PHOS 1.0.0 installation procedure](installation.md#phos-100-reproducible-installation)
+Use the [PHOS 1.1.0 installation procedure](installation.md#phos-110-reproducible-installation)
 on the Pi (Python 3.11+). In `/home/pi/phos`, create the virtual environment with
 `--system-site-packages` so the system camera/OpenCV/Tk packages remain available,
 then install the pinned web dependencies:
@@ -42,7 +42,8 @@ An explicit LAN interface IP is more restrictive than `0.0.0.0`, which binds all
 IPv4 interfaces. IPv6 literals are also accepted. Hostnames are not bind settings.
 No separate web CLI flags exist.
 
-Start from the Pi's graphical desktop session:
+Use the [user systemd service](installation.md#managed-startup-and-browser-restart)
+for production and browser restart. For a foreground diagnostic run:
 
 ```bash
 cd /home/pi/phos
@@ -89,6 +90,8 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Display & Appearance | Display dimensions, fps, fullscreen and transitions; blink/gaze intervals, gaze smoothing and reaction decay from `behavior`. |
 | Vision | Face tracking, camera resolution/cadence, face detection and optional display-only camera picture-in-picture preview. |
 | Expression Recognition | Provider selection/enabling and observation cadence/crop margin; smoothing; local ONNX model, labels and preprocessing; AWS region/confidence/timeouts; a separate cloud cost/rate-limit group. |
+| Display & Appearance | Display, eye behavior, base visual source and WS2812B LED ring settings. Base visual source selects Manual, Environment, or PHOS State persistent intent; error/sleep and IMU reactions temporarily override it. The ring selector offers saturated green, red, yellow, blue, violet, white, cyan, turquoise, orange and magenta. LED pin/count require restart; enabled state, brightness, base color, visual-state following and update rate use Reload configuration. |
+| Sensors | Environmental type (BME280/BMP280), CCS811 air quality, environmental behavior and GY-521/MPU-6050 motion: enable, I2C address, polling and stale timeout; read-only current readings, interpreter state/reason, age and sensor health from the parent runtime. Hardware settings require Restart PHOS; IMU and environmental interpretation settings use Reload configuration. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
 | System / Status | Read-only PHOS version, configuration path, active expression provider/enabled state, last successful load/reload time, saved-versus-active comparison and restart-required fields. Live robot state is not monitored and AWS credential availability is not probed. |
@@ -112,7 +115,7 @@ The canonical model remains authoritative for all ranges, types and relationship
 see [the field reference](development.md#field-reference).
 
 Navigation is defined by a small domain registry, separate from the canonical
-schema. Future implemented subsystems can add areas there. Sensors, LED Ring,
+schema. Future implemented subsystems can add areas there. LED Ring,
 Audio, Voice, LLM, Home Assistant, Remote API and MCP have no settings or
 placeholder pages in this milestone.
 
@@ -210,11 +213,12 @@ procedure. Do not delete only `password.json` while the server is running.
   enabled-but-unreachable launch. Missing dependencies, invalid credential
   permissions and occupied ports must be fixed locally. Shutdown terminates
   the worker and releases its port, even if runtime startup fails. If the worker
-  crashes later, the robot continues; restart PHOS to recover administration.
+  crashes later, the parent shuts down and exits nonzero for supervisor recovery.
 - Filesystem access is trusted. The editor can select model/cascade/log paths
   within the privileges of the PHOS OS account. Run as a normal user, not root.
 - Configurations/credentials are atomically replaced, but there is no automatic
-  backup, cross-process edit lock, subsystem hot reload or high-availability service.
+  backup, cross-process edit lock, arbitrary subsystem hot reload or high-availability service. A dead web worker
+  now causes graceful parent shutdown and a nonzero exit for systemd recovery.
 
 Implementation uses [Flask security guidance](https://flask.palletsprojects.com/en/stable/web-security/),
 [Flask-WTF CSRF protection](https://flask-wtf.readthedocs.io/en/1.2.x/csrf/),
@@ -253,7 +257,7 @@ state changes also require CSRF protection.
 | Operation | Effect |
 | --- | --- |
 | Save on a domain page | Validates and atomically persists the full canonical JSON. Does not change active settings. |
-| Reload configuration | Reads that same file, validates every setting and active path with startup's model, then applies logging level, iris theme and all `vision.camera_preview` settings through shared runtime services. Shows applied fields and remaining restart-required fields. |
+| Reload configuration | Reads that same file, validates every setting and active path with startup's model, then applies logging level, iris theme, LED ring visual settings and all `vision.camera_preview` settings through shared runtime services. Shows applied fields and remaining restart-required fields. |
 | Restart PHOS | Requires the managed service and explicit confirmation. Validates the saved file, requests graceful application shutdown, then systemd starts PHOS again from disk. |
 
 If any setting/path is invalid, Reload applies **nothing**, including logging
@@ -308,10 +312,101 @@ install the user service. Manual terminal launches support Reload, but browser
 Restart is unavailable; stop and rerun the normal startup command locally. Do
 not run a manual copy beside the service (camera/port contention). No reboot,
 arbitrary command execution, privileged shell or generic service-management API
-is provided. **Reboot Raspberry Pi** is deferred beyond 1.0.0.
+is provided. **Reboot Raspberry Pi** is deferred beyond 1.1.0.
 
 Configuration must remain valid until restart completes. Avoid concurrent local
 file edits; a file changed or hardware removed after validation can still cause
 startup to fail. Systemd bounds repeated startup failures; inspect its journal
 and repair locally as described in installation. A lifecycle channel failure
 reports unavailable rather than pretending that settings were applied.
+
+Preview reload failures are shown as errors and logged in the parent. Earlier
+successful appearance changes may already be active; inspect System actions
+after correcting the camera/dependency problem. Invalid JSON/schema applies
+nothing. An accepted preview configuration does not certify live image quality;
+check the physical display and logs. The lifecycle channel waits up to five
+seconds. If a native camera start takes longer, the action may still complete;
+the response reports uncertainty and the channel stays unavailable until PHOS
+restarts. Check locally rather than assuming the operation was cancelled.
+
+
+## Sensors — BME280 / BMP280
+
+After [I2C setup](installation.md#optional-environmental-sensor), open
+**Sensors**, select **Type → BME280** or **BMP280**, enable the sensor, choose the actual `0x76`/`0x77` address and save.
+Polling and stale timeout are seconds; the editor uses canonical validation.
+All changes, including timing and disable, require **System actions → Restart
+PHOS** (or a manual stop/start). Reload leaves them pending without touching
+sensor, display or Vision services. Saving enabled does not mean a sensor exists.
+
+The read-only panel reflects the parent sensor service at page load: temperature
+(°C), relative humidity (%) for BME280, and atmospheric/station pressure (hPa), last successful
+UTC update, age in seconds, and status. Refresh for another snapshot after saving
+any edits. This is not an automatically refreshing dashboard. No sensor driver
+runs in the web worker and no extra network sensor endpoint is introduced.
+
+BMP280 has no humidity sensor: its value is null and the panel shows **Not
+supported**, including when unavailable. The panel shows the active sensor type
+and uses explicit capabilities from runtime. A saved selection does not change
+the displayed active type/capabilities until restart.
+
+Status is disabled, starting, available, unavailable, stale or stopped. Failed
+and stale measurements are hidden, while last-update/age remain visible for
+diagnosis. Before the first successful read there is no timestamp. Missing
+libraries/hardware, wrong chip/address and I/O errors show unavailable; errors
+are sanitized to their exception type. Consult the Pi journal and installation
+troubleshooting. A broken parent channel shows status unavailable, never guessed
+values from saved configuration. Sensor failures do not change PHOS behavior.
+
+Selecting a sensor type does not install its driver. If the sensor error is
+`ModuleNotFoundError` and the Pi journal says `No module named 'bmp280'`, follow
+the [BMP280 driver recovery instructions](installation.md#missing-bmp280-driver)
+to install and verify the dependency in PHOS's virtual environment. Check the
+active configuration path under System / Status if the logged sensor type
+differs from the file you edited.
+
+
+### CCS811 air quality
+
+The same **Sensors** page has a **CCS811 air quality** configuration group:
+enabled, address (`0x5a`/`0x5b`), polling interval and stale timeout. Install its
+optional dependency and verify wiring using the
+[CCS811 setup instructions](installation.md#optional-ccs811-air-quality-sensor).
+Every setting requires **Save → System actions → Restart PHOS**; Reload leaves
+changes pending. The committed default is disabled.
+
+The read-only panel shows **eCO2 (estimated equivalent CO2), ppm**, **TVOC, ppb**,
+last successful UTC update, age, health and compensation input. eCO2 is not a
+direct NDIR CO2 measurement. Values are hidden during `warming_up`, unavailable,
+stale or disabled states; the initial timestamp is absent. Refresh for a new
+snapshot; this page does not acquire hardware or automatically stream readings.
+
+The runtime withholds readings for 20 minutes after initialization. A new
+sensor needs longer first-use conditioning; see installation. Missing DATA_READY
+keeps polling without restarting the conditioning period. Fault recovery or
+PHOS restart does initialize it again. Fresh BME280 temperature/humidity may
+supply compensation automatically. BMP280 lacks humidity; stale, failed or
+missing environmental data use clearly labeled device defaults. The panel
+reports the input last written, not a guarantee that the displayed gas sample
+already incorporates it. Consult the journal for hardware ERROR_ID diagnostics.
+
+### GY-521 / MPU-6050 motion
+
+The **GY-521 / MPU-6050 motion** group edits enabled state, `0x68`/`0x69` address,
+polling and stale timeout, which require **System actions → Restart PHOS**. Its
+motion threshold subgroup is live-reloadable: save then use **Reload
+configuration**, without resetting the sensor. The
+read-only panel shows acceleration X/Y/Z in m/s² and angular velocity X/Y/Z in
+°/s, interpreted motion state, tilt direction, last event, timestamp, age and status. `Factory scale only; no offset calibration`
+means the adapter converted its ±2 g / ±250 °/s raw scale but did not require a
+motionless startup calibration. Values are hidden whenever unavailable or stale;
+the page never opens I2C itself. Setup and Pi verification are in the
+[MPU-6050 installation guide](installation.md#optional-gy-521--mpu-6050-imu).
+
+IMU visual intensity and timing appear under **Display & Appearance → Eye
+behavior**. They are applied by **Reload configuration**. Persistent movement and
+tilt react while their motion state remains active; SHAKE and IMPACT use brief
+alert overlays followed by smooth decay. `imu_tilt_eye_asymmetry_strength`
+mirrors horizontal tilt eye sizes; impact strength must exceed shake strength so
+the strongest alert remains unambiguous. Robot states such as
+sleeping, speaking and error retain priority.

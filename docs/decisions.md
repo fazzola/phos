@@ -229,3 +229,154 @@ default, local to the PHOS display, never persisted or served over the network,
 and is live-reloadable without restarting PHOS or an already-running camera and
 Vision pipeline. Enabling preview may start the dormant existing pipeline;
 disabling it releases the camera only when no other Vision feature uses it.
+
+### 1.0.0 hardening clarification (ADR-018/021)
+
+Release hardening preserves the existing scope and boundaries. Runtime/worker
+failures must exit nonzero so the documented supervisor can recover. Preview
+reload acknowledges camera lifecycle acceptance before recording active settings;
+failed/cancelled starts release resources. Previously successful appearance
+changes remain recorded if a later hardware application fails. Invalid canonical
+configuration still applies nothing. The committed preview default remains off.
+Deprecated, functional CLI overrides remain during the ADR-015 migration; they
+are not a second persisted configuration or the production launch path.
+
+
+## ADR-022 — Optional BME280 environmental service
+
+**Status:** Accepted (explicit BME280 integration request, separately approved
+follow-on to the frozen 1.0.0 baseline).
+
+Use a small synchronous `EnvironmentalSensorProvider` contract and immutable
+`EnvironmentalReading` (temperature °C, relative humidity %, pressure hPa).
+The BME280 adapter owns I2C bus 1 via optional RPi.bme280/smbus2; vendor imports
+are lazy. A dedicated single worker owns device initialization/read/close and
+publishes a lock-protected, in-memory latest snapshot through the sensor service.
+No hardware call runs in the asyncio renderer or a web request. Failures retry
+with bounded backoff and rate-limited warnings; stale/failed readings are never
+presented as current. Native calls cannot be safely interrupted, so shutdown
+bounds its wait without concurrent close or replacement workers.
+
+Canonical `sensors.bme280` is disabled by default; every field requires restart.
+The new required section follows the existing explicit config-merge migration
+policy. Runtime exposes a read-only snapshot via the existing lifecycle status
+channel to the authenticated Sensors editor. It adds no network control API,
+behavior input, event stream or general dashboard. CCS811, GY-521, LED ring,
+voice, MCP and Home Assistant remain deferred. Real Pi acceptance is separate
+from fake-provider tests; the 1.0.0 release history/version is not rewritten.
+
+
+### ADR-022 extension — selectable BME280 / BMP280
+
+**Status:** Accepted (explicit environmental sensor extension request).
+
+Replace the BME280-specific configuration block with `sensors.environmental`
+plus a required `type` selector. Preserve common settings and the explicit
+configuration migration policy. Every sensor change still requires restart.
+The provider-neutral reading has nullable `humidity_percent`; BME280 provides
+humidity, BMP280 cannot. Runtime status includes type and explicit measurement
+capabilities even when disabled/unavailable; Web Admin renders unsupported
+humidity distinctly from unavailable readings.
+
+Keep RPi.bme280 for BME280; its sampling API requires humidity registers. Add
+Pimoroni bmp280 for BMP280, reusing worker-owned smbus2 bus 1 and the existing
+service, retry, freshness and lifecycle boundaries. Strict chip IDs prevent
+silent reinterpretation. No behavior integration or other sensor scope is added.
+
+
+## ADR-023 — CCS811 through the existing sensor service pattern
+
+**Status:** Accepted (explicit CCS811 integration request).
+
+Add `AirQualitySensorProvider` / immutable `AirQualityReading` for eCO2 ppm and
+TVOC ppb alongside the environmental contract. eCO2 is estimated equivalent
+CO2, never direct NDIR CO2. Reuse the established worker/retry/freshness/lifecycle
+implementation, without coupling sensors to behavior, Vision or rendering.
+Canonical `sensors.ccs811` defaults disabled, uses bus 1 and configurable
+0x5a/0x5b, and requires restart for all settings. Web Admin uses the existing
+service snapshot/configuration boundaries.
+
+Select the existing lightweight smbus2 dependency with a local register adapter
+based on ams DS000459, avoiding a new GPIO/I2C framework. Fixed mode 1 and a
+20-minute conditioning gate remain hardware policy. Expected no-data/warm-up
+polls retain initialization; physical failures retry with bounded backoff.
+Automatic compensation accepts fresh service-level temperature plus humidity,
+never assumes BMP280 humidity and restores device defaults on loss of source.
+No baseline persistence, firmware updating, GPIO wake control, GY-521, WS2812B
+or additional control surface is included. Exact breakout electrical validation,
+first-use burn-in and sustained Pi operation remain separate physical acceptance.
+
+## ADR-024 — Optional MPU-6050 IMU service
+
+**Status:** Accepted (explicit GY-521 integration request).
+
+Add typed `IMUSensorProvider` / immutable `IMUReading` and reuse the existing
+bounded sensor worker for an optional bus-1 MPU-6050 adapter. Canonical
+`sensors.imu` defaults disabled, permits `0x68`/`0x69`, and requires restart for
+all fields. Report acceleration in m/s² and angular velocity in °/s through the
+existing runtime status and Web Admin boundaries. Use smbus2 directly and fixed
+±2 g / ±250 °/s scales; do not add automatic offset calibration, orientation
+fusion, interrupts, gestures or behavior integration. Physical wiring and board
+acceptance remain separate from this implementation.
+
+### ADR-024 extension — Motion interpretation
+
+Add a lightweight, pure `MotionInterpreter` after raw IMU readings. It produces
+debounced STILL, MOVING, four tilt, SHAKE and IMPACT observations with a bounded
+low-pass filter, temporal confirmation and event cooldown. Thresholds are
+canonical `sensors.imu.motion` settings and reload through the runtime service
+without touching I2C. No behavior, rendering, orientation fusion or hardware
+interrupt contract is introduced.
+
+### ADR-024 extension — Motion visual intent
+
+Permit stable motion state changes to enter Core as provider-neutral local
+events. BehaviorEngine maps them to FaceState only: persistent tilt/movement in
+IDLE and bounded shake/impact alert overlays. Core states retain priority and
+EyeRenderer remains unaware of IMU concepts. Eight live-reloadable `behavior.imu_*`
+settings provide visible intensity, tilt gaze range and eye asymmetry, separate transient strengths,
+durations and
+cooldown without exposing renderer geometry or changing the base iris theme.
+
+### ADR-024 extension — Reliable sustained tilt
+
+The user-approved classifier correction removes the movement gate on tilt.
+Filtered normalized gravity, signed mounting axes, enter/exit hysteresis and
+temporal confirmation give tilt priority below impact/shake and above movement.
+Preserve the public tilt threshold key with normalized-component semantics; add
+an exit threshold and explicit mounting mapping to canonical live configuration.
+Use a fixed time-based low-pass filter and 20 Hz default sampling, without AHRS
+or changes to BehaviorEngine/EyeRenderer. See installation for conventions,
+limitations, diagnostics and physical verification.
+
+### ADR-024 extension — Amplified IMU visual intent
+
+Keep the established IMU event → BehaviorEngine → FaceState boundary. Increase
+persistent motion and tilt intent for visibility on the 800×600 display, while
+using separately configurable shake and impact strengths so impact is always
+stronger. FaceState retains its existing geometry clamps; alert accents remain
+temporary semantic intent, preserving the configured base iris. The seven
+`behavior.imu_*` settings reload live and do not alter the motion interpreter.
+
+### ADR-024 extension — Directional IMU eye asymmetry
+
+Add an optional signed `FaceState.eye_asymmetry` intent. It requests mirrored
+left/right eye openness without naming an IMU state in the renderer. Behavior
+sets it from stable horizontal tilt: left tilt opens the left eye and right tilt
+opens the right eye by the same configured amount; forward/back and non-tilt IMU
+states request equal eyes. This explicit value overrides the expression
+profile's ordinary asymmetry, while EyeRenderer continues to clamp and
+independently interpolate received eye targets. The one live-reloadable behavior
+setting remains architecture-neutral and preserves robot-state priority.
+
+### ADR-025 — Optional semantic WS2812B output
+
+Add a lazy `rpi-ws281x` hardware provider behind a root-owned helper and a
+separate low-rate unprivileged LED controller.
+The controller reads only the existing immutable `FaceState` semantic accent and
+reaction strength, mapping it to a small uniform steady/pulse/fade vocabulary.
+It must not receive raw Vision, IMU or sensor input, and provider failures must
+not affect Core or eye rendering. Canonical `led_ring` settings keep pin/count
+restart-only; enabled state and visual settings reload through the shared
+lifecycle service. The ring is disabled and count-unconfigured by default until
+physical wiring is accepted.

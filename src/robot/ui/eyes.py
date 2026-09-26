@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from .state import BlinkPhase, FaceExpression, FaceState, VisualAccent
+from .state import AmbientOverlayState, BlinkPhase, FaceExpression, FaceState, VisualAccent
 
 
 _IRIS_COLORS = {
@@ -20,6 +20,7 @@ _IRIS_COLORS = {
 _IRIS_ACCENTS = {
     VisualAccent.NEUTRAL: None,
     VisualAccent.WARM: (48, 226, 178),
+    VisualAccent.COOL: (79, 195, 248),
     VisualAccent.CURIOUS: (79, 195, 248),
     VisualAccent.ALERT: (255, 191, 72),
     VisualAccent.SLEEPY: (173, 145, 248),
@@ -50,6 +51,7 @@ class EyeFrame:
     pupil_color: str
     iris_color: str
     eyes: Tuple[EyeGeometry, EyeGeometry]
+    ambient_overlay: AmbientOverlayState
 
 
 @dataclass
@@ -108,6 +110,7 @@ class EyeRenderer:
                 self._make_eye(True, blink_amount, self._values),
                 self._make_eye(False, blink_amount, self._values),
             ),
+            ambient_overlay=state.ambient_overlay,
         )
 
     def update_appearance(self, *, iris_color: str) -> None:
@@ -148,12 +151,14 @@ def _target_values(state: FaceState, iris_color: str = "cyan") -> _AnimatedValue
     profile = _expression_profile(state.expression)
     strength = state.reaction_strength
     base_open = _blend(state.eye_open, profile[0], strength)
-    asymmetry = profile[1] * strength
+    asymmetry = profile[1] * strength if state.eye_asymmetry is None else state.eye_asymmetry
+    left_open, right_open = ((base_open - asymmetry, base_open + asymmetry)
+                             if state.eye_asymmetry is None else (base_open + asymmetry, base_open - asymmetry))
     eye_color, pupil_color = _accent_colors(state)
     iris_color = _iris_target(_IRIS_COLORS[iris_color], state)
     return _AnimatedValues(
-        eye_open_left=max(0.0, base_open - asymmetry),
-        eye_open_right=max(0.0, base_open + asymmetry),
+        eye_open_left=_clamp_open(left_open),
+        eye_open_right=_clamp_open(right_open),
         squint=_blend(state.squint, profile[2], strength),
         pupil_x=_clamp_unit(state.pupil_x + profile[3] * strength),
         pupil_y=_clamp_unit(state.pupil_y + profile[4] * strength),
@@ -210,12 +215,17 @@ def _clamp_unit(value: float) -> float:
     return max(-1.0, min(value, 1.0))
 
 
+def _clamp_open(value: float) -> float:
+    return max(0.0, min(value, 1.25))
+
+
 def _accent_colors(state: FaceState) -> Tuple[Tuple[int, int, int], Tuple[int, int, int]]:
     neutral_eye = (234, 251, 255)
     neutral_pupil = (20, 32, 45)
     accent_eye, accent_pupil = {
         VisualAccent.NEUTRAL: (neutral_eye, neutral_pupil),
         VisualAccent.WARM: ((40, 224, 176), (6, 59, 61)),
+        VisualAccent.COOL: ((53, 189, 242), (8, 43, 66)),
         VisualAccent.CURIOUS: ((53, 189, 242), (8, 43, 66)),
         VisualAccent.ALERT: ((255, 200, 87), (68, 44, 8)),
         VisualAccent.SLEEPY: ((167, 139, 250), (35, 25, 73)),

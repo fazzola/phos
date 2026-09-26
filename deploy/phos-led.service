@@ -1,0 +1,15 @@
+[Unit]
+Description=PHOS privileged WS2812B LED helper
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/phos
+ExecStart=/home/pi/phos/.venv/bin/python /home/pi/phos/scripts/phos_ws2812b_helper.py --count 12 --pin 18 --socket /run/phos-led.sock --group gpio
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
