@@ -122,7 +122,7 @@ class _SensorService:
                  enabled: bool, poll_interval_seconds: float, stale_after_seconds: float,
                  sensor_type="bme280",
                  available_measurements=("temperature_c", "humidity_percent", "pressure_hpa"),
-                 clock=time.monotonic):
+                 reading_sink=lambda reading, now: None, unavailable_sink=lambda status: None, clock=time.monotonic):
         self._sensor_type = sensor_type
         self._measurements = tuple(available_measurements)
         self._factory = provider_factory
@@ -130,6 +130,8 @@ class _SensorService:
         self._interval = poll_interval_seconds
         self._stale_after = stale_after_seconds
         self._clock = clock
+        self._reading_sink = reading_sink
+        self._unavailable_sink = unavailable_sink
         self._lock = Lock()
         self._stop = Event()
         self._thread = None
@@ -222,6 +224,7 @@ class _SensorService:
                         self._sample_time = self._clock()
                         self._updated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
                         self._status, self._error = "available", None
+                    self._reading_sink(reading, self._sample_time)
                     if first_reading:
                         logger.info("%s available", self._label)
                     elif recovering:
@@ -237,6 +240,7 @@ class _SensorService:
                         previous = self._status
                         self._status, self._error = error.status, str(error)
                         self._last_poll = self._clock()
+                    self._unavailable_sink(error.status)
                     if previous != error.status and self._clock() - last_readiness_log >= 60:
                         logger.info("%s %s: %s", self._label, error.status, error)
                         last_readiness_log = self._clock()
@@ -249,6 +253,7 @@ class _SensorService:
                         if self._stop.is_set():
                             break
                         self._status, self._error = "unavailable", type(error).__name__
+                    self._unavailable_sink("unavailable")
                     now = self._clock()
                     if now - last_warning >= 60:
                         logger.warning("%s unavailable (%s, %s: %s); retrying",
@@ -293,11 +298,13 @@ class AirQualitySensorService(_SensorService):
 
     def __init__(self, provider_factory: Callable[[], AirQualitySensorProvider], *,
                  enabled, poll_interval_seconds, stale_after_seconds,
-                 compensation_supplier=lambda: None, clock=time.monotonic):
+                 compensation_supplier=lambda: None, reading_sink=lambda reading, now: None,
+                 unavailable_sink=lambda status: None, clock=time.monotonic):
         super().__init__(provider_factory, enabled=enabled,
                          poll_interval_seconds=poll_interval_seconds,
                          stale_after_seconds=stale_after_seconds, sensor_type="ccs811",
-                         available_measurements=("eco2_ppm", "tvoc_ppb"), clock=clock)
+                         available_measurements=("eco2_ppm", "tvoc_ppb"), reading_sink=reading_sink,
+                         unavailable_sink=unavailable_sink, clock=clock)
         self._compensation_supplier = compensation_supplier
         self._compensation_source = None
 

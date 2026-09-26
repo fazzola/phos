@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
-from robot.ui import BlinkPhase, EyeRenderer, FaceExpression, FaceState, TkEyeDisplay, VisualAccent
+from robot.ui import AmbientOverlayState, BlinkPhase, EyeRenderer, FaceExpression, FaceState, TkEyeDisplay, VisualAccent
+from robot.ui.display import ambient_overlay_layout
 
 
 def render(state, timestamp=0.0):
@@ -14,6 +15,75 @@ def test_neutral_state_renders_two_open_centered_eyes():
     assert frame.height == 600
     assert frame.eyes[0].center_x < 400 < frame.eyes[1].center_x
     assert all(eye.radius_y > 100 for eye in frame.eyes)
+
+
+def test_warm_overlay_has_two_small_centered_sweat_drops():
+    frame = render(FaceState(ambient_overlay=AmbientOverlayState(temperature="warm")))
+    layout = ambient_overlay_layout(frame)
+    drops = layout.sweat
+
+    assert len(drops) == 2
+    assert all(radius_x < 20 and radius_y < 25 for _, _, radius_x, radius_y in drops)
+    assert abs(sum(x for x, *_ in drops) / len(drops) - frame.width / 2) < frame.width * .01
+    assert drops[0] != drops[1]
+    assert layout.safe_top <= min(y - radius_y for _, y, _, radius_y in drops)
+    assert max(y + radius_y for _, y, _, radius_y in drops) < min(eye.center_y - eye.radius_y for eye in frame.eyes)
+
+
+def test_cold_and_haze_overlays_share_the_centered_forehead_anchor():
+    cold_frame = render(FaceState(ambient_overlay=AmbientOverlayState(temperature="cold")))
+    haze_frame = render(FaceState(ambient_overlay=AmbientOverlayState(air_quality="bad")))
+    cold = ambient_overlay_layout(cold_frame)
+    haze_layout = ambient_overlay_layout(haze_frame)
+    haze = haze_layout.haze
+
+    assert cold.snow[0] == cold.anchor_x == cold_frame.width / 2
+    assert cold.snow[1] == cold.anchor_y
+    assert cold.safe_top <= cold.snow[1] - cold.snow[2]
+    assert cold.snow[1] + cold.snow[2] <= cold.safe_bottom
+    assert len(haze) == 3
+    assert all((x1 + x2) / 2 == haze_layout.anchor_x == haze_frame.width / 2 for x1, _, x2, _ in haze)
+    assert all(haze_layout.safe_top <= y1 < y2 <= haze_layout.safe_bottom for _, y1, _, y2 in haze)
+    assert max(y2 for _, _, _, y2 in haze) < min(eye.center_y - eye.radius_y for eye in haze_frame.eyes)
+
+
+def test_warning_haze_uses_the_same_near_eye_safe_band_as_bad_haze():
+    warning_frame = render(FaceState(ambient_overlay=AmbientOverlayState(air_quality="warning")))
+    bad_frame = render(FaceState(ambient_overlay=AmbientOverlayState(air_quality="bad")))
+    warning = ambient_overlay_layout(warning_frame)
+    bad = ambient_overlay_layout(bad_frame)
+
+    assert len(warning.haze) == 2
+    assert len(bad.haze) == 3
+    assert warning.anchor_x == bad.anchor_x == warning_frame.width / 2
+    assert warning.safe_top == bad.safe_top
+    assert warning.safe_bottom == bad.safe_bottom
+    assert all(warning.safe_top <= y1 < y2 <= warning.safe_bottom for _, y1, _, y2 in warning.haze)
+
+
+def test_combined_environmental_overlays_are_in_bounds_and_above_eye_geometry():
+    frame = render(FaceState(ambient_overlay=AmbientOverlayState(temperature="warm", air_quality="warning")))
+    layout = ambient_overlay_layout(frame)
+    drops, haze = layout.sweat, layout.haze
+    eye_top = min(eye.center_y - eye.radius_y for eye in frame.eyes)
+
+    assert max(y + radius_y for _, y, _, radius_y in drops) < min(y1 for _, y1, _, _ in haze)
+    assert max(y2 for _, _, _, y2 in haze) < eye_top
+    assert layout.safe_bottom < eye_top
+    for x, y, radius_x, radius_y in drops:
+        assert radius_x <= x <= frame.width - radius_x
+        assert radius_y <= y <= frame.height - radius_y
+    for x1, y1, x2, y2 in haze:
+        assert 0 <= x1 < x2 <= frame.width
+        assert 0 <= y1 < y2 <= frame.height
+
+
+def test_environmental_overlay_does_not_change_eye_geometry_or_iris():
+    neutral = render(FaceState())
+    overlay = render(FaceState(ambient_overlay=AmbientOverlayState(temperature="cold", air_quality="warning")))
+
+    assert overlay.eyes == neutral.eyes
+    assert overlay.iris_color == neutral.iris_color
 
 
 def test_expression_transition_interpolates_eye_shape_and_gaze():

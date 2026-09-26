@@ -16,6 +16,55 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class AmbientOverlayLayout:
+    """Central, eye-relative geometry shared by all ambient overlays."""
+
+    anchor_x: float
+    anchor_y: float
+    safe_top: float
+    safe_bottom: float
+    sweat: tuple[tuple[float, float, float, float], ...] = ()
+    snow: Optional[tuple[float, float, float]] = None
+    haze: tuple[tuple[float, float, float, float], ...] = ()
+
+
+def ambient_overlay_layout(frame: EyeFrame) -> AmbientOverlayLayout:
+    """Return bounded central overlay geometry without drawing it.
+
+    The band is measured from the current upper eye edge, so visual overlays
+    remain attached to the face as eye openness changes and never enter the
+    eye/eyelid area.
+    """
+    w, h = frame.width, frame.height
+    eye_top = min(eye.center_y - eye.radius_y for eye in frame.eyes)
+    safe_top = max(0.0, eye_top - h * .13)
+    safe_bottom = max(safe_top, eye_top - h * .015)
+    anchor_x = w / 2
+    anchor_y = max(safe_top + h * .027, eye_top - h * .09)
+    sweat: tuple[tuple[float, float, float, float], ...] = ()
+    snow: Optional[tuple[float, float, float]] = None
+    haze: tuple[tuple[float, float, float, float], ...] = ()
+    if frame.ambient_overlay.temperature == "warm":
+        sweat = (
+            (anchor_x - w * .035, anchor_y - h * .012, w * .018, h * .025),
+            (anchor_x + w * .025, anchor_y + h * .010, w * .014, h * .020),
+        )
+    elif frame.ambient_overlay.temperature == "cold":
+        snow = (anchor_x, anchor_y, min(w, h) * .030)
+    if frame.ambient_overlay.air_quality != "none":
+        count = 2 if frame.ambient_overlay.air_quality == "warning" else 3
+        band_height = h * .018
+        band_spacing = h * .010
+        haze_start = safe_bottom - band_height - band_spacing * (count - 1)
+        haze = tuple(
+            (anchor_x - w * .13, haze_start + index * band_spacing,
+             anchor_x + w * .13, haze_start + band_height + index * band_spacing)
+            for index in range(count)
+        )
+    return AmbientOverlayLayout(anchor_x, anchor_y, safe_top, safe_bottom, sweat, snow, haze)
+
+
+@dataclass(frozen=True)
 class CameraPreviewView:
     """UI-neutral, in-memory image and already-produced Vision diagnostics."""
     frame: Any
@@ -123,6 +172,7 @@ class TkEyeDisplay(EyeDisplay):
         self._canvas.configure(background=frame.background)
         for eye in frame.eyes:
             self._draw_eye(eye, frame)
+        self._draw_ambient_overlay(frame)
         settings = preview_settings or CameraPreviewSettings()
         if preview is not None and settings.enabled:
             self._draw_preview(preview, settings, frame.width, frame.height)
@@ -157,6 +207,21 @@ class TkEyeDisplay(EyeDisplay):
             self._preview_executor.shutdown(wait=False, cancel_futures=True)
             self._preview_executor = None
         self._preview_future = None
+
+    def _draw_ambient_overlay(self, frame: EyeFrame) -> None:
+        overlay = frame.ambient_overlay
+        layout = ambient_overlay_layout(frame)
+        if overlay.temperature == "warm":
+            for x, y, rx, ry in layout.sweat:
+                self._canvas.create_oval(x-rx, y-ry, x+rx, y+ry, fill="#7FE8FF", outline="")
+        elif overlay.temperature == "cold":
+            x, y, radius = layout.snow
+            for dx, dy in ((-radius, 0), (radius, 0), (0, -radius), (0, radius), (-radius*.72, -radius*.72), (radius*.72, radius*.72)):
+                self._canvas.create_line(x-dx, y-dy, x+dx, y+dy, fill="#B9E9FF", width=2)
+        if overlay.air_quality != "none":
+            color = "#D99B4B" if overlay.air_quality == "warning" else "#C76550"
+            for x1, y1, x2, y2 in layout.haze:
+                self._canvas.create_arc(x1, y1, x2, y2, start=190, extent=160, style=self._tk.ARC, outline=color, width=3)
 
     def _draw_eye(self, eye: EyeGeometry, frame: EyeFrame) -> None:
         if eye.closed:

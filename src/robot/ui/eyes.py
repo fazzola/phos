@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from .state import BlinkPhase, FaceExpression, FaceState, VisualAccent
+from .state import AmbientOverlayState, BlinkPhase, FaceExpression, FaceState, VisualAccent
 
 
 _IRIS_COLORS = {
@@ -20,6 +20,7 @@ _IRIS_COLORS = {
 _IRIS_ACCENTS = {
     VisualAccent.NEUTRAL: None,
     VisualAccent.WARM: (48, 226, 178),
+    VisualAccent.COOL: (79, 195, 248),
     VisualAccent.CURIOUS: (79, 195, 248),
     VisualAccent.ALERT: (255, 191, 72),
     VisualAccent.SLEEPY: (173, 145, 248),
@@ -50,6 +51,7 @@ class EyeFrame:
     pupil_color: str
     iris_color: str
     eyes: Tuple[EyeGeometry, EyeGeometry]
+    ambient_overlay: AmbientOverlayState
 
 
 @dataclass
@@ -108,6 +110,7 @@ class EyeRenderer:
                 self._make_eye(True, blink_amount, self._values),
                 self._make_eye(False, blink_amount, self._values),
             ),
+            ambient_overlay=state.ambient_overlay,
         )
 
     def update_appearance(self, *, iris_color: str) -> None:
@@ -222,6 +225,7 @@ def _accent_colors(state: FaceState) -> Tuple[Tuple[int, int, int], Tuple[int, i
     accent_eye, accent_pupil = {
         VisualAccent.NEUTRAL: (neutral_eye, neutral_pupil),
         VisualAccent.WARM: ((40, 224, 176), (6, 59, 61)),
+        VisualAccent.COOL: ((53, 189, 242), (8, 43, 66)),
         VisualAccent.CURIOUS: ((53, 189, 242), (8, 43, 66)),
         VisualAccent.ALERT: ((255, 200, 87), (68, 44, 8)),
         VisualAccent.SLEEPY: ((167, 139, 250), (35, 25, 73)),

@@ -60,6 +60,12 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
         runtime = build_application(config=config)
         if lifecycle is not None:
             lifecycle.register_appearance_applier(runtime.apply_appearance)
+            source_applier = getattr(runtime, "apply_base_visual_source", None)
+            if source_applier is not None:
+                lifecycle.register_base_visual_source_applier(source_applier)
+            overlay_applier = getattr(runtime, "apply_environment_overlays", None)
+            if overlay_applier is not None:
+                lifecycle.register_environment_overlays_applier(overlay_applier)
             preview_applier = getattr(runtime, "apply_camera_preview", None)
             if preview_applier is not None:
                 lifecycle.register_camera_preview_applier(preview_applier)
@@ -72,6 +78,9 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
             led_ring_applier = getattr(runtime, "apply_led_ring", None)
             if led_ring_applier is not None:
                 lifecycle.register_led_ring_applier(led_ring_applier)
+            environmental_applier = getattr(runtime, "apply_environmental_behavior", None)
+            if environmental_applier is not None:
+                lifecycle.register_environmental_behavior_applier(environmental_applier)
             sensor_status = getattr(runtime, "sensor_status", None)
             if sensor_status is not None:
                 lifecycle.register_sensor_status(sensor_status)

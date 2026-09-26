@@ -175,6 +175,13 @@ steady for neutral; warm and curious pulse gently; alert pulses yellow; sleepy
 fades dim violet; error is steady red. The normal semantic alert state covers
 short IMU shake/impact behavior through its existing transient FaceState intent.
 
+Environmental LED intent is persistent context rather than an IMU animation:
+cold is blue, warm is orange, air-quality warning is yellow, and bad air quality
+is red. `STILL` means no active IMU animation, so it preserves the active
+environmental color; after a tilt fill ends, the next frame resolves the current
+environmental intent again. Only when no semantic environmental intent is active
+does the ring return to the configured base color.
+
 ### Electrical considerations
 
 WS2812B LEDs are normally powered from a 5 V supply and can draw significant current depending on LED count and brightness.
@@ -273,7 +280,7 @@ Already operational:
 - 800x600 PHOS display/eyes;
 - Raspberry Pi Camera and face tracking.
 
-BME280/BMP280 and CCS811 software integration is implemented; wiring, address and real readings await Pi acceptance.
+BME280/BMP280 and CCS811 software integration is implemented; wiring, address and real readings await Pi acceptance. When enabled, their fresh readings may also feed the provider-neutral environmental behavior interpreter. CCS811 eCO2 remains an estimated/equivalent value, not a direct NDIR CO2 measurement.
 
 Selected but **not yet integrated in software**:
 

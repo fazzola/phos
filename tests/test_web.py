@@ -706,6 +706,48 @@ def test_sensor_status_panel_uses_parent_service_and_hides_stale_values(setup):
     assert "disabled" in client.get("/configuration/sensors").get_data(as_text=True)
 
 
+def test_environmental_behavior_status_uses_runtime_interpreter_state(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    environmental = {"sensor_type": "bmp280", "status": "available", "available": True,
+                     "measurements": {"temperature_c": 28.0, "pressure_hpa": 1008.75},
+                     "age_seconds": 2, "available_measurements": ["temperature_c", "pressure_hpa"],
+                     "last_update": "2026-09-26T10:00:00+00:00", "error": None}
+    air = {"sensor_type": "ccs811", "status": "available", "available": True,
+           "measurements": {"eco2_ppm": 1300, "tvoc_ppb": 321}, "age_seconds": 3,
+           "last_update": "2026-09-26T10:00:00+00:00", "compensation_input": "device_defaults", "error": None}
+    lifecycle.register_sensor_status(lambda: {"environmental": environmental, "ccs811": air,
+        "environmental_behavior": {"state": "warm", "reason": "temperature above warm threshold"}})
+    client = authorize(create_app(path, active_document=config.to_dict(), lifecycle=lifecycle))
+    page = client.get("/configuration/sensors").get_data(as_text=True)
+    for text in ("Environmental State</dt><dd>WARM", "temperature above warm threshold",
+                 "28.00 °C", "1008.75 hPa", "1300 ppm", "321 ppb", "2.0 seconds old", "3.0 seconds old"):
+        assert text in page
+
+
+def test_environmental_behavior_status_separates_warm_from_ccs811_warming_up(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    lifecycle.register_sensor_status(lambda: {
+        "environmental": {"sensor_type": "bmp280", "status": "available", "available": True,
+            "measurements": {"temperature_c": 28.18, "pressure_hpa": 995.66}, "age_seconds": 1,
+            "available_measurements": ["temperature_c", "pressure_hpa"], "last_update": None, "error": None},
+        "ccs811": {"sensor_type": "ccs811", "status": "warming_up", "available": False,
+            "measurements": None, "age_seconds": None, "last_update": None,
+            "compensation_input": None, "error": "Conditioning"},
+        "environmental_behavior": {"state": "warm", "reason": "temperature above warm threshold"},
+    })
+    client = authorize(create_app(path, active_document=config.to_dict(), lifecycle=lifecycle))
+    page = client.get("/configuration/sensors").get_data(as_text=True)
+    assert "Environmental State</dt><dd>WARM" in page
+    assert "temperature above warm threshold" in page
+    assert "CCS811 freshness</dt><dd>warming_up" in page
+
+
 def test_bmp280_status_shows_unsupported_humidity_even_when_disabled(setup):
     from robot.lifecycle import LifecycleService
     app, path, _ = setup

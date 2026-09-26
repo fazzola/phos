@@ -92,6 +92,13 @@ accent colors, as well as the existing eye-shape profile. Eye, pupil, and
 background color transitions interpolate at render cadence rather than jumping
 at Vision inference cadence.
 
+Environmental interpretation also supplies independent, confirmed temperature
+and air-quality overlay intents on `FaceState`. They are composable renderer
+inputs only: the single priority-selected `EnvironmentalState` remains the
+contract for existing eye and LED behavior, while the display can show, for
+example, both a warm-temperature marker and an air-quality haze without
+reinterpreting sensor readings or thresholds.
+
 Robot state remains higher priority than Vision: listening/thinking use a
 curious accent, speaking uses warm, sleeping uses sleepy, and error uses red.
 Happy reactions refresh only from confirmed observations and decay smoothly

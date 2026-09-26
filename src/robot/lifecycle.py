@@ -39,8 +39,16 @@ LED_RING_RELOADABLE = frozenset({
     "led_ring.directional_animation_speed", "led_ring.bottom_led_index",
     "led_ring.forward_led_index", "led_ring.clockwise",
 })
-RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE,
-                        *IMU_BEHAVIOR_RELOADABLE, *LED_RING_RELOADABLE})
+ENVIRONMENTAL_BEHAVIOR_RELOADABLE = frozenset({
+    "behavior.environmental.enabled", "behavior.environmental.cold_enter_temperature",
+    "behavior.environmental.cold_exit_temperature", "behavior.environmental.warm_enter_temperature",
+    "behavior.environmental.warm_exit_temperature", "behavior.environmental.air_quality_warning_eco2",
+    "behavior.environmental.air_quality_warning_tvoc", "behavior.environmental.air_quality_bad_eco2",
+    "behavior.environmental.air_quality_bad_tvoc", "behavior.environmental.confirmation_seconds",
+    "behavior.environmental.recovery_seconds",
+})
+RELOADABLE = frozenset({"logging.level", "display.iris_color", "display.base_visual_source", "display.environment_overlays_enabled", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE,
+                        *IMU_BEHAVIOR_RELOADABLE, *LED_RING_RELOADABLE, *ENVIRONMENTAL_BEHAVIOR_RELOADABLE})
 
 
 def changed_fields(active, saved, prefix=""):
@@ -71,10 +79,13 @@ class LifecycleService:
         self.restart_at = None
         self._set_log_level = log_level_setter
         self._apply_appearance = None
+        self._apply_base_visual_source = None
+        self._apply_environment_overlays = None
         self._apply_camera_preview = None
         self._apply_imu_motion = None
         self._apply_imu_behavior = None
         self._apply_led_ring = None
+        self._apply_environmental_behavior = None
         self._sensor_status = None
         self._clock = clock
         self._lock = RLock()
@@ -83,6 +94,13 @@ class LifecycleService:
         """Register the running application service's renderer update boundary."""
         with self._lock:
             self._apply_appearance = applier
+
+    def register_base_visual_source_applier(self, applier):
+        with self._lock:
+            self._apply_base_visual_source = applier
+
+    def register_environment_overlays_applier(self, applier):
+        with self._lock: self._apply_environment_overlays = applier
 
     def register_camera_preview_applier(self, applier):
         """Register runtime service for applying validated preview settings."""
@@ -100,6 +118,10 @@ class LifecycleService:
     def register_led_ring_applier(self, applier):
         with self._lock:
             self._apply_led_ring = applier
+
+    def register_environmental_behavior_applier(self, applier):
+        with self._lock:
+            self._apply_environmental_behavior = applier
 
     @property
     def restart_due(self):
@@ -146,6 +168,11 @@ class LifecycleService:
                 if (self.active["display"]["iris_color"] != saved["display"]["iris_color"]
                         and self._apply_appearance is None):
                     return {"ok": False, "error": "Runtime appearance service is not ready. No settings were applied; retry reload shortly."}
+                if (self.active["display"]["base_visual_source"] != saved["display"]["base_visual_source"]
+                        and self._apply_base_visual_source is None):
+                    return {"ok": False, "error": "Runtime visual source service is not ready. No settings were applied; retry reload shortly."}
+                if (self.active["display"]["environment_overlays_enabled"] != saved["display"]["environment_overlays_enabled"] and self._apply_environment_overlays is None):
+                    return {"ok": False, "error": "Runtime environmental overlay service is not ready. No settings were applied; retry reload shortly."}
                 preview_paths = changed_fields(self.active["vision"]["camera_preview"],
                     saved["vision"]["camera_preview"], "vision.camera_preview")
                 preview_changed = bool(preview_paths)
@@ -163,6 +190,10 @@ class LifecycleService:
                              if path in LED_RING_RELOADABLE]
                 if led_paths and self._apply_led_ring is None:
                     return {"ok": False, "error": "Runtime LED ring service is not ready. No settings were applied; retry reload shortly."}
+                environmental_paths = changed_fields(self.active["behavior"]["environmental"],
+                    saved["behavior"]["environmental"], "behavior.environmental")
+                if environmental_paths and self._apply_environmental_behavior is None:
+                    return {"ok": False, "error": "Runtime environmental behavior service is not ready. No settings were applied; retry reload shortly."}
                 if self.active["display"]["iris_color"] != saved["display"]["iris_color"]:
                     try:
                         self._apply_appearance(config)
@@ -170,6 +201,14 @@ class LifecycleService:
                         return {"ok": False, "error": "The running display could not accept the appearance update. No active configuration was recorded; retry reload or restart PHOS."}
                     self.active["display"]["iris_color"] = saved["display"]["iris_color"]
                     applied.append("display.iris_color")
+                if self.active["display"]["base_visual_source"] != saved["display"]["base_visual_source"]:
+                    self._apply_base_visual_source(config)
+                    self.active["display"]["base_visual_source"] = saved["display"]["base_visual_source"]
+                    applied.append("display.base_visual_source")
+                if self.active["display"]["environment_overlays_enabled"] != saved["display"]["environment_overlays_enabled"]:
+                    self._apply_environment_overlays(config)
+                    self.active["display"]["environment_overlays_enabled"] = saved["display"]["environment_overlays_enabled"]
+                    applied.append("display.environment_overlays_enabled")
                 if preview_changed:
                     try:
                         self._apply_camera_preview(config)
@@ -203,6 +242,10 @@ class LifecycleService:
                     for path in led_paths:
                         self.active["led_ring"][path.rsplit(".", 1)[1]] = saved["led_ring"][path.rsplit(".", 1)[1]]
                     applied.extend(led_paths)
+                if environmental_paths:
+                    self._apply_environmental_behavior(config)
+                    self.active["behavior"]["environmental"] = deepcopy(saved["behavior"]["environmental"])
+                    applied.extend(environmental_paths)
                 if self.active["logging"]["level"] != saved["logging"]["level"]:
                     self._set_log_level(saved["logging"]["level"])
                     self.active["logging"]["level"] = saved["logging"]["level"]

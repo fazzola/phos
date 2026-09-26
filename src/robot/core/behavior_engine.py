@@ -10,13 +10,14 @@ import time
 from dataclasses import replace
 from typing import Callable, Optional
 
-from robot.ui.state import BlinkPhase, FaceExpression, FaceState, VisualAccent
+from robot.ui.state import AmbientOverlayState, BlinkPhase, EnvironmentalLEDIntent, FaceExpression, FaceState, VisualAccent
 from robot.motion import MotionState
 
 from .behaviors import Behavior
 from .events import Event, EventBus
 from .runtime import STATE_CHANGED
 from .state import RobotState
+from .environmental import EnvironmentalState
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ VISION_EXPRESSION_STABLE = "vision.visual_expression_stable"
 VISION_FACE_LOST = "vision.face_lost"
 VISION_FACE_POSITION = "vision.face_position"
 IMU_MOTION_STATE = "imu.motion_state"
+ENVIRONMENTAL_STATE_CHANGED = "environmental.state_changed"
 
 _MOTION_TILT_OFFSETS = {
     # pupil_x/pupil_y factor, base openness, left-eye asymmetry factor
@@ -89,6 +91,11 @@ class BehaviorEngine(Behavior):
         self._motion_state_started_at = float("-inf")
         self._motion_transient = None
         self._motion_last_at = float("-inf")
+        self._environmental_state = EnvironmentalState.NORMAL
+        # Standalone engine users retain historical environmental behavior;
+        # application construction always supplies canonical configuration.
+        self._base_visual_source = "environment"
+        self._environment_overlays_enabled = True
         self._unsubscribers: list[Callable[[], None]] = []
         self._task: Optional[asyncio.Task[None]] = None
 
@@ -121,6 +128,16 @@ class BehaviorEngine(Behavior):
         self._imu_impact_duration = impact_duration
         self._imu_cooldown = cooldown
 
+    def configure_base_visual_source(self, source):
+        if source not in {"manual", "environment", "state"}:
+            raise ValueError("Unsupported base visual source")
+        self._base_visual_source = source
+
+    def configure_environment_overlays(self, enabled):
+        self._environment_overlays_enabled = bool(enabled)
+        if not self._environment_overlays_enabled:
+            self._state = replace(self._state, ambient_overlay=AmbientOverlayState())
+
     async def start(self) -> None:
         if self._task is not None:
             raise RuntimeError("Behavior engine is already running.")
@@ -130,6 +147,7 @@ class BehaviorEngine(Behavior):
             self._events.subscribe(VISION_FACE_POSITION, self._on_face_position),
             self._events.subscribe(VISION_FACE_LOST, self._on_face_lost),
             self._events.subscribe(IMU_MOTION_STATE, self._on_motion_state),
+            self._events.subscribe(ENVIRONMENTAL_STATE_CHANGED, self._on_environmental_state),
         ]
         now = self._clock()
         self._next_blink_at = now + random.uniform(*self._blink_interval)
@@ -240,10 +258,20 @@ class BehaviorEngine(Behavior):
                      self._imu_shake_strength if state is MotionState.SHAKE else self._imu_impact_strength,
                      self._imu_shake_duration if state is MotionState.SHAKE else self._imu_impact_duration)
 
+    async def _on_environmental_state(self, event: Event) -> None:
+        try:
+            self._environmental_state = EnvironmentalState(event.data["state"])
+            self._state = replace(self._state, ambient_overlay=AmbientOverlayState(
+                event.data.get("temperature_overlay", "none"), event.data.get("air_quality_overlay", "none"))
+                if self._environment_overlays_enabled else AmbientOverlayState())
+        except (KeyError, TypeError, ValueError):
+            return
+
     def _with_motion_reaction(self, state: FaceState, now: float) -> FaceState:
         """Apply IMU intent only below RobotState priority, without UI geometry."""
         if self._robot_state is not RobotState.IDLE:
             return replace(state, motion_state=None, motion_event_at=None)
+        state = self._resolve_persistent_visual_state(state)
         transient = self._motion_transient
         if transient is not None:
             kind, started_at = transient
@@ -279,6 +307,31 @@ class BehaviorEngine(Behavior):
                            motion_state=self._motion_state.value, motion_started_at=self._motion_state_started_at)
         return replace(state, motion_state=self._motion_state.value, motion_event_at=None,
                        motion_started_at=self._motion_state_started_at)
+
+    def _resolve_persistent_visual_state(self, state: FaceState) -> FaceState:
+        """Persistent context, below transient motion and above Vision intent."""
+        if self._base_visual_source == "manual":
+            return replace(state, expression=FaceExpression.NEUTRAL, accent=VisualAccent.NEUTRAL,
+                           environmental_led_intent=None, reaction_strength=0.0)
+        if self._base_visual_source == "state":
+            return replace(state, environmental_led_intent=None)
+        if self._environmental_state is EnvironmentalState.COLD:
+            return replace(state, eye_open=max(state.eye_open, 1.10), expression=FaceExpression.CURIOUS,
+                           accent=VisualAccent.COOL, environmental_led_intent=EnvironmentalLEDIntent.COLD,
+                           reaction_strength=max(state.reaction_strength, .45))
+        if self._environmental_state is EnvironmentalState.WARM:
+            return replace(state, eye_open=min(state.eye_open, .88), expression=FaceExpression.SLEEPY,
+                           accent=VisualAccent.WARM, environmental_led_intent=EnvironmentalLEDIntent.WARM,
+                           reaction_strength=max(state.reaction_strength, .45))
+        if self._environmental_state is EnvironmentalState.AIR_QUALITY_WARNING:
+            return replace(state, eye_open=max(state.eye_open, 1.12), expression=FaceExpression.CURIOUS,
+                           accent=VisualAccent.ALERT, environmental_led_intent=EnvironmentalLEDIntent.AIR_QUALITY_WARNING,
+                           reaction_strength=max(state.reaction_strength, .62))
+        if self._environmental_state is EnvironmentalState.AIR_QUALITY_BAD:
+            return replace(state, eye_open=max(state.eye_open, 1.20), expression=FaceExpression.SURPRISED,
+                           accent=VisualAccent.ALERT, environmental_led_intent=EnvironmentalLEDIntent.AIR_QUALITY_BAD,
+                           reaction_strength=max(state.reaction_strength, .82))
+        return state
 
     async def _animation_loop(self) -> None:
         while True:

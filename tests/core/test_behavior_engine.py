@@ -4,7 +4,8 @@ import pytest
 
 from robot.core import BehaviorEngine, Event, EventBus, RobotState, STATE_CHANGED
 from robot.core.behavior_engine import IMU_MOTION_STATE
-from robot.ui import FaceExpression, VisualAccent
+from robot.core.behavior_engine import ENVIRONMENTAL_STATE_CHANGED
+from robot.ui import EnvironmentalLEDIntent, FaceExpression, VisualAccent
 
 
 def test_behavior_engine_maps_core_state_to_face_state():
@@ -333,3 +334,59 @@ def test_imu_reactions_stay_within_facestate_bounds_and_restore_base_appearance(
         assert -1 <= state.pupil_x <= 1 and -1 <= state.pupil_y <= 1
         assert 0 <= state.eye_open <= 1.25 and 0 <= state.reaction_strength <= 1
         assert state.eye_asymmetry is None or -.5 <= state.eye_asymmetry <= .5
+
+
+def test_environmental_bad_is_visible_but_imu_transient_temporarily_wins():
+    async def exercise():
+        now = [0.0]
+        events = EventBus()
+        engine = BehaviorEngine(events, clock=lambda: now[0], blink_interval=(60, 60), gaze_interval=(60, 60),
+                                imu_shake_reaction_duration_seconds=.2, imu_impact_reaction_duration_seconds=.2)
+        await engine.start()
+        await events.publish(Event(ENVIRONMENTAL_STATE_CHANGED, {"state": "air_quality_bad"}))
+        environmental = engine.face_state
+        await events.publish(Event(IMU_MOTION_STATE, {"state": "impact"}))
+        impact = engine.face_state
+        now[0] = .3
+        restored = engine.face_state
+        await engine.stop()
+        return environmental, impact, restored
+
+    environmental, impact, restored = asyncio.run(exercise())
+    assert environmental.accent is VisualAccent.ALERT and environmental.eye_open >= 1.20
+    assert environmental.environmental_led_intent is EnvironmentalLEDIntent.AIR_QUALITY_BAD
+    assert impact.pupil_x == -.76
+    assert restored.accent is VisualAccent.ALERT and restored.eye_open >= 1.20
+
+
+def test_base_visual_source_selects_manual_environment_or_existing_state_intent():
+    async def exercise():
+        events = EventBus(); engine = BehaviorEngine(events, blink_interval=(60, 60), gaze_interval=(60, 60))
+        await engine.start()
+        await events.publish(Event(ENVIRONMENTAL_STATE_CHANGED, {"state": "warm"}))
+        engine.configure_base_visual_source("manual")
+        manual = engine.face_state
+        engine.configure_base_visual_source("environment")
+        environment = engine.face_state
+        engine.configure_base_visual_source("state")
+        await events.publish(Event("vision.visual_expression_stable", {"visual_expression": {"label": "happy", "confidence": 1}}))
+        state = engine.face_state
+        await engine.stop()
+        return manual, environment, state
+    manual, environment, state = asyncio.run(exercise())
+    assert manual.accent is VisualAccent.NEUTRAL and manual.environmental_led_intent is None
+    assert environment.environmental_led_intent is EnvironmentalLEDIntent.WARM
+    assert state.accent is VisualAccent.WARM and state.environmental_led_intent is None
+
+
+def test_ambient_overlays_are_additive_and_can_be_disabled():
+    async def exercise():
+        engine = BehaviorEngine(EventBus(), blink_interval=(60, 60), gaze_interval=(60, 60))
+        await engine._on_environmental_state(Event("", {"state": "air_quality_warning", "temperature_overlay": "warm", "air_quality_overlay": "warning"}))
+        active = engine.face_state
+        engine.configure_environment_overlays(False)
+        disabled = engine.face_state
+        return active, disabled
+    active, disabled = asyncio.run(exercise())
+    assert active.ambient_overlay.temperature == "warm" and active.ambient_overlay.air_quality == "warning"
+    assert disabled.ambient_overlay.temperature == disabled.ambient_overlay.air_quality == "none"

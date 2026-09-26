@@ -36,12 +36,30 @@ Your edits on this page have not been saved.</p>
 </section>
 <p><a href="{{ url_for('system') }}">System actions: reload configuration or restart PHOS</a></p>
 {% else %}
-<p class="notice">Editing saved settings. Save does not apply changes. Use System actions to reload logging level, eye appearance and camera preview, or restart PHOS for other changes.</p>
+<p class="notice">Editing saved settings. Save does not apply changes. Use System actions to reload eligible settings, or restart PHOS for hardware and other pending changes.</p>
 {% if area == 'sensors' %}
+{% set sensor = runtime_state.get('sensors', {}).get('environmental') if runtime_state and runtime_state.ok else none %}
+{% set air = runtime_state.get('sensors', {}).get('ccs811') if runtime_state and runtime_state.ok else none %}
+{% set environmental_behavior = runtime_state.get('sensors', {}).get('environmental_behavior') if runtime_state and runtime_state.ok else none %}
+<section class="status" aria-label="Current environmental behavior">
+<h3>Environmental behavior</h3>
+<p>Read-only runtime interpretation. PHOS computes this state from fresh sensor readings; this page does not infer it.</p>
+{% if environmental_behavior %}
+<dl><dt>Environmental State</dt><dd>{{ environmental_behavior.state | upper }}</dd>
+<dt>Active reason/source</dt><dd>{{ environmental_behavior.reason or 'Unavailable' }}</dd>
+<dt>Temperature overlay</dt><dd>{{ environmental_behavior.temperature_overlay | upper }}</dd>
+<dt>Air-quality overlay</dt><dd>{{ environmental_behavior.air_quality_overlay | replace('_', ' ') | upper }}</dd>
+<dt>Temperature</dt><dd>{{ '%.2f °C' | format(sensor.measurements.temperature_c) if sensor and sensor.available else 'Unavailable' }}</dd>
+<dt>Pressure</dt><dd>{{ '%.2f hPa' | format(sensor.measurements.pressure_hpa) if sensor and sensor.available else 'Unavailable' }}</dd>
+<dt>eCO2</dt><dd>{{ '%d ppm' | format(air.measurements.eco2_ppm) if air and air.available else 'Unavailable' }}</dd>
+<dt>TVOC</dt><dd>{{ '%d ppb' | format(air.measurements.tvoc_ppb) if air and air.available else 'Unavailable' }}</dd>
+<dt>Environmental sensor freshness</dt><dd>{{ sensor.status if sensor else 'Unavailable' }}{% if sensor and sensor.age_seconds is not none %} ({{ '%.1f seconds old' | format(sensor.age_seconds) }}){% endif %}</dd>
+<dt>CCS811 freshness</dt><dd>{{ air.status if air else 'Unavailable' }}{% if air and air.age_seconds is not none %} ({{ '%.1f seconds old' | format(air.age_seconds) }}){% endif %}</dd></dl>
+{% else %}<p>Environmental behavior runtime status unavailable.</p>{% endif %}
+</section>
 <section class="status" aria-label="Current environmental readings">
 <h3>Current environmental readings</h3>
 <p>Read-only running sensor state. Refresh this page for a new snapshot; save edits first.</p>
-{% set sensor = runtime_state.get('sensors', {}).get('environmental') if runtime_state and runtime_state.ok else none %}
 {% if sensor %}
 <dl><dt>Active sensor</dt><dd>{{ sensor.sensor_type | upper }}</dd><dt>Sensor status</dt><dd>{{ sensor.status }}</dd>
 <dt>Temperature</dt><dd>{{ '%.2f °C' | format(sensor.measurements.temperature_c) if sensor.available else 'Unavailable' }}</dd>
@@ -56,7 +74,6 @@ Your edits on this page have not been saved.</p>
 <section class="status" aria-label="Current CCS811 air-quality readings">
 <h3>CCS811 air quality</h3>
 <p>eCO2 is estimated equivalent CO2, not a direct NDIR CO2 measurement. TVOC estimates total volatile organic compounds.</p>
-{% set air = runtime_state.get('sensors', {}).get('ccs811') if runtime_state and runtime_state.ok else none %}
 {% if air %}
 <dl><dt>Sensor status</dt><dd>{{ air.status }}</dd>
 <dt>eCO2 (estimated equivalent CO2)</dt><dd>{{ '%d ppm' | format(air.measurements.eco2_ppm) if air.available else 'Unavailable' }}</dd>
