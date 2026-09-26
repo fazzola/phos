@@ -146,7 +146,13 @@ _SCHEMA = {
                  "imu_impact_reaction_strength": "imu_impact_reaction_strength",
                  "imu_shake_reaction_duration_seconds": "imu_shake_reaction_duration_seconds",
                  "imu_impact_reaction_duration_seconds": "imu_impact_reaction_duration_seconds",
-                 "imu_reaction_cooldown_seconds": "imu_reaction_cooldown_seconds"},
+                 "imu_reaction_cooldown_seconds": "imu_reaction_cooldown_seconds",
+                 "environmental": {"enabled": "environmental_behavior_enabled",
+                    "cold_enter_temperature": "cold_enter_temperature", "cold_exit_temperature": "cold_exit_temperature",
+                    "warm_enter_temperature": "warm_enter_temperature", "warm_exit_temperature": "warm_exit_temperature",
+                    "air_quality_warning_eco2": "air_quality_warning_eco2", "air_quality_warning_tvoc": "air_quality_warning_tvoc",
+                    "air_quality_bad_eco2": "air_quality_bad_eco2", "air_quality_bad_tvoc": "air_quality_bad_tvoc",
+                    "confirmation_seconds": "environmental_confirmation_seconds", "recovery_seconds": "environmental_recovery_seconds"}},
     "vision": {"face_tracking_enabled": "face_tracking_enabled", "camera_resolution": "camera_resolution",
                "capture_fps": "vision_capture_fps", "detection_fps": "face_detection_fps",
                "camera_preview": {"enabled": "camera_preview_enabled", "position": "camera_preview_position",
@@ -288,6 +294,17 @@ class RuntimeConfig:
     imu_shake_reaction_duration_seconds: float
     imu_impact_reaction_duration_seconds: float
     imu_reaction_cooldown_seconds: float
+    environmental_behavior_enabled: bool
+    cold_enter_temperature: float
+    cold_exit_temperature: float
+    warm_enter_temperature: float
+    warm_exit_temperature: float
+    air_quality_warning_eco2: int
+    air_quality_warning_tvoc: int
+    air_quality_bad_eco2: int
+    air_quality_bad_tvoc: int
+    environmental_confirmation_seconds: float
+    environmental_recovery_seconds: float
     face_tracking_enabled: bool
     camera_preview_enabled: bool
     camera_preview_position: str
@@ -512,9 +529,19 @@ class RuntimeConfig:
         number("imu_shake_reaction_duration_seconds", minimum=.1, inclusive=True, maximum=30)
         number("imu_impact_reaction_duration_seconds", minimum=.1, inclusive=True, maximum=30)
         number("imu_reaction_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
+        for name in ("cold_enter_temperature", "cold_exit_temperature", "warm_enter_temperature", "warm_exit_temperature"):
+            number(name, minimum=-50, inclusive=True, maximum=80)
+        if not self.cold_enter_temperature < self.cold_exit_temperature < self.warm_exit_temperature < self.warm_enter_temperature:
+            raise ConfigurationError("Environmental temperature thresholds must ascend with hysteresis")
+        for name in ("air_quality_warning_eco2", "air_quality_warning_tvoc", "air_quality_bad_eco2", "air_quality_bad_tvoc"):
+            number(name, minimum=1, inclusive=True, maximum=100000, integer=True)
+        if self.air_quality_warning_eco2 >= self.air_quality_bad_eco2 or self.air_quality_warning_tvoc >= self.air_quality_bad_tvoc:
+            raise ConfigurationError("Environmental air-quality thresholds must ascend")
+        for name in ("environmental_confirmation_seconds", "environmental_recovery_seconds"):
+            number(name, minimum=1, inclusive=True, maximum=86400)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("ccs811_enabled", "environmental_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "led_ring_imu_reactions_enabled", "led_ring_clockwise", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
+        for name in ("ccs811_enabled", "environmental_enabled", "environmental_behavior_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "led_ring_imu_reactions_enabled", "led_ring_clockwise", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
                      "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
                      "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
             if type(getattr(self, name)) is not bool:

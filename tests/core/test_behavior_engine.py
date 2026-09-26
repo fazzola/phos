@@ -4,7 +4,8 @@ import pytest
 
 from robot.core import BehaviorEngine, Event, EventBus, RobotState, STATE_CHANGED
 from robot.core.behavior_engine import IMU_MOTION_STATE
-from robot.ui import FaceExpression, VisualAccent
+from robot.core.behavior_engine import ENVIRONMENTAL_STATE_CHANGED
+from robot.ui import EnvironmentalLEDIntent, FaceExpression, VisualAccent
 
 
 def test_behavior_engine_maps_core_state_to_face_state():
@@ -333,3 +334,26 @@ def test_imu_reactions_stay_within_facestate_bounds_and_restore_base_appearance(
         assert -1 <= state.pupil_x <= 1 and -1 <= state.pupil_y <= 1
         assert 0 <= state.eye_open <= 1.25 and 0 <= state.reaction_strength <= 1
         assert state.eye_asymmetry is None or -.5 <= state.eye_asymmetry <= .5
+
+
+def test_environmental_bad_is_visible_but_imu_transient_temporarily_wins():
+    async def exercise():
+        now = [0.0]
+        events = EventBus()
+        engine = BehaviorEngine(events, clock=lambda: now[0], blink_interval=(60, 60), gaze_interval=(60, 60),
+                                imu_shake_reaction_duration_seconds=.2, imu_impact_reaction_duration_seconds=.2)
+        await engine.start()
+        await events.publish(Event(ENVIRONMENTAL_STATE_CHANGED, {"state": "air_quality_bad"}))
+        environmental = engine.face_state
+        await events.publish(Event(IMU_MOTION_STATE, {"state": "impact"}))
+        impact = engine.face_state
+        now[0] = .3
+        restored = engine.face_state
+        await engine.stop()
+        return environmental, impact, restored
+
+    environmental, impact, restored = asyncio.run(exercise())
+    assert environmental.accent is VisualAccent.ALERT and environmental.eye_open >= 1.20
+    assert environmental.environmental_led_intent is EnvironmentalLEDIntent.AIR_QUALITY_BAD
+    assert impact.pupil_x == -.76
+    assert restored.accent is VisualAccent.ALERT and restored.eye_open >= 1.20

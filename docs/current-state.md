@@ -15,6 +15,7 @@ This file is an implementation handoff for coding agents. It records what is pre
 ### Core and behavior
 - Event bus and explicit `RobotState` state machine.
 - `BehaviorEngine` under `src/robot/core/behavior_engine.py`.
+- Environmental behavior is implemented through `EnvironmentalInterpreter`: confirmed, hysteretic temperature and CCS811 eCO2/TVOC context becomes `EnvironmentalState`, then a `BehaviorEngine` eye/LED accent. Missing, stale or unavailable data produces no alarm.
 - Behavior produces `FaceState` and handles blink/idle gaze.
 - Robot states include IDLE, LISTENING, THINKING, SPEAKING, SLEEPING and ERROR.
 

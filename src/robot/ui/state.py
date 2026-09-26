@@ -22,10 +22,20 @@ class VisualAccent(str, Enum):
 
     NEUTRAL = "neutral"
     WARM = "warm"
+    COOL = "cool"
     CURIOUS = "curious"
     ALERT = "alert"
     SLEEPY = "sleepy"
     ERROR = "error"
+
+
+class EnvironmentalLEDIntent(str, Enum):
+    """Persistent environmental LED meaning, independent of eye appearance."""
+
+    COLD = "cold"
+    WARM = "warm"
+    AIR_QUALITY_WARNING = "air_quality_warning"
+    AIR_QUALITY_BAD = "air_quality_bad"
 
 
 class BlinkPhase(str, Enum):
@@ -53,6 +63,7 @@ class FaceState:
     reaction_strength: float = 0.0
     expression: FaceExpression = FaceExpression.NEUTRAL
     accent: VisualAccent = VisualAccent.NEUTRAL
+    environmental_led_intent: Optional[EnvironmentalLEDIntent] = None
     blink_phase: BlinkPhase = BlinkPhase.OPEN
     blink_progress: float = 0.0
     # Semantic motion intent is produced by BehaviorEngine; renderers may ignore it.
@@ -75,6 +86,8 @@ class FaceState:
             reaction_strength=_clamp(self.reaction_strength, 0.0, 1.0),
             expression=expression,
             accent=accent,
+            environmental_led_intent=(self.environmental_led_intent
+                                      if isinstance(self.environmental_led_intent, EnvironmentalLEDIntent) else None),
             blink_phase=blink_phase,
             blink_progress=_clamp(self.blink_progress, 0.0, 1.0),
             motion_state=self.motion_state if isinstance(self.motion_state, str) else None,

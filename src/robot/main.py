@@ -72,6 +72,9 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
             led_ring_applier = getattr(runtime, "apply_led_ring", None)
             if led_ring_applier is not None:
                 lifecycle.register_led_ring_applier(led_ring_applier)
+            environmental_applier = getattr(runtime, "apply_environmental_behavior", None)
+            if environmental_applier is not None:
+                lifecycle.register_environmental_behavior_applier(environmental_applier)
             sensor_status = getattr(runtime, "sensor_status", None)
             if sensor_status is not None:
                 lifecycle.register_sensor_status(sensor_status)

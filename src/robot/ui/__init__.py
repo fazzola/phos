@@ -2,7 +2,7 @@
 
 from .display import CameraPreviewSettings, CameraPreviewView, EyeDisplay, MemoryEyeDisplay, TkEyeDisplay
 from .eyes import EyeFrame, EyeGeometry, EyeRenderer
-from .state import BlinkPhase, FaceExpression, FaceState, VisualAccent
+from .state import BlinkPhase, EnvironmentalLEDIntent, FaceExpression, FaceState, VisualAccent
 from .led_ring import LEDRingController, LEDRingFrame, LEDRingSettings
 
 __all__ = [
@@ -13,6 +13,7 @@ __all__ = [
     "EyeFrame",
     "EyeGeometry",
     "EyeRenderer",
+    "EnvironmentalLEDIntent",
     "FaceExpression",
     "FaceState",
     "LEDRingController",

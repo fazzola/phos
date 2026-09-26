@@ -11,16 +11,23 @@ from typing import Callable, Optional, Tuple
 from robot.config import LED_RING_COLOR_RGB
 from robot.hardware.ws2812b import LEDRingProvider, RGB
 
-from .state import FaceState, VisualAccent
+from .state import EnvironmentalLEDIntent, FaceState, VisualAccent
 
 logger = logging.getLogger(__name__)
 
 _ACCENT_COLORS = {
     VisualAccent.WARM: LED_RING_COLOR_RGB["turquoise"],
+    VisualAccent.COOL: LED_RING_COLOR_RGB["blue"],
     VisualAccent.CURIOUS: LED_RING_COLOR_RGB["cyan"],
     VisualAccent.ALERT: LED_RING_COLOR_RGB["yellow"],
     VisualAccent.SLEEPY: LED_RING_COLOR_RGB["violet"],
     VisualAccent.ERROR: LED_RING_COLOR_RGB["red"],
+}
+_ENVIRONMENTAL_COLORS = {
+    EnvironmentalLEDIntent.COLD: LED_RING_COLOR_RGB["blue"],
+    EnvironmentalLEDIntent.WARM: LED_RING_COLOR_RGB["orange"],
+    EnvironmentalLEDIntent.AIR_QUALITY_WARNING: LED_RING_COLOR_RGB["yellow"],
+    EnvironmentalLEDIntent.AIR_QUALITY_BAD: LED_RING_COLOR_RGB["red"],
 }
 
 
@@ -62,10 +69,13 @@ def led_frame(state: FaceState, settings: LEDRingSettings, now: float) -> LEDRin
     """Map semantic visual and motion intent to a provider-neutral frame."""
     state = state.normalized()
     accent = state.accent if settings.follow_visual_state else VisualAccent.NEUTRAL
-    color = _ACCENT_COLORS.get(accent, LED_RING_COLOR_RGB[settings.base_color])
+    environmental_intent = state.environmental_led_intent if settings.follow_visual_state else None
+    color = _ENVIRONMENTAL_COLORS.get(environmental_intent, _ACCENT_COLORS.get(accent, LED_RING_COLOR_RGB[settings.base_color]))
     base_color = LED_RING_COLOR_RGB[settings.base_color]
     effect, multiplier = "steady", 1.0
-    if accent in {VisualAccent.WARM, VisualAccent.CURIOUS}:
+    if environmental_intent is not None:
+        effect, multiplier = "steady", 1.0
+    elif accent in {VisualAccent.WARM, VisualAccent.COOL, VisualAccent.CURIOUS}:
         effect, multiplier = "pulse", .88 + .12 * (1 + math.sin(now * (1.5 if accent is VisualAccent.WARM else 1.0))) / 2
     elif accent is VisualAccent.ALERT:
         effect, multiplier = "alert_pulse", .65 + .35 * max(state.reaction_strength, .5) * (1 + math.sin(now * 12)) / 2
@@ -75,18 +85,13 @@ def led_frame(state: FaceState, settings: LEDRingSettings, now: float) -> LEDRin
         effect, multiplier = "steady", .85
     scale = max(0.0, min(1.0, settings.brightness * multiplier))
     pixels = [scale_rgb(color, scale)] * settings.led_count
-    # Interpreted STILL is always the configured, static base color. This also
-    # makes a direction change visibly reset before its new fill begins.
-    if state.motion_state == "still":
-        return LEDRingFrame(accent.value, "steady", tuple(scale_rgb(base_color, settings.brightness)
-                                                            for _ in range(settings.led_count)))
     # Error/sleep semantic states remain above IMU reactions. Motion is supplied
     # by BehaviorEngine, never inferred from raw sensor input in this layer.
     if (settings.imu_reactions_enabled and accent not in {VisualAccent.ERROR, VisualAccent.SLEEPY}
             and state.motion_state):
         motion = state.motion_state
         if motion in {"tilt_left", "tilt_right", "tilt_forward", "tilt_back"}:
-            pixels = [scale_rgb(base_color, settings.brightness)] * settings.led_count
+            pixels = [scale_rgb(color, scale)] * settings.led_count
             pixels = _directional_pixels(pixels, LED_RING_COLOR_RGB[settings.imu_animation_color], settings,
                                          motion, now, state.motion_started_at)
             effect = motion
@@ -109,7 +114,8 @@ def led_frame(state: FaceState, settings: LEDRingSettings, now: float) -> LEDRin
     target = state.motion_state.removeprefix("tilt_") if (settings.imu_reactions_enabled and state.motion_state
                                                              and state.motion_state.startswith("tilt_")
                                                              and accent not in {VisualAccent.ERROR, VisualAccent.SLEEPY}) else None
-    return LEDRingFrame(accent.value, effect, tuple(pixels), target)
+    semantic_state = environmental_intent.value if environmental_intent is not None else accent.value
+    return LEDRingFrame(semantic_state, effect, tuple(pixels), target)
 
 
 def _direction_index(direction: str, settings: LEDRingSettings) -> int:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 import logging
+import time
 from typing import Callable, Optional
 
 from robot.config import RuntimeConfig
@@ -17,8 +18,9 @@ from robot.motion import MotionState
 from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorService,
                            AirQualitySensorProvider, AirQualitySensorService,
                            IMUSensorProvider, IMUSensorService)
-from robot.core import BehaviorEngine, Event, EventBus, RobotCore, RobotState, STATE_CHANGED
-from robot.core.behavior_engine import IMU_MOTION_STATE
+from robot.core import (BehaviorEngine, EnvironmentalInterpreter, EnvironmentalSettings, Event, EventBus,
+                        RobotCore, RobotState, STATE_CHANGED)
+from robot.core.behavior_engine import ENVIRONMENTAL_STATE_CHANGED, IMU_MOTION_STATE
 from robot.ui import (CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, LEDRingController,
                       LEDRingSettings, TkEyeDisplay)
 from robot.ui.runtime import EyeRenderLoop
@@ -62,6 +64,7 @@ class PhosRuntime:
         self._air_quality_service = air_quality_service
         self._imu_service = imu_service
         self._led_ring_controller = led_ring_controller
+        self._environmental_interpreter = None
         self._loop = None
         self._vision_changed: Optional[asyncio.Event] = None
         self._vision_lock = asyncio.Lock()
@@ -80,6 +83,16 @@ class PhosRuntime:
             task.add_done_callback(_log_motion_publish_failure)
         loop.call_soon_threadsafe(publish)
 
+    def publish_environmental_state(self, state, reason) -> None:
+        loop = self._loop
+        if loop is None or self._stopping:
+            return
+        def publish():
+            task = asyncio.create_task(self.core.events.publish(Event(ENVIRONMENTAL_STATE_CHANGED,
+                {"state": state.value, "reason": reason})))
+            task.add_done_callback(_log_motion_publish_failure)
+        loop.call_soon_threadsafe(publish)
+
     def apply_appearance(self, config: RuntimeConfig) -> None:
         """Apply validated appearance through the display runtime boundary."""
         self._eye_render_loop.request_appearance(iris_color=config.iris_color)
@@ -90,6 +103,11 @@ class PhosRuntime:
             config.imu_shake_reaction_strength, config.imu_impact_reaction_strength,
             config.imu_shake_reaction_duration_seconds, config.imu_impact_reaction_duration_seconds,
             config.imu_reaction_cooldown_seconds)
+
+    def apply_environmental_behavior(self, config: RuntimeConfig) -> None:
+        if self._environmental_interpreter is None:
+            raise RuntimeError("Environmental behavior service is not configured")
+        self._environmental_interpreter.configure(_environmental_settings(config))
 
     def apply_led_ring(self, config: RuntimeConfig) -> None:
         if self._led_ring_controller is None:
@@ -111,6 +129,9 @@ class PhosRuntime:
             state["imu"] = self._imu_service.snapshot()
         if self._led_ring_controller is not None:
             state["led_ring"] = self._led_ring_controller.snapshot()
+        if self._environmental_interpreter is not None:
+            state["environmental_behavior"] = {"state": self._environmental_interpreter.state.value,
+                                                "reason": self._environmental_interpreter.reason}
         return state
 
     def apply_imu_motion(self, config: RuntimeConfig) -> None:
@@ -382,6 +403,11 @@ def build_runtime(
     )
     core.add_behavior(behavior_engine)
     core.add_behavior(eye_render_loop)
+    runtime_holder = {}
+    environmental_interpreter = EnvironmentalInterpreter(
+        _environmental_settings(config),
+        sink=lambda state, reason: runtime_holder["runtime"].publish_environmental_state(state, reason),
+    )
     injected_vision = vision_pipeline is not None or vision_factory is not None
     resolved_vision = vision_pipeline or (
         vision_factory(core.events) if vision_factory is not None else _build_configured_vision(config, core.events)
@@ -396,6 +422,9 @@ def build_runtime(
         enabled=config.environmental_enabled,
         poll_interval_seconds=config.environmental_poll_interval_seconds,
         stale_after_seconds=config.environmental_stale_after_seconds,
+        reading_sink=lambda reading, now: environmental_interpreter.observe_environmental(reading.temperature_c, now=now),
+        unavailable_sink=lambda status: environmental_interpreter.unavailable(now=time.monotonic(),
+            source="environmental", status=status),
     )
     if config.environmental_enabled:
         logger.info("%s enabled: I2C bus 1, address %s, polling every %s seconds",
@@ -405,11 +434,13 @@ def build_runtime(
         lambda: CCS811Provider(address=int(config.ccs811_i2c_address, 16)),
         enabled=config.ccs811_enabled, poll_interval_seconds=config.ccs811_poll_interval_seconds,
         stale_after_seconds=config.ccs811_stale_after_seconds, compensation_supplier=sensors.compensation,
+        reading_sink=lambda reading, now: environmental_interpreter.observe_air_quality(reading.eco2_ppm, reading.tvoc_ppb, now=now),
+        unavailable_sink=lambda status: environmental_interpreter.unavailable(now=time.monotonic(),
+            source="air_quality", status=status),
     )
     if config.ccs811_enabled:
         logger.info("CCS811 enabled: I2C bus 1, address %s, polling every %s seconds",
                     config.ccs811_i2c_address, config.ccs811_poll_interval_seconds)
-    runtime_holder = {}
     imu = IMUSensorService(
         imu_provider_factory if imu_provider_factory is not None else
         lambda: MPU6050Provider(address=int(config.imu_i2c_address, 16)),
@@ -430,6 +461,7 @@ def build_runtime(
                        config=config, vision_forced=injected_vision, sensor_service=sensors,
                        air_quality_service=air_quality, imu_service=imu, led_ring_controller=led_ring)
     runtime_holder["runtime"] = runtime
+    runtime._environmental_interpreter = environmental_interpreter
     return runtime
 
 
@@ -442,6 +474,14 @@ def _motion_settings(config: RuntimeConfig) -> MotionSettings:
                           config.imu_motion_cooldown_seconds,
                           config.imu_motion_tilt_exit_threshold_m_s2,
                           config.imu_motion_lateral_axis, config.imu_motion_forward_axis)
+
+
+def _environmental_settings(config: RuntimeConfig) -> EnvironmentalSettings:
+    return EnvironmentalSettings(config.environmental_behavior_enabled, config.cold_enter_temperature,
+        config.cold_exit_temperature, config.warm_enter_temperature, config.warm_exit_temperature,
+        config.air_quality_warning_eco2, config.air_quality_warning_tvoc,
+        config.air_quality_bad_eco2, config.air_quality_bad_tvoc,
+        config.environmental_confirmation_seconds, config.environmental_recovery_seconds)
 
 
 def _led_settings(config: RuntimeConfig) -> LEDRingSettings:

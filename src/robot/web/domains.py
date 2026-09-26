@@ -24,6 +24,7 @@ DOMAINS = {
 GROUPS = {
     "sensors": [("environmental", "Environmental sensor", ("sensors.environmental.",), None),
                 ("ccs811", "CCS811 air quality", ("sensors.ccs811.",), None),
+                ("environmental-behavior", "Environmental behavior", ("behavior.environmental.",), None),
                 ("imu", "GY-521 / MPU-6050 motion", ("sensors.imu.",), None)],
     "network": [("listener", "Administration address", ("web.host", "web.port"), None)],
     "display": [("display", "Display", ("display.",), None),

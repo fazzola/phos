@@ -3,7 +3,7 @@ import sys
 import time
 from types import SimpleNamespace
 
-from robot.ui import FaceState, LEDRingController, LEDRingSettings, VisualAccent
+from robot.ui import EnvironmentalLEDIntent, FaceState, LEDRingController, LEDRingSettings, VisualAccent
 from robot.config import LED_RING_COLOR_RGB
 from robot.ui.led_ring import led_frame, scale_rgb
 from robot.hardware.ws2812b import WS2812BProvider
@@ -41,6 +41,39 @@ def test_alert_frame_returns_to_configured_baseline_after_transient_state():
     restored = led_frame(FaceState(), settings(base_color="green"), 2)
     assert alert.pixels != baseline.pixels
     assert restored.semantic_state == "neutral" and restored.pixels == baseline.pixels
+
+
+def test_environmental_intents_use_canonical_colors_and_are_static_when_still():
+    ring = settings(brightness=1, base_color="cyan")
+    expected = {
+        EnvironmentalLEDIntent.COLD: "blue",
+        EnvironmentalLEDIntent.WARM: "orange",
+        EnvironmentalLEDIntent.AIR_QUALITY_WARNING: "yellow",
+        EnvironmentalLEDIntent.AIR_QUALITY_BAD: "red",
+    }
+    for intent, color in expected.items():
+        frame = led_frame(FaceState(accent=VisualAccent.ALERT, environmental_led_intent=intent,
+                                    motion_state="still"), ring, 0)
+        assert frame.semantic_state == intent.value
+        assert frame.effect == "steady"
+        assert frame.pixels == (LED_RING_COLOR_RGB[color],) * ring.led_count
+
+
+def test_environmental_warm_restores_after_tilt_and_normal_restores_base_color():
+    ring = settings(led_count=8, brightness=1, base_color="cyan", imu_animation_color="yellow",
+                    directional_animation_speed=1, forward_led_index=4)
+    warm = FaceState(accent=VisualAccent.WARM, environmental_led_intent=EnvironmentalLEDIntent.WARM,
+                     motion_state="still")
+    warm_frame = led_frame(warm, ring, 0)
+    tilt = led_frame(FaceState(accent=VisualAccent.WARM, environmental_led_intent=EnvironmentalLEDIntent.WARM,
+                               motion_state="tilt_left", motion_started_at=0), ring, 1)
+    restored = led_frame(warm, ring, 2)
+    normal = led_frame(FaceState(motion_state="still"), ring, 3)
+    assert warm_frame.pixels == (LED_RING_COLOR_RGB["orange"],) * 8
+    assert tilt.effect == "tilt_left" and LED_RING_COLOR_RGB["yellow"] in tilt.pixels
+    assert restored.pixels == warm_frame.pixels
+    assert normal.pixels == (LED_RING_COLOR_RGB["cyan"],) * 8
+    assert ring.base_color == "cyan"
 
 
 def test_named_palette_is_exact_saturated_and_distinct():

@@ -43,7 +43,20 @@
     "imu_impact_reaction_strength": 1.0,
     "imu_shake_reaction_duration_seconds": 1.35,
     "imu_impact_reaction_duration_seconds": 1.0,
-    "imu_reaction_cooldown_seconds": 2.0
+    "imu_reaction_cooldown_seconds": 2.0,
+    "environmental": {
+      "enabled": false,
+      "cold_enter_temperature": 17.0,
+      "cold_exit_temperature": 18.0,
+      "warm_enter_temperature": 27.0,
+      "warm_exit_temperature": 26.0,
+      "air_quality_warning_eco2": 1200,
+      "air_quality_warning_tvoc": 220,
+      "air_quality_bad_eco2": 2000,
+      "air_quality_bad_tvoc": 660,
+      "confirmation_seconds": 30.0,
+      "recovery_seconds": 60.0
+    }
   },
   "vision": {
     "face_tracking_enabled": false,

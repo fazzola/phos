@@ -39,8 +39,16 @@ LED_RING_RELOADABLE = frozenset({
     "led_ring.directional_animation_speed", "led_ring.bottom_led_index",
     "led_ring.forward_led_index", "led_ring.clockwise",
 })
+ENVIRONMENTAL_BEHAVIOR_RELOADABLE = frozenset({
+    "behavior.environmental.enabled", "behavior.environmental.cold_enter_temperature",
+    "behavior.environmental.cold_exit_temperature", "behavior.environmental.warm_enter_temperature",
+    "behavior.environmental.warm_exit_temperature", "behavior.environmental.air_quality_warning_eco2",
+    "behavior.environmental.air_quality_warning_tvoc", "behavior.environmental.air_quality_bad_eco2",
+    "behavior.environmental.air_quality_bad_tvoc", "behavior.environmental.confirmation_seconds",
+    "behavior.environmental.recovery_seconds",
+})
 RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE,
-                        *IMU_BEHAVIOR_RELOADABLE, *LED_RING_RELOADABLE})
+                        *IMU_BEHAVIOR_RELOADABLE, *LED_RING_RELOADABLE, *ENVIRONMENTAL_BEHAVIOR_RELOADABLE})
 
 
 def changed_fields(active, saved, prefix=""):
@@ -75,6 +83,7 @@ class LifecycleService:
         self._apply_imu_motion = None
         self._apply_imu_behavior = None
         self._apply_led_ring = None
+        self._apply_environmental_behavior = None
         self._sensor_status = None
         self._clock = clock
         self._lock = RLock()
@@ -100,6 +109,10 @@ class LifecycleService:
     def register_led_ring_applier(self, applier):
         with self._lock:
             self._apply_led_ring = applier
+
+    def register_environmental_behavior_applier(self, applier):
+        with self._lock:
+            self._apply_environmental_behavior = applier
 
     @property
     def restart_due(self):
@@ -163,6 +176,10 @@ class LifecycleService:
                              if path in LED_RING_RELOADABLE]
                 if led_paths and self._apply_led_ring is None:
                     return {"ok": False, "error": "Runtime LED ring service is not ready. No settings were applied; retry reload shortly."}
+                environmental_paths = changed_fields(self.active["behavior"]["environmental"],
+                    saved["behavior"]["environmental"], "behavior.environmental")
+                if environmental_paths and self._apply_environmental_behavior is None:
+                    return {"ok": False, "error": "Runtime environmental behavior service is not ready. No settings were applied; retry reload shortly."}
                 if self.active["display"]["iris_color"] != saved["display"]["iris_color"]:
                     try:
                         self._apply_appearance(config)
@@ -203,6 +220,10 @@ class LifecycleService:
                     for path in led_paths:
                         self.active["led_ring"][path.rsplit(".", 1)[1]] = saved["led_ring"][path.rsplit(".", 1)[1]]
                     applied.extend(led_paths)
+                if environmental_paths:
+                    self._apply_environmental_behavior(config)
+                    self.active["behavior"]["environmental"] = deepcopy(saved["behavior"]["environmental"])
+                    applied.extend(environmental_paths)
                 if self.active["logging"]["level"] != saved["logging"]["level"]:
                     self._set_log_level(saved["logging"]["level"])
                     self.active["logging"]["level"] = saved["logging"]["level"]
