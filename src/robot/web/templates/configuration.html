@@ -47,6 +47,8 @@ Your edits on this page have not been saved.</p>
 {% if environmental_behavior %}
 <dl><dt>Environmental State</dt><dd>{{ environmental_behavior.state | upper }}</dd>
 <dt>Active reason/source</dt><dd>{{ environmental_behavior.reason or 'Unavailable' }}</dd>
+<dt>Temperature overlay</dt><dd>{{ environmental_behavior.temperature_overlay | upper }}</dd>
+<dt>Air-quality overlay</dt><dd>{{ environmental_behavior.air_quality_overlay | replace('_', ' ') | upper }}</dd>
 <dt>Temperature</dt><dd>{{ '%.2f °C' | format(sensor.measurements.temperature_c) if sensor and sensor.available else 'Unavailable' }}</dd>
 <dt>Pressure</dt><dd>{{ '%.2f hPa' | format(sensor.measurements.pressure_hpa) if sensor and sensor.available else 'Unavailable' }}</dd>
 <dt>eCO2</dt><dd>{{ '%d ppm' | format(air.measurements.eco2_ppm) if air and air.available else 'Unavailable' }}</dd>

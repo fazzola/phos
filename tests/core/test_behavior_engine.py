@@ -377,3 +377,16 @@ def test_base_visual_source_selects_manual_environment_or_existing_state_intent(
     assert manual.accent is VisualAccent.NEUTRAL and manual.environmental_led_intent is None
     assert environment.environmental_led_intent is EnvironmentalLEDIntent.WARM
     assert state.accent is VisualAccent.WARM and state.environmental_led_intent is None
+
+
+def test_ambient_overlays_are_additive_and_can_be_disabled():
+    async def exercise():
+        engine = BehaviorEngine(EventBus(), blink_interval=(60, 60), gaze_interval=(60, 60))
+        await engine._on_environmental_state(Event("", {"state": "air_quality_warning", "temperature_overlay": "warm", "air_quality_overlay": "warning"}))
+        active = engine.face_state
+        engine.configure_environment_overlays(False)
+        disabled = engine.face_state
+        return active, disabled
+    active, disabled = asyncio.run(exercise())
+    assert active.ambient_overlay.temperature == "warm" and active.ambient_overlay.air_quality == "warning"
+    assert disabled.ambient_overlay.temperature == disabled.ambient_overlay.air_quality == "none"

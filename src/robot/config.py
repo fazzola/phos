@@ -128,7 +128,8 @@ _SCHEMA = {
     "web": {"enabled": "web_enabled", "host": "web_host", "port": "web_port"},
     "display": {"width": "display_width", "height": "display_height", "fps": "display_fps",
                 "fullscreen": "fullscreen", "transition_seconds": "display_transition_seconds",
-                "iris_color": "iris_color", "base_visual_source": "base_visual_source"},
+                "iris_color": "iris_color", "base_visual_source": "base_visual_source",
+                "environment_overlays_enabled": "environment_overlays_enabled"},
     "led_ring": {"enabled": "led_ring_enabled", "led_count": "led_ring_led_count",
                  "gpio_pin": "led_ring_gpio_pin", "brightness": "led_ring_brightness",
                  "base_color": "led_ring_base_color", "follow_visual_state": "led_ring_follow_visual_state",
@@ -266,6 +267,7 @@ class RuntimeConfig:
     display_transition_seconds: float
     iris_color: str
     base_visual_source: str
+    environment_overlays_enabled: bool
     led_ring_enabled: bool
     led_ring_led_count: int
     led_ring_gpio_pin: int
@@ -567,6 +569,8 @@ class RuntimeConfig:
             raise ConfigurationError("display.iris_color must be cyan, blue, green, turquoise, amber, violet or white")
         if self.base_visual_source not in {"manual", "environment", "state"}:
             raise ConfigurationError("display.base_visual_source must be manual, environment or state")
+        if type(self.environment_overlays_enabled) is not bool:
+            raise ConfigurationError("display.environment_overlays_enabled must be a boolean")
         if not isinstance(self.camera_preview_position, str) or self.camera_preview_position not in {
             "top_left", "top_right", "bottom_left", "bottom_right"
         }:

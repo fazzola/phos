@@ -17,6 +17,18 @@ class EnvironmentalState(str, Enum):
     AIR_QUALITY_BAD = "air_quality_bad"
 
 
+class TemperatureOverlay(str, Enum):
+    NONE = "none"
+    COLD = "cold"
+    WARM = "warm"
+
+
+class AirQualityOverlay(str, Enum):
+    NONE = "none"
+    WARNING = "warning"
+    BAD = "bad"
+
+
 @dataclass(frozen=True)
 class EnvironmentalSettings:
     enabled: bool = False
@@ -46,8 +58,10 @@ class EnvironmentalInterpreter:
     def __init__(self, settings: EnvironmentalSettings, sink: Callable[[EnvironmentalState, str], None] = lambda *_: None):
         self._settings, self._sink = settings, sink
         self._state = EnvironmentalState.NORMAL
-        self._candidate = None
-        self._candidate_since = None
+        self._temperature_overlay = TemperatureOverlay.NONE
+        self._air_quality_overlay = AirQualityOverlay.NONE
+        self._temperature_candidate = self._air_quality_candidate = None
+        self._temperature_candidate_since = self._air_quality_candidate_since = None
         self._temperature = None
         self._eco2 = self._tvoc = None
         self._environmental_status = "unavailable"
@@ -61,9 +75,16 @@ class EnvironmentalInterpreter:
     @property
     def reason(self): return self._reason
 
+    @property
+    def temperature_overlay(self): return self._temperature_overlay
+
+    @property
+    def air_quality_overlay(self): return self._air_quality_overlay
+
     def configure(self, settings: EnvironmentalSettings):
         self._settings = settings
-        self._candidate = self._candidate_since = None
+        self._temperature_candidate = self._air_quality_candidate = None
+        self._temperature_candidate_since = self._air_quality_candidate_since = None
         if not settings.enabled:
             self._set(EnvironmentalState.NORMAL, "environmental behavior disabled")
 
@@ -90,26 +111,25 @@ class EnvironmentalInterpreter:
         else:  # Compatibility for callers without a domain identity.
             self._temperature = self._eco2 = self._tvoc = None
             self._environmental_status = self._air_quality_status = status
-        if ((source == "environmental" and self._candidate in {EnvironmentalState.COLD, EnvironmentalState.WARM})
-                or (source == "air_quality" and self._candidate in {
-                    EnvironmentalState.AIR_QUALITY_WARNING, EnvironmentalState.AIR_QUALITY_BAD})
-                or source not in {"environmental", "air_quality"}):
-            self._candidate = self._candidate_since = None
+        if source == "environmental" or source not in {"environmental", "air_quality"}:
+            self._temperature_overlay = TemperatureOverlay.NONE
+            self._temperature_candidate = self._temperature_candidate_since = None
+        if source == "air_quality" or source not in {"environmental", "air_quality"}:
+            self._air_quality_overlay = AirQualityOverlay.NONE
+            self._air_quality_candidate = self._air_quality_candidate_since = None
         # Never keep a state whose only supporting source is stale/unavailable.
         if not self._state_has_valid_source():
             self._set(EnvironmentalState.NORMAL, self._no_input_reason())
         self._evaluate(now)
 
     def _desired(self):
-        s = self._settings
-        # Air quality outranks temperature and combines either pollutant.
-        if self._eco2 is not None and (self._eco2 >= s.air_quality_bad_eco2 or self._tvoc >= s.air_quality_bad_tvoc):
+        if self._air_quality_overlay is AirQualityOverlay.BAD:
             return EnvironmentalState.AIR_QUALITY_BAD, "eCO2/TVOC above bad threshold"
-        if self._eco2 is not None and (self._eco2 >= s.air_quality_warning_eco2 or self._tvoc >= s.air_quality_warning_tvoc):
+        if self._air_quality_overlay is AirQualityOverlay.WARNING:
             return EnvironmentalState.AIR_QUALITY_WARNING, "eCO2/TVOC above warning threshold"
-        if self._temperature is not None and self._temperature <= s.cold_enter_temperature:
+        if self._temperature_overlay is TemperatureOverlay.COLD:
             return EnvironmentalState.COLD, "temperature below cold threshold"
-        if self._temperature is not None and self._temperature >= s.warm_enter_temperature:
+        if self._temperature_overlay is TemperatureOverlay.WARM:
             return EnvironmentalState.WARM, "temperature above warm threshold"
         return EnvironmentalState.NORMAL, self._no_input_reason() if self._no_valid_inputs() else "measurements normal"
 
@@ -130,6 +150,9 @@ class EnvironmentalInterpreter:
         if not self._settings.enabled:
             self._diagnose(now, "disabled")
             return
+        previous_overlays = (self._temperature_overlay, self._air_quality_overlay)
+        self._update_temperature_overlay(now)
+        self._update_air_quality_overlay(now)
         desired, reason = self._desired()
         # Stateful exit hysteresis.  A lower pollutant/warmer-or-cooler temperature
         # must remain normal before recovery can begin.
@@ -142,19 +165,45 @@ class EnvironmentalInterpreter:
         elif desired is EnvironmentalState.NORMAL and self._state is EnvironmentalState.AIR_QUALITY_BAD and self._eco2 is not None and (self._eco2 >= self._settings.air_quality_bad_eco2 or self._tvoc >= self._settings.air_quality_bad_tvoc):
             desired, reason = self._state, "eCO2/TVOC above bad recovery threshold"
         if desired is self._state:
-            self._candidate = self._candidate_since = None
             self._reason = reason
             self._diagnose(now, desired.value)
+            if previous_overlays != (self._temperature_overlay, self._air_quality_overlay):
+                try:
+                    self._sink(self._state, self._reason, self._temperature_overlay, self._air_quality_overlay)
+                except TypeError:
+                    self._sink(self._state, self._reason)
             return
-        delay = self._settings.recovery_seconds if desired is EnvironmentalState.NORMAL else self._settings.confirmation_seconds
-        if desired is not self._candidate:
-            self._candidate, self._candidate_since = desired, now
-            self._diagnose(now, f"pending {desired.value}")
-            return
-        if now - self._candidate_since >= delay:
-            self._set(desired, reason)
-            self._candidate = self._candidate_since = None
+        self._set(desired, reason)
         self._diagnose(now, desired.value)
+
+    def _update_temperature_overlay(self, now):
+        value, current = self._temperature, self._temperature_overlay
+        if value is None: return
+        if current is TemperatureOverlay.COLD and value < self._settings.cold_exit_temperature: desired = current
+        elif current is TemperatureOverlay.WARM and value > self._settings.warm_exit_temperature: desired = current
+        elif value <= self._settings.cold_enter_temperature: desired = TemperatureOverlay.COLD
+        elif value >= self._settings.warm_enter_temperature: desired = TemperatureOverlay.WARM
+        else: desired = TemperatureOverlay.NONE
+        self._temperature_overlay = self._confirm(current, desired, now, "temperature")
+
+    def _update_air_quality_overlay(self, now):
+        if self._eco2 is None: return
+        s, current = self._settings, self._air_quality_overlay
+        if self._eco2 >= s.air_quality_bad_eco2 or self._tvoc >= s.air_quality_bad_tvoc: desired = AirQualityOverlay.BAD
+        elif current is AirQualityOverlay.WARNING and (self._eco2 >= s.air_quality_warning_eco2 or self._tvoc >= s.air_quality_warning_tvoc): desired = current
+        elif self._eco2 >= s.air_quality_warning_eco2 or self._tvoc >= s.air_quality_warning_tvoc: desired = AirQualityOverlay.WARNING
+        else: desired = AirQualityOverlay.NONE
+        self._air_quality_overlay = self._confirm(current, desired, now, "air_quality")
+
+    def _confirm(self, current, desired, now, domain):
+        candidate = getattr(self, f"_{domain}_candidate")
+        since = getattr(self, f"_{domain}_candidate_since")
+        if desired is current:
+            setattr(self, f"_{domain}_candidate", None); setattr(self, f"_{domain}_candidate_since", None); return current
+        if candidate is not desired:
+            setattr(self, f"_{domain}_candidate", desired); setattr(self, f"_{domain}_candidate_since", now); return current
+        delay = self._settings.recovery_seconds if desired.value == "none" else self._settings.confirmation_seconds
+        return desired if now - since >= delay else current
 
     def _diagnose(self, now, decision):
         """Expose interpretation inputs without logging every sensor sample."""
@@ -169,4 +218,7 @@ class EnvironmentalInterpreter:
         self._state, self._reason = state, reason
         if state is not previous:
             logger.info("Environmental state %s -> %s (%s)", previous.value, state.value, reason)
-            self._sink(state, reason)
+            try:
+                self._sink(state, reason, self._temperature_overlay, self._air_quality_overlay)
+            except TypeError:
+                self._sink(state, reason)

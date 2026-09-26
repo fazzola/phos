@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from .state import BlinkPhase, FaceExpression, FaceState, VisualAccent
+from .state import AmbientOverlayState, BlinkPhase, FaceExpression, FaceState, VisualAccent
 
 
 _IRIS_COLORS = {
@@ -51,6 +51,7 @@ class EyeFrame:
     pupil_color: str
     iris_color: str
     eyes: Tuple[EyeGeometry, EyeGeometry]
+    ambient_overlay: AmbientOverlayState
 
 
 @dataclass
@@ -109,6 +110,7 @@ class EyeRenderer:
                 self._make_eye(True, blink_amount, self._values),
                 self._make_eye(False, blink_amount, self._values),
             ),
+            ambient_overlay=state.ambient_overlay,
         )
 
     def update_appearance(self, *, iris_color: str) -> None:

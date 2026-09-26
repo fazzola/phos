@@ -93,3 +93,20 @@ def test_warm_state_survives_ccs811_unavailability():
     subject.unavailable(now=6, source="air_quality", status="unavailable")
     assert subject.state is EnvironmentalState.WARM
     assert subject.reason == "temperature above warm threshold"
+
+
+def test_confirmed_overlay_intents_are_composable_without_changing_priority_state():
+    subject, _ = interpreter(enabled=True, confirmation_seconds=5)
+    subject.observe_environmental(28, now=0)
+    subject.observe_air_quality(1300, 10, now=0)
+    subject.observe_environmental(28, now=5)
+    assert subject.state is EnvironmentalState.AIR_QUALITY_WARNING
+    assert subject.temperature_overlay.value == "warm"
+    assert subject.air_quality_overlay.value == "warning"
+    cold_bad, _ = interpreter(enabled=True, confirmation_seconds=5)
+    cold_bad.observe_environmental(16, now=0)
+    cold_bad.observe_air_quality(2100, 10, now=0)
+    cold_bad.observe_environmental(16, now=5)
+    assert cold_bad.state is EnvironmentalState.AIR_QUALITY_BAD
+    assert cold_bad.temperature_overlay.value == "cold"
+    assert cold_bad.air_quality_overlay.value == "bad"

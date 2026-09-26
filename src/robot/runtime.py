@@ -83,13 +83,15 @@ class PhosRuntime:
             task.add_done_callback(_log_motion_publish_failure)
         loop.call_soon_threadsafe(publish)
 
-    def publish_environmental_state(self, state, reason) -> None:
+    def publish_environmental_state(self, state, reason, temperature_overlay=None, air_quality_overlay=None) -> None:
         loop = self._loop
         if loop is None or self._stopping:
             return
         def publish():
             task = asyncio.create_task(self.core.events.publish(Event(ENVIRONMENTAL_STATE_CHANGED,
-                {"state": state.value, "reason": reason})))
+                {"state": state.value, "reason": reason,
+                 "temperature_overlay": getattr(temperature_overlay, "value", "none"),
+                 "air_quality_overlay": getattr(air_quality_overlay, "value", "none")})))
             task.add_done_callback(_log_motion_publish_failure)
         loop.call_soon_threadsafe(publish)
 
@@ -111,6 +113,9 @@ class PhosRuntime:
 
     def apply_base_visual_source(self, config: RuntimeConfig) -> None:
         self._behavior_engine.configure_base_visual_source(config.base_visual_source)
+
+    def apply_environment_overlays(self, config: RuntimeConfig) -> None:
+        self._behavior_engine.configure_environment_overlays(config.environment_overlays_enabled)
 
     def apply_led_ring(self, config: RuntimeConfig) -> None:
         if self._led_ring_controller is None:
@@ -134,7 +139,9 @@ class PhosRuntime:
             state["led_ring"] = self._led_ring_controller.snapshot()
         if self._environmental_interpreter is not None:
             state["environmental_behavior"] = {"state": self._environmental_interpreter.state.value,
-                                                "reason": self._environmental_interpreter.reason}
+                                                "reason": self._environmental_interpreter.reason,
+                                                "temperature_overlay": self._environmental_interpreter.temperature_overlay.value,
+                                                "air_quality_overlay": self._environmental_interpreter.air_quality_overlay.value}
         return state
 
     def apply_imu_motion(self, config: RuntimeConfig) -> None:
@@ -394,6 +401,7 @@ def build_runtime(
         imu_reaction_cooldown_seconds=config.imu_reaction_cooldown_seconds,
     )
     behavior_engine.configure_base_visual_source(config.base_visual_source)
+    behavior_engine.configure_environment_overlays(config.environment_overlays_enabled)
     vision_holder = {"pipeline": vision_pipeline}
     eye_render_loop = EyeRenderLoop(
         EyeRenderer(width=config.display_width, height=config.display_height,
@@ -410,7 +418,8 @@ def build_runtime(
     runtime_holder = {}
     environmental_interpreter = EnvironmentalInterpreter(
         _environmental_settings(config),
-        sink=lambda state, reason: runtime_holder["runtime"].publish_environmental_state(state, reason),
+        sink=lambda state, reason, temperature_overlay, air_quality_overlay: runtime_holder["runtime"].publish_environmental_state(
+            state, reason, temperature_overlay, air_quality_overlay),
     )
     injected_vision = vision_pipeline is not None or vision_factory is not None
     resolved_vision = vision_pipeline or (

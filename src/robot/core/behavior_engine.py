@@ -10,7 +10,7 @@ import time
 from dataclasses import replace
 from typing import Callable, Optional
 
-from robot.ui.state import BlinkPhase, EnvironmentalLEDIntent, FaceExpression, FaceState, VisualAccent
+from robot.ui.state import AmbientOverlayState, BlinkPhase, EnvironmentalLEDIntent, FaceExpression, FaceState, VisualAccent
 from robot.motion import MotionState
 
 from .behaviors import Behavior
@@ -95,6 +95,7 @@ class BehaviorEngine(Behavior):
         # Standalone engine users retain historical environmental behavior;
         # application construction always supplies canonical configuration.
         self._base_visual_source = "environment"
+        self._environment_overlays_enabled = True
         self._unsubscribers: list[Callable[[], None]] = []
         self._task: Optional[asyncio.Task[None]] = None
 
@@ -131,6 +132,11 @@ class BehaviorEngine(Behavior):
         if source not in {"manual", "environment", "state"}:
             raise ValueError("Unsupported base visual source")
         self._base_visual_source = source
+
+    def configure_environment_overlays(self, enabled):
+        self._environment_overlays_enabled = bool(enabled)
+        if not self._environment_overlays_enabled:
+            self._state = replace(self._state, ambient_overlay=AmbientOverlayState())
 
     async def start(self) -> None:
         if self._task is not None:
@@ -255,6 +261,9 @@ class BehaviorEngine(Behavior):
     async def _on_environmental_state(self, event: Event) -> None:
         try:
             self._environmental_state = EnvironmentalState(event.data["state"])
+            self._state = replace(self._state, ambient_overlay=AmbientOverlayState(
+                event.data.get("temperature_overlay", "none"), event.data.get("air_quality_overlay", "none"))
+                if self._environment_overlays_enabled else AmbientOverlayState())
         except (KeyError, TypeError, ValueError):
             return
 
