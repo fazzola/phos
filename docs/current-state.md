@@ -10,6 +10,15 @@ This file is an implementation handoff for coding agents. It records what is pre
 - Microphone available; exact interface remains TBD.
 - Display/eyes and Pi Camera/tracking are documented as operational in `docs/hardware.md`; exact camera model remains unspecified.
 
+## PHOS 1.1.0 release candidate
+
+The source version is **1.1.0**. The 1.1 release scope includes the implemented
+optional environmental, air-quality, IMU, WS2812B, visual-source and overlay
+paths described below. It is **not ready to tag**: complete-suite execution in a
+permissive environment and the target-Pi acceptance checklist remain required.
+See [release-1.1.0.md](release-1.1.0.md) for current gates; older 1.0 sections
+below are retained as implementation history, not current release status.
+
 ## Present in the repository
 
 ### Core and behavior
@@ -71,8 +80,10 @@ This file is an implementation handoff for coding agents. It records what is pre
 
 ## Current development priority
 
-Complete the remaining 1.0.0 release acceptance checks and physical acceptance
-of the separately approved BME280/BMP280 addition below. Other scope remains deferred.
+Complete PHOS 1.1.0 release acceptance: the optional sensor, motion, LED and
+overlay paths are implemented, but must be verified together on the target Pi.
+See [the 1.1.0 release record](release-1.1.0.md) for the exact automated and
+manual gates. Other scope remains deferred.
 The expression-reaction implementation needs target-hardware verification with
 a selected lightweight ONNX model. Confirm the model's labels, dimensions and
 preprocessing, then verify semantic happy/surprised confirmation and UNKNOWN
