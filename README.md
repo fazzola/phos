@@ -1,10 +1,11 @@
-# PHOS 1.0.0 — Raspberry Pi Robot
+# PHOS 1.1.0 — Raspberry Pi Robot
 
 ![PHOS robot](img/phos.png)
 
-Modular robot targeting Raspberry Pi 3. Version 1.0.0 includes animated eyes,
-face tracking, local/AWS expression observations and authenticated configuration
-administration. See the [release scope and limitations](docs/release-1.0.0.md),
+Modular robot targeting Raspberry Pi 3. Version 1.1.0 adds optional motion and
+environmental awareness, WS2812B feedback, environmental face overlays and
+their Web Admin controls to the animated-eyes/tracking baseline. See the
+[release scope and limitations](docs/release-1.1.0.md),
 [installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
 ## Contact
@@ -30,14 +31,12 @@ administration. See the [release scope and limitations](docs/release-1.0.0.md),
 4. Read `docs/roadmap.md`
 5. Read `docs/decisions.md`
 
-The 1.0.0 baseline is frozen. A separately approved optional
-[BME280/BMP280 integration](docs/installation.md#optional-environmental-sensor)
-now provides environmental readings in Web Admin → Sensors. The separately approved
-[CCS811 integration](docs/installation.md#optional-ccs811-air-quality-sensor) adds
-eCO2 (estimated equivalent CO2) and TVOC there. The optional
-[GY-521/MPU-6050 IMU](docs/installation.md#optional-gy-521--mpu-6050-imu) adds
-six-axis motion readings there; physical acceptance is pending. Other sensors, LEDs, voice, conversational AI,
-Home Assistant, remote control API and MCP remain explicitly deferred.
+The optional BME280/BMP280 and CCS811 sensors drive confirmed environmental
+behavior; CCS811 eCO2 is estimated/equivalent CO2, not direct NDIR CO2. The
+optional GY-521/MPU-6050 drives interpreted motion behavior, and the optional
+WS2812B ring renders semantic environmental color plus temporary IMU effects.
+All new hardware remains subject to the physical acceptance checklist. Voice,
+conversational AI, Home Assistant, remote control API and MCP remain deferred.
 
 ## Run PHOS
 

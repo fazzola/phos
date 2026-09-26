@@ -8,7 +8,7 @@ require restarting PHOS.
 
 ## Install and enable
 
-Use the [PHOS 1.0.0 installation procedure](installation.md#phos-100-reproducible-installation)
+Use the [PHOS 1.1.0 installation procedure](installation.md#phos-110-reproducible-installation)
 on the Pi (Python 3.11+). In `/home/pi/phos`, create the virtual environment with
 `--system-site-packages` so the system camera/OpenCV/Tk packages remain available,
 then install the pinned web dependencies:
@@ -312,7 +312,7 @@ install the user service. Manual terminal launches support Reload, but browser
 Restart is unavailable; stop and rerun the normal startup command locally. Do
 not run a manual copy beside the service (camera/port contention). No reboot,
 arbitrary command execution, privileged shell or generic service-management API
-is provided. **Reboot Raspberry Pi** is deferred beyond 1.0.0.
+is provided. **Reboot Raspberry Pi** is deferred beyond 1.1.0.
 
 Configuration must remain valid until restart completes. Avoid concurrent local
 file edits; a file changed or hardware removed after validation can still cause
