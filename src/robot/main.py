@@ -60,6 +60,9 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
         runtime = build_application(config=config)
         if lifecycle is not None:
             lifecycle.register_appearance_applier(runtime.apply_appearance)
+            source_applier = getattr(runtime, "apply_base_visual_source", None)
+            if source_applier is not None:
+                lifecycle.register_base_visual_source_applier(source_applier)
             preview_applier = getattr(runtime, "apply_camera_preview", None)
             if preview_applier is not None:
                 lifecycle.register_camera_preview_applier(preview_applier)

@@ -109,6 +109,9 @@ class PhosRuntime:
             raise RuntimeError("Environmental behavior service is not configured")
         self._environmental_interpreter.configure(_environmental_settings(config))
 
+    def apply_base_visual_source(self, config: RuntimeConfig) -> None:
+        self._behavior_engine.configure_base_visual_source(config.base_visual_source)
+
     def apply_led_ring(self, config: RuntimeConfig) -> None:
         if self._led_ring_controller is None:
             raise RuntimeError("LED ring service is not configured")
@@ -390,6 +393,7 @@ def build_runtime(
         imu_impact_reaction_duration_seconds=config.imu_impact_reaction_duration_seconds,
         imu_reaction_cooldown_seconds=config.imu_reaction_cooldown_seconds,
     )
+    behavior_engine.configure_base_visual_source(config.base_visual_source)
     vision_holder = {"pipeline": vision_pipeline}
     eye_render_loop = EyeRenderLoop(
         EyeRenderer(width=config.display_width, height=config.display_height,

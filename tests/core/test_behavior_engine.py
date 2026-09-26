@@ -357,3 +357,23 @@ def test_environmental_bad_is_visible_but_imu_transient_temporarily_wins():
     assert environmental.environmental_led_intent is EnvironmentalLEDIntent.AIR_QUALITY_BAD
     assert impact.pupil_x == -.76
     assert restored.accent is VisualAccent.ALERT and restored.eye_open >= 1.20
+
+
+def test_base_visual_source_selects_manual_environment_or_existing_state_intent():
+    async def exercise():
+        events = EventBus(); engine = BehaviorEngine(events, blink_interval=(60, 60), gaze_interval=(60, 60))
+        await engine.start()
+        await events.publish(Event(ENVIRONMENTAL_STATE_CHANGED, {"state": "warm"}))
+        engine.configure_base_visual_source("manual")
+        manual = engine.face_state
+        engine.configure_base_visual_source("environment")
+        environment = engine.face_state
+        engine.configure_base_visual_source("state")
+        await events.publish(Event("vision.visual_expression_stable", {"visual_expression": {"label": "happy", "confidence": 1}}))
+        state = engine.face_state
+        await engine.stop()
+        return manual, environment, state
+    manual, environment, state = asyncio.run(exercise())
+    assert manual.accent is VisualAccent.NEUTRAL and manual.environmental_led_intent is None
+    assert environment.environmental_led_intent is EnvironmentalLEDIntent.WARM
+    assert state.accent is VisualAccent.WARM and state.environmental_led_intent is None

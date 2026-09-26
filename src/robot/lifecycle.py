@@ -47,7 +47,7 @@ ENVIRONMENTAL_BEHAVIOR_RELOADABLE = frozenset({
     "behavior.environmental.air_quality_bad_tvoc", "behavior.environmental.confirmation_seconds",
     "behavior.environmental.recovery_seconds",
 })
-RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE,
+RELOADABLE = frozenset({"logging.level", "display.iris_color", "display.base_visual_source", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE,
                         *IMU_BEHAVIOR_RELOADABLE, *LED_RING_RELOADABLE, *ENVIRONMENTAL_BEHAVIOR_RELOADABLE})
 
 
@@ -79,6 +79,7 @@ class LifecycleService:
         self.restart_at = None
         self._set_log_level = log_level_setter
         self._apply_appearance = None
+        self._apply_base_visual_source = None
         self._apply_camera_preview = None
         self._apply_imu_motion = None
         self._apply_imu_behavior = None
@@ -92,6 +93,10 @@ class LifecycleService:
         """Register the running application service's renderer update boundary."""
         with self._lock:
             self._apply_appearance = applier
+
+    def register_base_visual_source_applier(self, applier):
+        with self._lock:
+            self._apply_base_visual_source = applier
 
     def register_camera_preview_applier(self, applier):
         """Register runtime service for applying validated preview settings."""
@@ -159,6 +164,9 @@ class LifecycleService:
                 if (self.active["display"]["iris_color"] != saved["display"]["iris_color"]
                         and self._apply_appearance is None):
                     return {"ok": False, "error": "Runtime appearance service is not ready. No settings were applied; retry reload shortly."}
+                if (self.active["display"]["base_visual_source"] != saved["display"]["base_visual_source"]
+                        and self._apply_base_visual_source is None):
+                    return {"ok": False, "error": "Runtime visual source service is not ready. No settings were applied; retry reload shortly."}
                 preview_paths = changed_fields(self.active["vision"]["camera_preview"],
                     saved["vision"]["camera_preview"], "vision.camera_preview")
                 preview_changed = bool(preview_paths)
@@ -187,6 +195,10 @@ class LifecycleService:
                         return {"ok": False, "error": "The running display could not accept the appearance update. No active configuration was recorded; retry reload or restart PHOS."}
                     self.active["display"]["iris_color"] = saved["display"]["iris_color"]
                     applied.append("display.iris_color")
+                if self.active["display"]["base_visual_source"] != saved["display"]["base_visual_source"]:
+                    self._apply_base_visual_source(config)
+                    self.active["display"]["base_visual_source"] = saved["display"]["base_visual_source"]
+                    applied.append("display.base_visual_source")
                 if preview_changed:
                     try:
                         self._apply_camera_preview(config)

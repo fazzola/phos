@@ -92,6 +92,9 @@ class BehaviorEngine(Behavior):
         self._motion_transient = None
         self._motion_last_at = float("-inf")
         self._environmental_state = EnvironmentalState.NORMAL
+        # Standalone engine users retain historical environmental behavior;
+        # application construction always supplies canonical configuration.
+        self._base_visual_source = "environment"
         self._unsubscribers: list[Callable[[], None]] = []
         self._task: Optional[asyncio.Task[None]] = None
 
@@ -123,6 +126,11 @@ class BehaviorEngine(Behavior):
         self._imu_shake_duration = shake_duration
         self._imu_impact_duration = impact_duration
         self._imu_cooldown = cooldown
+
+    def configure_base_visual_source(self, source):
+        if source not in {"manual", "environment", "state"}:
+            raise ValueError("Unsupported base visual source")
+        self._base_visual_source = source
 
     async def start(self) -> None:
         if self._task is not None:
@@ -254,7 +262,7 @@ class BehaviorEngine(Behavior):
         """Apply IMU intent only below RobotState priority, without UI geometry."""
         if self._robot_state is not RobotState.IDLE:
             return replace(state, motion_state=None, motion_event_at=None)
-        state = self._with_environmental_reaction(state)
+        state = self._resolve_persistent_visual_state(state)
         transient = self._motion_transient
         if transient is not None:
             kind, started_at = transient
@@ -291,8 +299,13 @@ class BehaviorEngine(Behavior):
         return replace(state, motion_state=self._motion_state.value, motion_event_at=None,
                        motion_started_at=self._motion_state_started_at)
 
-    def _with_environmental_reaction(self, state: FaceState) -> FaceState:
+    def _resolve_persistent_visual_state(self, state: FaceState) -> FaceState:
         """Persistent context, below transient motion and above Vision intent."""
+        if self._base_visual_source == "manual":
+            return replace(state, expression=FaceExpression.NEUTRAL, accent=VisualAccent.NEUTRAL,
+                           environmental_led_intent=None, reaction_strength=0.0)
+        if self._base_visual_source == "state":
+            return replace(state, environmental_led_intent=None)
         if self._environmental_state is EnvironmentalState.COLD:
             return replace(state, eye_open=max(state.eye_open, 1.10), expression=FaceExpression.CURIOUS,
                            accent=VisualAccent.COOL, environmental_led_intent=EnvironmentalLEDIntent.COLD,

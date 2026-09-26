@@ -220,6 +220,7 @@ def test_stable_vision_observation_reaches_behavior_engine_and_renderer():
     async def exercise():
         display = MemoryEyeDisplay()
         runtime = build_runtime(
+            config=RuntimeConfig(base_visual_source="state"),
             eye_display=display,
             vision_factory=lambda events: make_vision(events, FakeCamera()),
         )

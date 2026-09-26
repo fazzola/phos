@@ -76,6 +76,7 @@ CHOICES = {"sensors.imu.motion.lateral_axis": ("x", "-x", "y", "-y", "z", "-z"),
            "sensors.environmental.i2c_address": ("0x76", "0x77"),
            "logging.level": ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
            "display.iris_color": ("cyan", "blue", "green", "turquoise", "amber", "violet", "white"),
+           "display.base_visual_source": ("manual", "environment", "state"),
            "led_ring.base_color": LED_RING_COLOR_CHOICES,
            "led_ring.imu_animation_color": LED_RING_COLOR_CHOICES,
            "vision.camera_preview.position": ("bottom_right", "bottom_left", "top_right", "top_left")}
