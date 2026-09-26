@@ -179,7 +179,7 @@ asyncio task plus `to_thread`, independent of capture/tracking/render cadence.
 Provider lifecycle invalidation discards evidence across tracking discontinuity.
 Cached `ExpressionObservation.sampled_at` preserves provenance so reads cannot
 manufacture temporal confirmation. Local observations retain their existing
-cadence and semantics. See [Vision](vision.md#selectable-local--aws-expressions).
+cadence and semantics. See [Vision](vision.md#selectable-local-aws-expressions).
 
 `config/phos.json` is the canonical source of normal runtime settings. The
 provider-neutral `robot.config` module validates its required sections and maps
