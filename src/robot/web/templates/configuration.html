@@ -95,6 +95,7 @@ Your edits on this page have not been saved.</p>
 <dl><dt>Status</dt><dd>{{ ring.status }}</dd>
 <dt>Semantic state</dt><dd>{{ ring.semantic_state | replace('_', ' ') | title if ring.semantic_state else 'Unavailable' }}</dd>
 <dt>Effect</dt><dd>{{ ring.effect | replace('_', ' ') | title if ring.effect else 'Unavailable' }}</dd>
+<dt>Directional target</dt><dd>{{ ring.directional_target | title if ring.directional_target else 'None' }}</dd>
 {% if ring.error %}<dt>Detail</dt><dd>{{ ring.error }}</dd>{% endif %}</dl>
 {% else %}<p>LED ring runtime status unavailable.</p>{% endif %}
 </section>

@@ -447,7 +447,12 @@ def _motion_settings(config: RuntimeConfig) -> MotionSettings:
 def _led_settings(config: RuntimeConfig) -> LEDRingSettings:
     return LEDRingSettings(config.led_ring_enabled, config.led_ring_led_count, config.led_ring_gpio_pin,
                            config.led_ring_brightness, config.led_ring_base_color,
-                           config.led_ring_follow_visual_state, config.led_ring_update_rate_hz)
+                           config.led_ring_follow_visual_state, config.led_ring_update_rate_hz,
+                           config.led_ring_imu_reactions_enabled, config.led_ring_directional_strength,
+                           config.led_ring_directional_sector_size, config.led_ring_shake_strength,
+                           config.led_ring_impact_strength, config.led_ring_imu_animation_color, config.led_ring_directional_animation_speed,
+                           config.led_ring_bottom_led_index, config.led_ring_forward_led_index,
+                           config.led_ring_clockwise)
 
 
 def _log_motion_publish_failure(task):
