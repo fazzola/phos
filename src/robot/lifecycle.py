@@ -33,7 +33,11 @@ IMU_BEHAVIOR_RELOADABLE = frozenset({
 })
 LED_RING_RELOADABLE = frozenset({
     "led_ring.enabled", "led_ring.brightness", "led_ring.base_color", "led_ring.follow_visual_state",
-    "led_ring.update_rate_hz",
+    "led_ring.update_rate_hz", "led_ring.imu_reactions_enabled", "led_ring.directional_strength",
+    "led_ring.directional_sector_size", "led_ring.shake_strength", "led_ring.impact_strength",
+    "led_ring.imu_animation_color",
+    "led_ring.directional_animation_speed", "led_ring.bottom_led_index",
+    "led_ring.forward_led_index", "led_ring.clockwise",
 })
 RELOADABLE = frozenset({"logging.level", "display.iris_color", *PREVIEW_RELOADABLE, *IMU_MOTION_RELOADABLE,
                         *IMU_BEHAVIOR_RELOADABLE, *LED_RING_RELOADABLE})

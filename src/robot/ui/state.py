@@ -55,6 +55,10 @@ class FaceState:
     accent: VisualAccent = VisualAccent.NEUTRAL
     blink_phase: BlinkPhase = BlinkPhase.OPEN
     blink_progress: float = 0.0
+    # Semantic motion intent is produced by BehaviorEngine; renderers may ignore it.
+    motion_state: Optional[str] = None
+    motion_event_at: Optional[float] = None
+    motion_started_at: Optional[float] = None
 
     def normalized(self) -> "FaceState":
         expression = self.expression if isinstance(self.expression, FaceExpression) else FaceExpression.NEUTRAL
@@ -73,6 +77,9 @@ class FaceState:
             accent=accent,
             blink_phase=blink_phase,
             blink_progress=_clamp(self.blink_progress, 0.0, 1.0),
+            motion_state=self.motion_state if isinstance(self.motion_state, str) else None,
+            motion_event_at=self.motion_event_at if isinstance(self.motion_event_at, (int, float)) else None,
+            motion_started_at=self.motion_started_at if isinstance(self.motion_started_at, (int, float)) else None,
         )
 
 

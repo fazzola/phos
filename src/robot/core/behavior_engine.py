@@ -86,6 +86,7 @@ class BehaviorEngine(Behavior):
         self._surprise_armed = True
         self._surprise_last_at = float("-inf")
         self._motion_state = MotionState.STILL
+        self._motion_state_started_at = float("-inf")
         self._motion_transient = None
         self._motion_last_at = float("-inf")
         self._unsubscribers: list[Callable[[], None]] = []
@@ -214,6 +215,8 @@ class BehaviorEngine(Behavior):
             state = MotionState(event.data["state"])
         except (KeyError, ValueError, TypeError):
             return
+        if state is not self._motion_state:
+            self._motion_state_started_at = self._clock()
         self._motion_state = state
         if state not in {MotionState.SHAKE, MotionState.IMPACT}:
             if state is MotionState.MOVING:
@@ -240,7 +243,7 @@ class BehaviorEngine(Behavior):
     def _with_motion_reaction(self, state: FaceState, now: float) -> FaceState:
         """Apply IMU intent only below RobotState priority, without UI geometry."""
         if self._robot_state is not RobotState.IDLE:
-            return state
+            return replace(state, motion_state=None, motion_event_at=None)
         transient = self._motion_transient
         if transient is not None:
             kind, started_at = transient
@@ -257,11 +260,13 @@ class BehaviorEngine(Behavior):
                 return replace(state, eye_open=eye_open, pupil_x=lateral, pupil_y=-.18,
                                eye_asymmetry=0.0,
                                expression=FaceExpression.SURPRISED, accent=VisualAccent.ALERT,
-                               reaction_strength=max(state.reaction_strength, strength))
+                               reaction_strength=max(state.reaction_strength, strength),
+                               motion_state=kind.value, motion_event_at=started_at, motion_started_at=started_at)
         if self._motion_state is MotionState.MOVING:
             return replace(state, eye_open=max(state.eye_open, 1.16), eye_asymmetry=0.0, pupil_x=0.0, pupil_y=0.0,
                            expression=FaceExpression.CURIOUS,
-                           reaction_strength=max(state.reaction_strength, self._imu_reaction_strength * .70))
+                           reaction_strength=max(state.reaction_strength, self._imu_reaction_strength * .70),
+                           motion_state=self._motion_state.value, motion_started_at=self._motion_state_started_at)
         gaze = self._imu_tilt_gaze_strength
         if self._motion_state in _MOTION_TILT_OFFSETS:
             x_factor, y_factor, openness, eye_factor = _MOTION_TILT_OFFSETS[self._motion_state]
@@ -270,8 +275,10 @@ class BehaviorEngine(Behavior):
             return replace(state, pupil_x=x, pupil_y=y, eye_open=max(state.eye_open, openness) if openness >= 1 else min(state.eye_open, openness),
                            eye_asymmetry=asymmetry,
                            expression=FaceExpression.CURIOUS, accent=VisualAccent.CURIOUS,
-                           reaction_strength=max(state.reaction_strength, self._imu_reaction_strength * .62))
-        return state
+                           reaction_strength=max(state.reaction_strength, self._imu_reaction_strength * .62),
+                           motion_state=self._motion_state.value, motion_started_at=self._motion_state_started_at)
+        return replace(state, motion_state=self._motion_state.value, motion_event_at=None,
+                       motion_started_at=self._motion_state_started_at)
 
     async def _animation_loop(self) -> None:
         while True:

@@ -95,6 +95,32 @@ def test_led_ring_visual_settings_reload_and_hardware_fields_require_restart(run
     assert applied == [(False, .5)]
 
 
+def test_led_ring_animation_settings_reload_without_restart(runtime):
+    path, service, _, _ = runtime
+    applied = []
+    service.register_led_ring_applier(lambda config: applied.append(
+        (config.led_ring_directional_animation_speed, config.led_ring_bottom_led_index)))
+    update(path, lambda d: d["led_ring"].update(directional_animation_speed=8,
+                                                   bottom_led_index=1, forward_led_index=2))
+
+    result = service.execute("reload")
+
+    assert result["ok"] and not result["restart_required"]
+    assert result["applied"] == ["led_ring.directional_animation_speed", "led_ring.bottom_led_index",
+                                  "led_ring.forward_led_index"]
+    assert applied == [(8, 1)]
+
+
+def test_led_ring_animation_color_reloads_without_restart(runtime):
+    path, service, _, _ = runtime
+    applied = []
+    service.register_led_ring_applier(lambda config: applied.append(config.led_ring_imu_animation_color))
+    update(path, lambda d: d["led_ring"].update(imu_animation_color="magenta"))
+    result = service.execute("reload")
+    assert result["ok"] and result["applied"] == ["led_ring.imu_animation_color"]
+    assert applied == ["magenta"]
+
+
 def test_mixed_appearance_logging_and_provider_changes_keep_restart_pending(runtime):
     path, service, logs, _ = runtime
     applied = []

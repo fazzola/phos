@@ -132,7 +132,12 @@ _SCHEMA = {
     "led_ring": {"enabled": "led_ring_enabled", "led_count": "led_ring_led_count",
                  "gpio_pin": "led_ring_gpio_pin", "brightness": "led_ring_brightness",
                  "base_color": "led_ring_base_color", "follow_visual_state": "led_ring_follow_visual_state",
-                 "update_rate_hz": "led_ring_update_rate_hz"},
+                 "update_rate_hz": "led_ring_update_rate_hz", "imu_reactions_enabled": "led_ring_imu_reactions_enabled",
+                 "directional_strength": "led_ring_directional_strength", "directional_sector_size": "led_ring_directional_sector_size",
+                 "shake_strength": "led_ring_shake_strength", "impact_strength": "led_ring_impact_strength",
+                 "imu_animation_color": "led_ring_imu_animation_color",
+                 "directional_animation_speed": "led_ring_directional_animation_speed",
+                 "bottom_led_index": "led_ring_bottom_led_index", "forward_led_index": "led_ring_forward_led_index", "clockwise": "led_ring_clockwise"},
     "behavior": {"blink_interval_seconds": "blink_interval_seconds", "gaze_interval_seconds": "gaze_interval_seconds",
                  "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second",
                  "imu_reaction_strength": "imu_reaction_strength", "imu_tilt_gaze_strength": "imu_tilt_gaze_strength",
@@ -261,6 +266,16 @@ class RuntimeConfig:
     led_ring_base_color: str
     led_ring_follow_visual_state: bool
     led_ring_update_rate_hz: float
+    led_ring_imu_reactions_enabled: bool
+    led_ring_directional_strength: float
+    led_ring_directional_sector_size: int
+    led_ring_shake_strength: float
+    led_ring_impact_strength: float
+    led_ring_imu_animation_color: str
+    led_ring_directional_animation_speed: float
+    led_ring_bottom_led_index: int
+    led_ring_forward_led_index: int
+    led_ring_clockwise: bool
     blink_interval_seconds: Tuple[float, float]
     gaze_interval_seconds: Tuple[float, float]
     face_gaze_smoothing: float
@@ -451,8 +466,23 @@ class RuntimeConfig:
         number("led_ring_gpio_pin", minimum=0, inclusive=True, maximum=27, integer=True)
         number("led_ring_brightness", minimum=0, inclusive=True, maximum=1)
         number("led_ring_update_rate_hz", minimum=1, inclusive=True, maximum=30)
+        number("led_ring_directional_strength", inclusive=True, maximum=1)
+        number("led_ring_shake_strength", inclusive=True, maximum=1)
+        number("led_ring_impact_strength", inclusive=True, maximum=1)
+        number("led_ring_directional_animation_speed", minimum=.1, inclusive=True, maximum=30)
+        if self.led_ring_impact_strength <= self.led_ring_shake_strength:
+            raise ConfigurationError("LED ring impact strength must exceed shake strength")
+        number("led_ring_directional_sector_size", minimum=1, inclusive=True, maximum=64, integer=True)
+        number("led_ring_forward_led_index", minimum=0, inclusive=True, maximum=1023, integer=True)
+        number("led_ring_bottom_led_index", minimum=0, inclusive=True, maximum=1023, integer=True)
+        if self.led_ring_led_count and self.led_ring_forward_led_index >= self.led_ring_led_count:
+            raise ConfigurationError("led_ring.forward_led_index must be below led_count")
+        if self.led_ring_led_count and self.led_ring_bottom_led_index >= self.led_ring_led_count:
+            raise ConfigurationError("led_ring.bottom_led_index must be below led_count")
         if self.led_ring_base_color not in LED_RING_COLOR_RGB:
             raise ConfigurationError("led_ring.base_color must be a supported named color")
+        if self.led_ring_imu_animation_color not in LED_RING_COLOR_RGB:
+            raise ConfigurationError("led_ring.imu_animation_color must be a supported named color")
         if self.led_ring_enabled and self.led_ring_led_count <= 0:
             raise ConfigurationError("led_ring.led_count must be positive when LED ring is enabled")
         number("web_port", integer=True, maximum=65535)
@@ -484,7 +514,7 @@ class RuntimeConfig:
         number("imu_reaction_cooldown_seconds", minimum=0, inclusive=True, maximum=3600)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("ccs811_enabled", "environmental_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
+        for name in ("ccs811_enabled", "environmental_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "led_ring_imu_reactions_enabled", "led_ring_clockwise", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
                      "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
                      "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
             if type(getattr(self, name)) is not bool:

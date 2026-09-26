@@ -60,6 +60,47 @@ def test_brightness_scales_each_rgb_channel_without_channel_swapping():
     assert frame.pixels[0] == LED_RING_COLOR_RGB["red"]
 
 
+def test_left_and_right_start_at_physical_sides_and_fill_in_mirrored_directions():
+    ring = settings(led_count=12, brightness=.2, directional_animation_speed=1,
+                    directional_strength=.7, bottom_led_index=2, forward_led_index=6, clockwise=True)
+    baseline = led_frame(FaceState(), ring, 0).pixels
+    left = led_frame(FaceState(motion_state="tilt_left", motion_started_at=0), ring, 1.1).pixels
+    right = led_frame(FaceState(motion_state="tilt_right", motion_started_at=0), ring, 1.1).pixels
+    complete = led_frame(FaceState(motion_state="tilt_right", motion_started_at=0), ring, 12).pixels
+    # forward=6: left starts at 3 and advances clockwise; right starts at 9 and mirrors it.
+    assert left[3] != baseline[3] and left[4] != baseline[4] and left[2] == baseline[2]
+    assert right[9] != baseline[9] and right[8] != baseline[8] and right[10] == baseline[10]
+    assert all(pixel != baseline[index] for index, pixel in enumerate(complete))
+
+
+def test_tilt_progressively_replaces_base_color_and_still_restores_it():
+    ring = settings(led_count=8, brightness=1, base_color="blue", imu_animation_color="yellow",
+                    directional_animation_speed=1, bottom_led_index=0, forward_led_index=4)
+    initial = led_frame(FaceState(motion_state="tilt_right", motion_started_at=0), ring, 0)
+    partial = led_frame(FaceState(motion_state="tilt_right", motion_started_at=0), ring, 2)
+    still = led_frame(FaceState(motion_state="still"), ring, 3)
+    base, animation = LED_RING_COLOR_RGB["blue"], LED_RING_COLOR_RGB["yellow"]
+    assert initial.pixels == (base,) * 6 + (animation,) + (base,)
+    assert partial.pixels == (base,) * 4 + (animation,) * 3 + (base,)
+    assert still.effect == "steady" and still.pixels == (base,) * 8
+
+
+def test_back_and_forward_use_symmetric_dual_fronts_from_bottom_and_top():
+    ring = settings(led_count=8, brightness=1, base_color="blue", imu_animation_color="yellow",
+                    directional_animation_speed=1, bottom_led_index=0, forward_led_index=4, clockwise=True)
+    base, animation = LED_RING_COLOR_RGB["blue"], LED_RING_COLOR_RGB["yellow"]
+    back = led_frame(FaceState(motion_state="tilt_back", motion_started_at=0), ring, 1).pixels
+    forward = led_frame(FaceState(motion_state="tilt_forward", motion_started_at=0), ring, 1).pixels
+    assert back == (animation, animation, base, base, base, base, base, animation)
+    assert forward == (base, base, base, animation, animation, animation, base, base)
+
+
+def test_imu_motion_does_not_override_error_or_sleep_semantics():
+    ring = settings(led_count=8)
+    assert led_frame(FaceState(accent=VisualAccent.ERROR, motion_state="impact", motion_event_at=0), ring, 0).effect == "steady"
+    assert led_frame(FaceState(accent=VisualAccent.SLEEPY, motion_state="impact", motion_event_at=0), ring, 0).effect == "fade"
+
+
 class FakeProvider:
     def __init__(self, fail=False):
         self.started = self.closed = False
