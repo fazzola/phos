@@ -140,7 +140,7 @@ Wire the verified board to Pi bus 1: **VCC → 3.3 V**, **GND → GND**, **SDA �
 
 Important distinction: the MPU-6050 measures acceleration and angular velocity. Absolute orientation is not a direct raw sensor output and would require software-side estimation/filtering if needed later.
 
-The adapter wakes the chip, selects ±2 g / ±250 °/s scale, reads the six raw axes and applies only those fixed scale conversions. It intentionally performs no startup bias calibration because that would require PHOS to be perfectly still. Mounting bias and gravity remain in readings. See [installation](installation.md#optional-gy-521--mpu-6050-imu) for I2C verification and setup.
+The adapter wakes the chip, selects ±2 g / ±250 °/s scale, reads the six raw axes and applies only those fixed scale conversions. It intentionally performs no startup bias calibration because that would require PHOS to be perfectly still. Mounting bias and gravity remain in readings. See [installation](installation.md#optional-gy-521-mpu-6050-imu) for I2C verification and setup.
 
 PHOS also derives stable software observations from those raw samples: STILL,
 MOVING, TILT_LEFT/RIGHT/FORWARD/BACK, SHAKE and IMPACT. They are not hardware

@@ -33,7 +33,7 @@ use that same value. Versioning is not runtime configuration.
 
 ## Installation and operation
 
-Use the [installation guide](installation.md#phos-100-reproducible-installation)
+Use the [installation guide](installation.md#phos-110-reproducible-installation)
 for the exact supported source-deployment procedure and dependency snapshot.
 Start from the Pi's graphical desktop session:
 
