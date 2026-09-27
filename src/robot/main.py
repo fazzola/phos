@@ -84,6 +84,9 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
             sensor_status = getattr(runtime, "sensor_status", None)
             if sensor_status is not None:
                 lifecycle.register_sensor_status(sensor_status)
+            application_status = getattr(runtime, "application_status", None)
+            if application_status is not None:
+                lifecycle.register_application_status(application_status)
         await runtime.run(stop_event)
         if watcher is not None and watcher.done():
             watcher.result()

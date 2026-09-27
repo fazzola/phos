@@ -87,6 +87,7 @@ class LifecycleService:
         self._apply_led_ring = None
         self._apply_environmental_behavior = None
         self._sensor_status = None
+        self._application_status = None
         self._clock = clock
         self._lock = RLock()
 
@@ -133,6 +134,11 @@ class LifecycleService:
         with self._lock:
             self._sensor_status = supplier
 
+    def register_application_status(self, supplier):
+        """Register the runtime's provider-neutral application status model."""
+        with self._lock:
+            self._application_status = supplier
+
     def _snapshot(self, saved):
         changed = changed_fields(self.active, saved)
         return {"active": deepcopy(self.active), "config_path": str(self.path),
@@ -141,7 +147,8 @@ class LifecycleService:
                 "restart_required": sorted(set(changed) - RELOADABLE),
                 "restart_supported": self.restart_supported,
                 "restart_requested": self.restart_at is not None,
-                "sensors": self._sensor_status() if self._sensor_status is not None else {}}
+                "sensors": self._sensor_status() if self._sensor_status is not None else {},
+                "runtime": self._application_status() if self._application_status is not None else {}}
 
     def execute(self, operation):
         """Fixed allowlist; no command/path/config payload is accepted from adapters."""

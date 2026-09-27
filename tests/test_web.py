@@ -748,6 +748,27 @@ def test_environmental_behavior_status_separates_warm_from_ccs811_warming_up(set
     assert "CCS811 freshness</dt><dd>warming_up" in page
 
 
+def test_sensors_page_shows_shared_semantic_runtime_status(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    lifecycle.register_sensor_status(lambda: {"environmental_behavior": {
+        "state": "warm", "reason": "temperature above warm threshold",
+        "temperature_overlay": "warm", "air_quality_overlay": "none"}})
+    lifecycle.register_application_status(lambda: {
+        "robot": {"state": "idle", "running": True},
+        "active_visual_source": "environment",
+        "visual": {"expression": "curious", "motion_state": "tilt_left"},
+    })
+    page = authorize(create_app(path, active_document=config.to_dict(), lifecycle=lifecycle)).get(
+        "/configuration/sensors").get_data(as_text=True)
+    for text in ("Robot State</dt><dd>IDLE", "Active visual source</dt><dd>ENVIRONMENT",
+                 "Resolved expression</dt><dd>CURIOUS", "Motion state</dt><dd>TILT LEFT",
+                 "Environmental State</dt><dd>WARM", "Temperature overlay</dt><dd>WARM"):
+        assert text in page
+
+
 def test_bmp280_status_shows_unsupported_humidity_even_when_disabled(setup):
     from robot.lifecycle import LifecycleService
     app, path, _ = setup

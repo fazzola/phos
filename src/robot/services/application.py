@@ -120,10 +120,15 @@ class PhosApplicationService:
                 "subsystems": subsystems}
 
     def status(self) -> dict:
-        visual = self.visual_state()
-        result = {"robot": self.robot_state(), "visual": visual, "environment": self.environment(),
-                  "motion": self.motion(), "health": self.health()}
-        self._emit("visual_state_changed", visual)
+        # Runtime supplies this same provider-neutral snapshot to the local
+        # lifecycle status service consumed by Web Admin.
+        snapshot = getattr(self._runtime, "application_status", None)
+        result = snapshot() if snapshot is not None else {
+            "robot": self.robot_state(), "visual": self.visual_state(),
+            "environment": self.environment(), "motion": self.motion(),
+        }
+        result["health"] = self.health()
+        self._emit("visual_state_changed", result["visual"])
         return result
 
     def emit_snapshot_changes(self) -> None:

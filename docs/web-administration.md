@@ -339,7 +339,11 @@ All changes, including timing and disable, require **System actions → Restart
 PHOS** (or a manual stop/start). Reload leaves them pending without touching
 sensor, display or Vision services. Saving enabled does not mean a sensor exists.
 
-The read-only panel reflects the parent sensor service at page load: temperature
+The read-only panel reflects the parent application/status service at page load:
+it shows the runtime's semantic robot state, active visual source, resolved
+expression and interpreted motion state alongside the provider-neutral sensor
+snapshot. The web worker never imports or reads a sensor provider directly.
+Temperature
 (°C), relative humidity (%) for BME280, and atmospheric/station pressure (hPa), last successful
 UTC update, age in seconds, and status. Refresh for another snapshot after saving
 any edits. This is not an automatically refreshing dashboard. No sensor driver

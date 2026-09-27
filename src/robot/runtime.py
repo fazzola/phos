@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+from dataclasses import asdict, is_dataclass, replace
 import logging
 import time
 from typing import Callable, Optional
@@ -143,6 +143,30 @@ class PhosRuntime:
                                                 "temperature_overlay": self._environmental_interpreter.temperature_overlay.value,
                                                 "air_quality_overlay": self._environmental_interpreter.air_quality_overlay.value}
         return state
+
+    def application_status(self) -> dict:
+        """Read-only semantic status boundary for local adapters.
+
+        This snapshots existing in-memory application state only. It never
+        opens a device or invokes a provider, so web/API polling cannot affect
+        the render loop or sensor workers.
+        """
+        def plain(value):
+            if is_dataclass(value):
+                return {key: plain(item) for key, item in asdict(value).items()}
+            if hasattr(value, "value"):
+                return value.value
+            if isinstance(value, dict):
+                return {key: plain(item) for key, item in value.items()}
+            return value
+        sensors = self.sensor_status()
+        return {
+            "robot": {"state": self.core.state.value, "running": self.core.is_running},
+            "visual": plain(self._behavior_engine.face_state),
+            "active_visual_source": self._behavior_engine.base_visual_source,
+            "environment": sensors.get("environmental", {"status": "unavailable", "available": False}),
+            "motion": sensors.get("imu", {"status": "unavailable", "available": False}),
+        }
 
     def apply_imu_motion(self, config: RuntimeConfig) -> None:
         """Apply validated interpretation settings without reopening the IMU."""

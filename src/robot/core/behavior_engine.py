@@ -108,6 +108,11 @@ class BehaviorEngine(Behavior):
         )
         return self._with_motion_reaction(state, self._clock()).normalized()
 
+    @property
+    def base_visual_source(self) -> str:
+        """Current semantic source; adapters must not inspect renderer state."""
+        return self._base_visual_source
+
     def configure_imu_reactions(self, strength, tilt_gaze_strength, tilt_eye_asymmetry_strength,
                                 shake_strength, impact_strength,
                                 shake_duration, impact_duration, cooldown):
