@@ -2,6 +2,8 @@
 hide:
   - navigation
   - toc
+classes:
+  - phos-home
 ---
 
 <div class="phos-hero" markdown>
@@ -23,7 +25,7 @@ in a modular physical robot platform designed for Raspberry Pi 3.
 
 [Explore PHOS](features.md){ .md-button .md-button--primary }
 [Read the docs](documentation.md){ .md-button }
-[View on GitHub](https://github.com/fazzola/phos){ .md-button }
+[View on GitHub](https://github.com/phosairobot/phos){ .md-button }
 
 </div>
 </div>

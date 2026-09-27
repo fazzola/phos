@@ -1,3 +1,11 @@
+---
+hide:
+  - navigation
+  - toc
+classes:
+  - phos-home
+---
+
 # Vision & expressions
 
 <div class="phos-page-intro" markdown>
@@ -28,11 +36,11 @@ response only after temporal confirmation.
 
 </div>
 
-| Stable observation | PHOS reaction |
-| --- | --- |
-| Neutral | Calm acknowledgement when enabled after calibration |
-| Happy | Warm, friendly visual response |
-| Surprised | Temporary alert/open response with cooldown |
+| Stable observation                   | PHOS reaction                                       |
+| ------------------------------------ | --------------------------------------------------- |
+| Neutral                              | Calm acknowledgement when enabled after calibration |
+| Happy                                | Warm, friendly visual response                      |
+| Surprised                            | Temporary alert/open response with cooldown         |
 | Unknown or rejected negative classes | Preserve/decay toward baseline; no negative mimicry |
 
 Local ONNX is the default selectable expression path. Optional AWS Rekognition

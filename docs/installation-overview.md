@@ -1,3 +1,11 @@
+---
+hide:
+  - navigation
+  - toc
+classes:
+  - phos-home
+---
+
 # Installation
 
 <div class="phos-page-intro" markdown>

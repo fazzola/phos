@@ -1,3 +1,11 @@
+---
+hide:
+  - navigation
+  - toc
+classes:
+  - phos-home
+---
+
 # How PHOS works
 
 PHOS keeps physical devices, observations, behavior decisions and rendering

@@ -1,3 +1,11 @@
+---
+hide:
+  - navigation
+  - toc
+classes:
+  - phos-home
+---
+
 # Features
 
 <div class="phos-page-intro" markdown>

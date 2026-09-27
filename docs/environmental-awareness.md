@@ -1,3 +1,11 @@
+---
+hide:
+  - navigation
+  - toc
+classes:
+  - phos-home
+---
+
 # Environmental awareness
 
 <div class="phos-page-intro" markdown>

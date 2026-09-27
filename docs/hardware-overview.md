@@ -1,3 +1,11 @@
+---
+hide:
+  - navigation
+  - toc
+classes:
+  - phos-home
+---
+
 # Hardware & sensors
 
 <div class="phos-page-intro" markdown>
@@ -10,16 +18,16 @@ physical acceptance on the target robot.
 
 </div>
 
-| Component | What PHOS uses it for |
-| --- | --- |
-| Raspberry Pi 3 | Main computer, runtime and hardware controller. |
-| 5-inch 800×600 display | Animated face and eye output. |
-| Raspberry Pi Camera | Face detection, tracking and optional expression observations. |
-| Microphone | Available hardware for a future voice milestone; no complete voice path yet. |
-| BME280 / BMP280 | Temperature and pressure; BME280 also supplies humidity for environmental context. |
-| CCS811 | Air-quality estimates: eCO2 and TVOC; eCO2 is not direct CO2 measurement. |
-| GY-521 / MPU-6050 | Acceleration and angular velocity for interpreted motion/tilt events. |
-| WS2812B RGB LED ring | Optional semantic visual feedback and temporary directional animations. |
+| Component              | What PHOS uses it for                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| Raspberry Pi 3         | Main computer, runtime and hardware controller.                                    |
+| 5-inch 800×600 display | Animated face and eye output.                                                      |
+| Raspberry Pi Camera    | Face detection, tracking and optional expression observations.                     |
+| Microphone             | Available hardware for a future voice milestone; no complete voice path yet.       |
+| BME280 / BMP280        | Temperature and pressure; BME280 also supplies humidity for environmental context. |
+| CCS811                 | Air-quality estimates: eCO2 and TVOC; eCO2 is not direct CO2 measurement.          |
+| GY-521 / MPU-6050      | Acceleration and angular velocity for interpreted motion/tilt events.              |
+| WS2812B RGB LED ring   | Optional semantic visual feedback and temporary directional animations.            |
 
 <div class="phos-callout" markdown>
 
