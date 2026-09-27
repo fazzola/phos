@@ -194,7 +194,7 @@ fields in `restart_required`. Invalid configuration applies nothing.
 ## Final release hardening
 
 The source version remains exactly **1.0.0**. Release status is **not ready to tag**
-until the remaining [release checklist](release-1.0.0.md#release-checklist) gates
+until the remaining [release record verification](release-1.0.0.md#verification-and-limits) gates
 are verified. Earlier test counts are superseded by this audit; git history retains
 those historical records.
 

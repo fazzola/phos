@@ -401,7 +401,7 @@ read-only panel shows acceleration X/Y/Z in m/s² and angular velocity X/Y/Z in
 means the adapter converted its ±2 g / ±250 °/s raw scale but did not require a
 motionless startup calibration. Values are hidden whenever unavailable or stale;
 the page never opens I2C itself. Setup and Pi verification are in the
-[MPU-6050 installation guide](installation.md#optional-gy-521--mpu-6050-imu).
+[MPU-6050 installation guide](installation.md#optional-gy-521-mpu-6050-imu).
 
 IMU visual intensity and timing appear under **Display & Appearance → Eye
 behavior**. They are applied by **Reload configuration**. Persistent movement and

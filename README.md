@@ -8,6 +8,14 @@ their Web Admin controls to the animated-eyes/tracking baseline. See the
 [release scope and limitations](docs/release-1.1.0.md),
 [installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
+The public documentation portal is published through GitHub Pages at
+<https://fazzola.github.io/phos/>. It presents the 1.1.0 source release candidate
+and links back to these canonical repository documents; it is not a release tag.
+
+For a local website preview, install `requirements-docs.txt` and run
+`.venv/bin/python -m mkdocs serve`; use `.venv/bin/python -m mkdocs build --strict`
+for a production build in `build-site/`.
+
 ## Contact
 @phosairobot
 

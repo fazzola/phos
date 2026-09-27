@@ -10,7 +10,7 @@ Use interfaces and fakes/mocks for hardware.
 
 `config/phos.json` is the **single canonical configuration and complete example**.
 The complete JSON structure and authoritative default values are in
-[the file itself](../config/phos.json); edit it directly and restart PHOS:
+[the canonical file](https://github.com/fazzola/phos/blob/main/config/phos.json); edit it directly and restart PHOS:
 
 ```bash
 python3 src/robot/main.py --config config/phos.json
