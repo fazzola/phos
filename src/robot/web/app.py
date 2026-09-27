@@ -51,7 +51,8 @@ class AuthenticationState:
         return token
 
 
-def create_app(config_path: Path, *, active_document=None, password_store=None, clock=time.monotonic, lifecycle=None):
+def create_app(config_path: Path, *, active_document=None, password_store=None, clock=time.monotonic,
+               lifecycle=None, application_service=None):
     app = Flask(__name__)
     app.config.update(SECRET_KEY=secrets.token_bytes(32), MAX_CONTENT_LENGTH=64 * 1024,
                       MAX_FORM_MEMORY_SIZE=64 * 1024, MAX_FORM_PARTS=256,
@@ -63,7 +64,14 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
     passwords = password_store or PasswordStore(config.path.parent / ".phos-admin")
     auth = AuthenticationState(clock)
     app.extensions.update(phos_auth=auth, phos_passwords=passwords, phos_config=config)
-    CSRFProtect(app)
+    csrf = CSRFProtect(app)
+    if application_service is not None:
+        from robot.web.api import create_api
+        api = create_api(application_service)
+        # JSON clients do not carry the admin form CSRF token.  Network access
+        # is still guarded by the surrounding administration authentication.
+        csrf.exempt(api)
+        app.register_blueprint(api)
 
     @app.context_processor
     def navigation():
