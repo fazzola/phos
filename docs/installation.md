@@ -21,7 +21,7 @@ On the Pi, as the desktop user:
 sudo apt update
 sudo apt install -y git wget ca-certificates python3-venv python3-tk python3-picamera2 python3-opencv opencv-data rpicam-apps
 cd ~
-git clone https://github.com/fazzola/phos.git phos
+git clone https://github.com/phosairobot/phos phos
 cd ~/phos
 git rev-parse HEAD
 python3 -m venv --system-site-packages .venv
@@ -251,7 +251,6 @@ Deprecated per-setting CLI overrides are still functional for compatibility;
 production uses only `--config`. Supported eye and Vision diagnostic commands
 remain available; no obsolete provider-specific JSON files are required.
 
-
 ## Optional environmental sensor
 
 This is an optional PHOS 1.1.0 capability. Leave it
@@ -374,7 +373,6 @@ Status; a development-machine file may differ from the Pi's file. Saved sensor
 configuration changes require Restart PHOS even though driver failures retry
 automatically.
 
-
 ## Optional GY-521 / MPU-6050 IMU
 
 PHOS reads the GY-521's MPU-6050 accelerometer and gyroscope on I2C bus 1. Stop
@@ -461,13 +459,13 @@ reactions. Save/reload thresholds and confirm the provider is not reopened.
 With visual reactions enabled, sustained tilt visibly moves pupils in the tilt
 direction and remains active while tilt is observed. Defaults use 86% of the safe
 gaze range. Horizontal tilt uses `imu_tilt_eye_asymmetry_strength` 0.18:
-TILT_LEFT opens the left eye and closes the right by the same amount; TILT_RIGHT
+TILT*LEFT opens the left eye and closes the right by the same amount; TILT_RIGHT
 mirrors it. Left/right use shared openness 1.12 before that split; forward and
 back keep equal eyes at 1.23 and 0.82 respectively.
 MOVING recenters pupils, opens to 1.16 and uses 0.63 reaction strength. SHAKE is
 a 1.18-open, 0.88-strength surprised alert for 1.35 seconds; IMPACT is the
 stronger 1.25-open, 1.0-strength alert for 1.0 second. Both hold for 55% of the
-duration and then decay smoothly. Configure the eight `behavior.imu_*` values in
+duration and then decay smoothly. Configure the eight `behavior.imu*\*` values in
 Web Admin → Display & Appearance → Eye behavior, save and use **Reload
 configuration**. Impact strength must remain greater than shake strength. The
 base iris theme returns after an alert because the alert is temporary semantic

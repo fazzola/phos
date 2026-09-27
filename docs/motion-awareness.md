@@ -1,3 +1,11 @@
+---
+hide:
+  - navigation
+  - toc
+classes:
+  - phos-home
+---
+
 # Motion awareness
 
 <div class="phos-page-intro" markdown>

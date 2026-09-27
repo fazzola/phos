@@ -1,9 +1,9 @@
 site_name: PHOS
 site_description: An expressive AI-powered robot platform built on Raspberry Pi.
-site_url: https://fazzola.github.io/phos/
+site_url: https://phosairobot.github.io/phos/
 
-repo_url: https://github.com/fazzola/phos
-repo_name: fazzola/phos
+repo_url: https://github.com/phosairobot/phos
+repo_name: phosairobot/phos
 edit_uri: edit/main/
 
 site_dir: build-site
@@ -55,8 +55,16 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/fazzola/phos
+      link: https://github.com/phosairobot/phos
       name: PHOS on GitHub
+
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/phosairobot
+      name: PHOS on X
+
+    - icon: fontawesome/brands/instagram
+      link: https://www.instagram.com/phosairobot/
+      name: PHOS on Instagram
 
 extra_css:
   - assets/css/phos.css
