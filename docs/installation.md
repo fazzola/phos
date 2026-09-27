@@ -1,6 +1,6 @@
 # PHOS installation on Raspberry Pi
 
-## PHOS 1.0.0 reproducible installation
+## PHOS 1.1.0 reproducible installation
 
 Use Raspberry Pi OS **with a graphical desktop**, Python 3.11+ and an 800×600
 HDMI display on the Pi 3. Tk needs an active X display (XWayland on a Wayland
@@ -11,7 +11,7 @@ These instructions use the desktop user's `~/phos` (`/home/pi/phos` for user `pi
 This is a reproducible source/dependency procedure, not a frozen OS image. Record
 `cat /etc/os-release`, `uname -m`, `python3 --version` and apt package versions
 with the release acceptance results. Actual fresh-Pi acceptance is still pending;
-see [release checklist](release-1.0.0.md#release-checklist).
+see [release checklist](release-1.1.0.md#release-checklist).
 
 ### 1. Install system dependencies and source
 
@@ -21,7 +21,7 @@ On the Pi, as the desktop user:
 sudo apt update
 sudo apt install -y git wget ca-certificates python3-venv python3-tk python3-picamera2 python3-opencv opencv-data rpicam-apps
 cd ~
-git clone https://github.com/fazzola/phos.git phos
+git clone https://github.com/phosairobot/phos phos
 cd ~/phos
 git rev-parse HEAD
 python3 -m venv --system-site-packages .venv
@@ -30,7 +30,7 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/python -c "import tkinter, cv2, flask, flask_wtf, waitress; from picamera2 import Picamera2; print('Runtime imports OK; OpenCV', cv2.__version__)"
 ```
 
-Use the audited commit when it becomes available; no `v1.0.0` tag is assumed to
+Use the audited commit when it becomes available; no `v1.1.0` tag is assumed to
 exist yet. The source checkout already contains `config/phos.json`; do not create
 an incomplete JSON file. No package installation is needed to run the source
 entry point. The web dependency snapshot is pinned; camera/OpenCV/Tk come from
@@ -111,7 +111,7 @@ cd ~/phos
 .venv/bin/python src/robot/main.py --config config/phos.json
 ```
 
-Check the startup version is **1.0.0** and the logged configuration path is the
+Check the startup version is **1.1.0** and the logged configuration path is the
 file you edited. Escape leaves fullscreen; Ctrl+C stops PHOS. Stop this process
 before installing/starting the production service below.
 
@@ -251,10 +251,9 @@ Deprecated per-setting CLI overrides are still functional for compatibility;
 production uses only `--config`. Supported eye and Vision diagnostic commands
 remain available; no obsolete provider-specific JSON files are required.
 
-
 ## Optional environmental sensor
 
-This is the separately approved sensor addition to the 1.0.0 baseline. Leave it
+This is an optional PHOS 1.1.0 capability. Leave it
 disabled until wired according to [hardware notes](hardware.md#bme280). Confirm
 the breakout accepts 3.3 V power/logic; the exact board revision is not assumed.
 With PHOS stopped, on Raspberry Pi OS as the desktop/service user:
@@ -374,7 +373,6 @@ Status; a development-machine file may differ from the Pi's file. Saved sensor
 configuration changes require Restart PHOS even though driver failures retry
 automatically.
 
-
 ## Optional GY-521 / MPU-6050 IMU
 
 PHOS reads the GY-521's MPU-6050 accelerometer and gyroscope on I2C bus 1. Stop
@@ -461,13 +459,13 @@ reactions. Save/reload thresholds and confirm the provider is not reopened.
 With visual reactions enabled, sustained tilt visibly moves pupils in the tilt
 direction and remains active while tilt is observed. Defaults use 86% of the safe
 gaze range. Horizontal tilt uses `imu_tilt_eye_asymmetry_strength` 0.18:
-TILT_LEFT opens the left eye and closes the right by the same amount; TILT_RIGHT
+TILT*LEFT opens the left eye and closes the right by the same amount; TILT_RIGHT
 mirrors it. Left/right use shared openness 1.12 before that split; forward and
 back keep equal eyes at 1.23 and 0.82 respectively.
 MOVING recenters pupils, opens to 1.16 and uses 0.63 reaction strength. SHAKE is
 a 1.18-open, 0.88-strength surprised alert for 1.35 seconds; IMPACT is the
 stronger 1.25-open, 1.0-strength alert for 1.0 second. Both hold for 55% of the
-duration and then decay smoothly. Configure the eight `behavior.imu_*` values in
+duration and then decay smoothly. Configure the eight `behavior.imu*\*` values in
 Web Admin → Display & Appearance → Eye behavior, save and use **Reload
 configuration**. Impact strength must remain greater than shake strength. The
 base iris theme returns after an alert because the alert is temporary semantic
@@ -553,7 +551,17 @@ actual ring; for a 12-pixel ring on BCM GPIO 18:
   "brightness": 0.30,
   "base_color": "cyan",
   "follow_visual_state": true,
-  "update_rate_hz": 10.0
+  "update_rate_hz": 10.0,
+  "imu_reactions_enabled": true,
+  "directional_strength": 0.65,
+  "directional_sector_size": 3,
+  "shake_strength": 0.85,
+  "impact_strength": 1.0,
+  "imu_animation_color": "yellow",
+  "directional_animation_speed": 12.0,
+  "bottom_led_index": 0,
+  "forward_led_index": 0,
+  "clockwise": true
 }
 ```
 
@@ -595,8 +603,9 @@ output; PHOS eyes and other services continue.
 The ring is steady in its configured base color when neutral. Warm/curious use a
 gentle pulse, alert uses a short yellow pulse, sleepy a dim violet fade and error
 a steady red. Existing transient alert strength drives the alert pulse, so shake
-and impact require no direct IMU-to-LED coupling. Confirm the configured base
-color returns after an alert.
+and impact require no direct IMU-to-LED coupling. After an alert or directional
+fill, confirm the currently resolved persistent state returns: environmental
+color when active, otherwise the configured base color.
 
 ## Optional CCS811 air-quality sensor
 

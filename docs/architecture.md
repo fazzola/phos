@@ -179,7 +179,7 @@ asyncio task plus `to_thread`, independent of capture/tracking/render cadence.
 Provider lifecycle invalidation discards evidence across tracking discontinuity.
 Cached `ExpressionObservation.sampled_at` preserves provenance so reads cannot
 manufacture temporal confirmation. Local observations retain their existing
-cadence and semantics. See [Vision](vision.md#selectable-local--aws-expressions).
+cadence and semantics. See [Vision](vision.md#selectable-local-aws-expressions).
 
 `config/phos.json` is the canonical source of normal runtime settings. The
 provider-neutral `robot.config` module validates its required sections and maps
@@ -269,9 +269,11 @@ latest-state service. The `robot.hardware` adapters alone know the SMBus/driver 
 capabilities. Both return `EnvironmentalReading` with temperature/pressure and
 nullable `humidity_percent`; BMP280 must return null, BME280 must supply humidity.
 The service validates that invariant using declared available measurements.
-The runtime constructs and starts/stops the service without sensor decisions in
-Core, BehaviorEngine, EyeRenderer or Vision. Future compatible environmental
-providers reuse this boundary; other kinds of sensors need their own typed
+The runtime constructs and starts/stops the service and passes only its typed,
+fresh snapshots to `EnvironmentalInterpreter`. The interpreter publishes
+confirmed semantic state and independent overlay intents to BehaviorEngine;
+raw readings never reach EyeRenderer, LEDRingController or Vision. Future
+compatible environmental providers reuse this boundary; other kinds of sensors need their own typed
 measurements rather than forcing them into temperature/humidity/pressure fields.
 
 One daemon worker serializes all provider calls; disabled means no worker,
@@ -312,7 +314,8 @@ Environmental compensation flows through the environmental service's immutable,
 fresh snapshot boundary to the air-quality service, then the provider. No driver
 references another driver. The UI receives only state/metadata. Missing humidity
 (including BMP280) or invalid/stale inputs restore device defaults; baseline
-persistence and behavior integration remain deferred. See ADR-023 and the
+persistence remains deferred. Confirmed air-quality semantics are handled by
+EnvironmentalInterpreter, not by this service. See ADR-023 and the
 [installation policy](installation.md#optional-ccs811-air-quality-sensor).
 
 ### MPU-6050 IMU extension
@@ -329,12 +332,12 @@ outside this capability.
 ### Motion interpretation extension
 
 `IMUReading → MotionInterpreter → MotionState / MotionEvent` is a pure,
-provider-neutral layer between IMU state and future consumers. It never accesses
+provider-neutral layer between IMU state and its semantic consumers. It never accesses
 the MPU-6050, GPIO, Web handlers, Vision, EyeRenderer or BehaviorEngine. The IMU
 worker supplies timestamped samples and exposes only the current interpreted
 state and last event through the existing status boundary. `STILL`, `MOVING`,
-four tilt directions, `SHAKE` and `IMPACT` are semantic observations only; no
-PHOS behavior consumes them yet. Motion settings reload into the interpreter
+four tilt directions, `SHAKE` and `IMPACT` are semantic observations consumed by
+BehaviorEngine through the event bus. Motion settings reload into the interpreter
 without reopening the I2C provider.
 
 ### IMU visual behavior extension

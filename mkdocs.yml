@@ -1,0 +1,109 @@
+site_name: PHOS
+site_description: An expressive AI-powered robot platform built on Raspberry Pi.
+site_url: https://phosairobot.github.io/phos/
+
+repo_url: https://github.com/phosairobot/phos
+repo_name: phosairobot/phos
+edit_uri: edit/main/
+
+site_dir: build-site
+docs_dir: docs
+
+exclude_docs: |
+  assets/ASSETS.md
+
+theme:
+  name: material
+  language: en
+
+  logo: assets/images/phos.png
+  favicon: assets/images/phos.png
+
+  palette:
+    scheme: slate
+    primary: blue
+    accent: cyan
+
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.action.edit
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+
+  - pymdownx.tabbed:
+      alternate_style: true
+
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/phosairobot/phos
+      name: PHOS on GitHub
+
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/phosairobot
+      name: PHOS on X
+
+    - icon: fontawesome/brands/instagram
+      link: https://www.instagram.com/phosairobot/
+      name: PHOS on Instagram
+
+extra_css:
+  - assets/css/phos.css
+
+nav:
+  - Home: index.md
+
+  - Features: features.md
+
+  - How PHOS Works:
+      - Architecture: how-phos-works.md
+      - Vision & Expressions: vision-expressions.md
+      - Motion Awareness: motion-awareness.md
+      - Environmental Awareness: environmental-awareness.md
+      - Visual System: visual-system.md
+
+  - Hardware: hardware-overview.md
+
+  - Installation: installation-overview.md
+
+  - Web Admin: web-admin-overview.md
+
+  - Documentation:
+      - Documentation hub: documentation.md
+      - Architecture reference: architecture.md
+      - Vision reference: vision.md
+      - Vision model evaluation: vision-model-evaluation.md
+      - Hardware reference: hardware.md
+      - Installation reference: installation.md
+      - Web Admin manual: web-administration.md
+      - Development & configuration: development.md
+      - AI strategy: ai.md
+      - TTS strategy: tts.md
+      - Architecture decisions: decisions.md
+      - Current implementation handoff: current-state.md
+
+  - Roadmap: roadmap.md
+
+  - Releases:
+      - Releases overview: releases.md
+      - PHOS 1.1.0: release-1.1.0.md
+      - PHOS 1.0.0: release-1.0.0.md

@@ -15,8 +15,8 @@ Hardware listed here does **not** imply that its software integration is already
 | Raspberry Pi Camera   | Available / working  | Raspberry Pi camera interface                          | Vision and face tracking                                               | Already used by the current PHOS Vision stack                                        |
 | BME280 | Software integrated; physical acceptance pending | I2C bus 1, 3.3 V logic | Temperature, relative humidity, atmospheric pressure | Exact breakout/address still to verify |
 | Keyestudio SEN-CCS811 | Software integrated; physical acceptance pending | I2C                                                    | Air-quality sensing: eCO2 and TVOC                                     | Software integrated; physical acceptance pending; eCO2 is not direct NDIR CO2            |
-| GY-521 (MPU-6050)     | Available / selected | I2C                                                    | 6-axis inertial sensing: 3-axis acceleration + 3-axis angular velocity | Intended for future motion/orientation awareness; exact software use not defined yet |
-| WS2812B RGB LED ring  | Available / selected | Single-wire addressable data; typically 5 V LED supply | Visual status / state indication through color and animation           | LED count, GPIO assignment, power budget, and physical placement still TBD           |
+| GY-521 (MPU-6050)     | Software integrated; physical acceptance pending | I2C | 6-axis inertial sensing and interpreted motion | Exact board mounting, wiring and calibration-free thresholds remain to verify |
+| WS2812B RGB LED ring  | Software integrated; physical acceptance pending | Single-wire addressable data; typically 5 V LED supply | Semantic color and temporary directional motion animation | LED count, GPIO assignment, power budget, level shifting and placement remain to verify |
 | Servos/motors         | Planned              | TBD                                                    | Future physical movement                                               | Not yet specified                                                                    |
 
 ## Environmental sensors
@@ -26,7 +26,8 @@ Hardware listed here does **not** imply that its software integration is already
 PHOS supports a BME280 through `robot.hardware.bme280.BME280Provider` and the
 provider-neutral environmental service. Web Admin → Sensors shows temperature
 in °C, relative humidity in %, and station pressure in hPa (not sea-level adjusted).
-It does not affect behavior, eyes or Vision. Software tests use fakes; the exact
+Fresh readings can drive the confirmed environmental interpreter; raw values do
+not reach eyes, LEDs or Vision. Software tests use fakes; the exact
 breakout and physical installation have **not** been verified.
 
 Expected wiring for a **3.3 V-compatible I2C breakout**, with the Pi powered off:
@@ -77,8 +78,9 @@ PHOS supports CCS811 through `hardware.ccs811.CCS811Provider` and the shared
 sensor worker/lifecycle. It reports **eCO2 (estimated equivalent CO2), ppm**, and
 **TVOC (total volatile organic compounds), ppb**. eCO2 is inferred from gas
 sensor response, **not a direct NDIR CO2 measurement**. It is independent of
-BME280/BMP280 and can run alongside either. No behavior or display-eye reactions
-are attached to these observations. Physical module acceptance remains pending.
+BME280/BMP280 and can run alongside either. Fresh values can contribute to
+confirmed air-quality semantics; renderer and LED code consume only those
+semantics. Physical module acceptance remains pending.
 
 The exact board revision called SEN-CCS811 must be identified before wiring.
 The [Keyestudio KS0457 reference](https://wiki.keyestudio.com/KS0457_keyestudio_CCS811_Carbon_Dioxide_Air_Quality_Sensor)
@@ -138,13 +140,13 @@ Wire the verified board to Pi bus 1: **VCC → 3.3 V**, **GND → GND**, **SDA �
 
 Important distinction: the MPU-6050 measures acceleration and angular velocity. Absolute orientation is not a direct raw sensor output and would require software-side estimation/filtering if needed later.
 
-The adapter wakes the chip, selects ±2 g / ±250 °/s scale, reads the six raw axes and applies only those fixed scale conversions. It intentionally performs no startup bias calibration because that would require PHOS to be perfectly still. Mounting bias and gravity remain in readings. See [installation](installation.md#optional-gy-521--mpu-6050-imu) for I2C verification and setup.
+The adapter wakes the chip, selects ±2 g / ±250 °/s scale, reads the six raw axes and applies only those fixed scale conversions. It intentionally performs no startup bias calibration because that would require PHOS to be perfectly still. Mounting bias and gravity remain in readings. See [installation](installation.md#optional-gy-521-mpu-6050-imu) for I2C verification and setup.
 
 PHOS also derives stable software observations from those raw samples: STILL,
 MOVING, TILT_LEFT/RIGHT/FORWARD/BACK, SHAKE and IMPACT. They are not hardware
-interrupts. In the approved motion behavior follow-on, these observations drive
-the documented eyes-only reactions through BehaviorEngine; they do not control
-GPIO or LEDs.
+interrupts. These observations drive documented eye and LED semantic intent
+through BehaviorEngine; raw IMU data does not control GPIO, renderer or LEDs
+directly.
 
 Before physical acceptance:
 
@@ -237,7 +239,7 @@ Provider-neutral reading or command
 PHOS core / state / behavior integration
 ```
 
-The implemented environmental, air-quality and IMU providers/services are described in [architecture](architecture.md#environmental-sensor-service). They publish read-only state, without behavior integration. Other sensors and light-output abstractions remain deferred.
+The implemented environmental, air-quality and IMU providers/services are described in [architecture](architecture.md#environmental-sensor-service). Their typed readings become semantic behavior through the core boundary; other sensors and light-output abstractions remain deferred.
 
 ## Wiring information still to record
 
@@ -269,8 +271,8 @@ The following details must be filled in after verifying the physical components:
 - Application subsystems must not depend directly on Raspberry Pi hardware libraries.
 - Use provider-neutral interfaces between hardware drivers and PHOS core logic.
 - Use mocks/fakes for hardware-dependent tests.
-- Do not make new sensors influence PHOS behavior until that behavior has been explicitly designed and documented.
-- Do not assign semantic LED colors/states until the LED behavior contract has been explicitly designed.
+- Do not make unapproved new sensors influence PHOS behavior.
+- Do not assign unapproved semantic LED colors/states.
 
 ## Current hardware milestone status
 
@@ -282,7 +284,6 @@ Already operational:
 
 BME280/BMP280 and CCS811 software integration is implemented; wiring, address and real readings await Pi acceptance. When enabled, their fresh readings may also feed the provider-neutral environmental behavior interpreter. CCS811 eCO2 remains an estimated/equivalent value, not a direct NDIR CO2 measurement.
 
-Selected but **not yet integrated in software**:
-
-- GY-521 (MPU-6050);
-- WS2812B RGB LED ring.
+MPU-6050 motion behavior and WS2812B semantic/directional rendering are software
+integrated. Their wiring, driver/helper setup, physical orientation and Pi 3
+acceptance remain outstanding.
