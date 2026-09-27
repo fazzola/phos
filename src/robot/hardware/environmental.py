@@ -9,3 +9,4 @@ def environmental_provider_type(sensor_type):
         return providers[sensor_type]
     except KeyError:
         raise ValueError(f"Unsupported environmental sensor type: {sensor_type}") from None
+## End
