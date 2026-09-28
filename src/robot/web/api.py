@@ -36,6 +36,8 @@ def create_api(service):
     def motion(): return jsonify(service.motion())
     @api.get("/health")
     def health(): return jsonify(service.health())
+    @api.get("/capabilities")
+    def capabilities(): return jsonify(service.capabilities())
     @api.get("/config")
     def config(): return jsonify(service.config())
     @api.patch("/config")

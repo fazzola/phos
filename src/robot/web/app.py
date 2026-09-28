@@ -8,7 +8,7 @@ import secrets
 from threading import RLock
 import time
 
-from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_wtf.csrf import CSRFError, CSRFProtect
 
 from robot import __version__
@@ -67,11 +67,26 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
     csrf = CSRFProtect(app)
     if application_service is not None:
         from robot.web.api import create_api
+        from robot.web.openapi import load_spec
         api = create_api(application_service)
         # JSON clients do not carry the admin form CSRF token.  Network access
         # is still guarded by the surrounding administration authentication.
         csrf.exempt(api)
         app.register_blueprint(api)
+
+        @app.get("/openapi.json")
+        def openapi_document():
+            return jsonify(load_spec())
+
+        @app.get("/docs")
+        def api_docs():
+            response = app.response_class("""<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><title>PHOS API documentation</title>
+<link rel="stylesheet" href="/static/swagger-ui/swagger-ui.css"></head><body>
+<div id="swagger-ui"></div><script src="/static/swagger-ui/swagger-ui-bundle.js"></script>
+<script src="/static/swagger-ui/swagger-init.js"></script></body></html>""", mimetype="text/html")
+            response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+            return response
 
     @app.context_processor
     def navigation():
@@ -86,15 +101,22 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
                 # An unrelated browser request must not erase a login form
                 # token (for example a favicon or another unauthenticated tab).
                 session.pop("sid", None)
+                if request.path.startswith("/api/"):
+                    return jsonify({"error": {"code": "unauthorized", "message": "Authentication required.",
+                                               "details": {}}}), 401
                 return redirect(url_for("login"))
             if passwords.must_change and request.endpoint not in {"password", "logout"}:
+                if request.path.startswith("/api/"):
+                    return jsonify({"error": {"code": "forbidden", "message": "Complete the required password change first.",
+                                               "details": {}}}), 403
                 return redirect(url_for("password"))
 
     @app.after_request
     def security_headers(response):
         response.headers.update({"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-                                 "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
-                                 "Content-Security-Policy": "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"})
+                                 "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer"})
+        response.headers.setdefault("Content-Security-Policy",
+                                    "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
         return response
 
     @app.route("/login", methods=["GET", "POST"])

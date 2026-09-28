@@ -7,7 +7,8 @@ must use this service instead of reaching into device providers or renderers.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, is_dataclass
+from enum import Enum
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 import platform
 import time
@@ -15,9 +16,44 @@ from threading import RLock
 from typing import Any, Callable
 
 from robot.core import Event, RobotState
+from robot.semantics import VisualSource
+from robot.core.environmental import AirQualityOverlay, EnvironmentalState, TemperatureOverlay
 from robot.core.runtime import STATE_CHANGED
 from robot.config import ConfigurationError, RuntimeConfig
+from robot.motion import MotionState
 from robot.ui.state import FaceExpression
+
+
+# These are enum members, not duplicated wire values. ERROR is lifecycle-only;
+# the current visual-event command deliberately supports only reactions that the
+# BehaviorEngine maps from a semantic expression event.
+WRITABLE_ROBOT_STATES = tuple(item for item in RobotState if item is not RobotState.ERROR)
+WRITABLE_EXPRESSIONS = (FaceExpression.NEUTRAL, FaceExpression.HAPPY, FaceExpression.SURPRISED)
+WRITABLE_VISUAL_SOURCES = tuple(VisualSource)
+
+
+@dataclass(frozen=True)
+class CommandDefinition:
+    """The canonical validation and transport contract for one semantic command."""
+
+    method: str
+    endpoint: str
+    field: str
+    allowed_members: tuple[Enum, ...]
+
+    @property
+    def allowed_values(self) -> list[str]:
+        return [item.value for item in self.allowed_members]
+
+
+# This registry is the sole application-level rule for semantic command input.
+# The web capabilities document is projected from it and command handlers
+# validate against it; adapters therefore do not maintain parallel enum lists.
+COMMANDS = {
+    "set_robot_state": CommandDefinition("POST", "/api/v1/state", "state", WRITABLE_ROBOT_STATES),
+    "set_expression": CommandDefinition("POST", "/api/v1/expression", "expression", WRITABLE_EXPRESSIONS),
+    "set_visual_source": CommandDefinition("POST", "/api/v1/visual-source", "source", WRITABLE_VISUAL_SOURCES),
+}
 
 
 class ApplicationError(Exception):
@@ -28,6 +64,35 @@ class ApplicationError(Exception):
 
     def document(self) -> dict:
         return {"error": {"code": self.code, "message": self.message, "details": self.details}}
+
+
+class RemoteApplicationService:
+    """Web-worker proxy for the parent-owned application service."""
+    def __init__(self, lifecycle): self._lifecycle = lifecycle
+
+    def _call(self, name, payload=None):
+        response = self._lifecycle.execute(f"application.{name}", payload)
+        if response.get("ok"):
+            return response["result"]
+        error = response.get("error", {})
+        if isinstance(error, dict):
+            raise ApplicationError(error.get("code", "runtime_error"), error.get("message", "PHOS request failed."),
+                                   error.get("details", {}), response.get("status", 400))
+        raise ApplicationError("service_unavailable", error, status=response.get("status", 503))
+
+    def status(self): return self._call("status")
+    def robot_state(self): return self._call("state")
+    def environment(self): return self._call("environment")
+    def motion(self): return self._call("motion")
+    def health(self): return self._call("health")
+    def capabilities(self): return self._call("capabilities")
+    def config(self): return self._call("config")
+    def update_config(self, value): return self._call("update_config", value)
+    def set_expression(self, value): return self._call("expression", {"expression": value})
+    def set_state(self, value): return self._call("set_state", {"state": value})
+    def set_visual_source(self, value): return self._call("visual_source", {"source": value})
+    def subscribe(self, listener): return lambda: None
+    def emit_snapshot_changes(self): pass
 
 
 class PhosApplicationService:
@@ -119,6 +184,21 @@ class PhosApplicationService:
         return {"uptime_seconds": max(0.0, self._clock() - self._started), "python": platform.python_version(),
                 "subsystems": subsystems}
 
+    def capabilities(self) -> dict:
+        """Operation-oriented semantic contract derived from domain validation."""
+        return {
+            "commands": {name: _command(definition) for name, definition in COMMANDS.items()},
+            "observable_states": {
+                "robot_state": [item.value for item in RobotState],
+                "motion_state": [item.value for item in MotionState],
+                "environmental_state": [item.value for item in EnvironmentalState],
+                "environmental_overlays": {
+                    "temperature": [item.value for item in TemperatureOverlay],
+                    "air_quality": [item.value for item in AirQualityOverlay],
+                },
+            },
+        }
+
     def status(self) -> dict:
         # Runtime supplies this same provider-neutral snapshot to the local
         # lifecycle status service consumed by Web Admin.
@@ -169,7 +249,7 @@ class PhosApplicationService:
         return {"saved": document, "applied": result.get("applied", []), "pending": result.get("restart_required", [])}
 
     def set_visual_source(self, source: str) -> dict:
-        if source not in {"manual", "environment", "state"}:
+        if source not in COMMANDS["set_visual_source"].allowed_values:
             raise ApplicationError("invalid_visual_source", "Unsupported visual source.", {"source": source})
         self._runtime.apply_base_visual_source(type("Config", (), {"base_visual_source": source})())
         payload = {"source": source}
@@ -181,6 +261,9 @@ class PhosApplicationService:
             target = FaceExpression(expression)
         except (TypeError, ValueError) as error:
             raise ApplicationError("invalid_expression", "Unsupported semantic expression.", {"expression": expression}) from error
+        if target not in COMMANDS["set_expression"].allowed_members:
+            raise ApplicationError("unsupported_expression_command", "Expression is not writable through this command.",
+                                   {"expression": expression})
         # Expression is a semantic transient event, not a renderer mutation.
         loop = self._runtime._loop
         if loop is None:
@@ -199,6 +282,8 @@ class PhosApplicationService:
             target = RobotState(state)
         except (TypeError, ValueError) as error:
             raise ApplicationError("invalid_robot_state", "Unsupported robot state.", {"state": state}) from error
+        if target not in COMMANDS["set_robot_state"].allowed_members:
+            raise ApplicationError("unsupported_state_command", "Robot state is runtime-only.", {"state": state})
         loop = self._runtime._loop
         if loop is None:
             raise ApplicationError("runtime_unavailable", "PHOS runtime is not running.", status=503)
@@ -216,3 +301,8 @@ def _merge(target: dict, patch: dict) -> None:
             _merge(target[key], value)
         else:
             target[key] = value
+
+
+def _command(definition: CommandDefinition) -> dict:
+    return {"method": definition.method, "endpoint": definition.endpoint,
+            "field": definition.field, "allowed_values": definition.allowed_values}

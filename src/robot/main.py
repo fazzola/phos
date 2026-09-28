@@ -59,6 +59,9 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
     try:
         runtime = build_application(config=config)
         if lifecycle is not None:
+            if hasattr(runtime, "core"):
+                from robot.services import PhosApplicationService
+                lifecycle.register_application_service(PhosApplicationService(runtime, lifecycle=lifecycle))
             lifecycle.register_appearance_applier(runtime.apply_appearance)
             source_applier = getattr(runtime, "apply_base_visual_source", None)
             if source_applier is not None:

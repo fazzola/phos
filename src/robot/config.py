@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass, fields, field
 from pathlib import Path
 from typing import Optional, Tuple
 
+from robot.semantics import VisualSource
+
 # Source checkouts use the one canonical document. Wheels install that same
 # source file as data; no independent defaults are maintained in the package.
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "phos.json"
@@ -567,7 +569,7 @@ class RuntimeConfig:
             "cyan", "blue", "green", "turquoise", "amber", "violet", "white"
         }:
             raise ConfigurationError("display.iris_color must be cyan, blue, green, turquoise, amber, violet or white")
-        if self.base_visual_source not in {"manual", "environment", "state"}:
+        if self.base_visual_source not in {item.value for item in VisualSource}:
             raise ConfigurationError("display.base_visual_source must be manual, environment or state")
         if type(self.environment_overlays_enabled) is not bool:
             raise ConfigurationError("display.environment_overlays_enabled must be a boolean")

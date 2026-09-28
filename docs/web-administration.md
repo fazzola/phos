@@ -55,6 +55,10 @@ With dependencies already available to system Python, the unchanged command is
 Open **http://<PI-LAN-IP>:8080/** from your phone, tablet or desktop. Obtain the
 Pi address locally with `hostname -I`. With the default loopback binding, only
 **http://127.0.0.1:8080/** on the Pi can connect. A custom port changes both URLs.
+`web.host` and `web.port` are startup-only listener settings: save the complete
+canonical JSON and restart PHOS (for example, `systemctl --user restart
+phos.service`) before using the newly configured address. They are not applied
+by Reload configuration.
 Do not configure router port forwarding or expose this interface to the Internet.
 
 ## First login and password changes

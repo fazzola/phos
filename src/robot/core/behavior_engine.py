@@ -16,7 +16,7 @@ from robot.motion import MotionState
 from .behaviors import Behavior
 from .events import Event, EventBus
 from .runtime import STATE_CHANGED
-from .state import RobotState
+from .state import RobotState, VisualSource
 from .environmental import EnvironmentalState
 
 logger = logging.getLogger(__name__)
@@ -134,7 +134,7 @@ class BehaviorEngine(Behavior):
         self._imu_cooldown = cooldown
 
     def configure_base_visual_source(self, source):
-        if source not in {"manual", "environment", "state"}:
+        if source not in {item.value for item in VisualSource}:
             raise ValueError("Unsupported base visual source")
         self._base_visual_source = source
 

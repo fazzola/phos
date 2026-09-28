@@ -10,6 +10,7 @@ class Service:
     def environment(self): return {}
     def motion(self): return {}
     def health(self): return {}
+    def capabilities(self): return {}
     def config(self): return {}
     def update_config(self, value): return {}
     def set_expression(self, value): return {}
@@ -21,6 +22,7 @@ class Service:
 
 def test_openapi_is_valid_and_covers_every_public_api_route():
     spec = validate()
+    assert spec["servers"] == [{"url": "/", "description": "The same configured PHOS Web Admin/API listener that served this document"}]
     app = Flask(__name__)
     app.register_blueprint(create_api(Service()))
     actual = {(rule.rule, method.lower()) for rule in app.url_map.iter_rules()

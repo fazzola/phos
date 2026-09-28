@@ -8,14 +8,22 @@ class LifecycleClient:
         self.lock = Lock()
         self.available = True
 
-    def execute(self, operation):
-        if not isinstance(operation, str) or operation not in {"status", "reload", "restart"}:
+    def execute(self, operation, payload=None):
+        request = ({"operation": operation, "payload": payload}
+                   if isinstance(operation, str) and operation.startswith("application.")
+                   else operation if payload is None else {"operation": operation, "payload": payload})
+        allowed = {"status", "reload", "restart"}
+        application = {"application.status", "application.state", "application.environment", "application.motion",
+                       "application.health", "application.capabilities", "application.config", "application.update_config", "application.expression",
+                       "application.set_state", "application.visual_source"}
+        if not ((isinstance(request, str) and request in allowed)
+                or (isinstance(request, dict) and request.get("operation") in application)):
             return {"ok": False, "error": "Unsupported lifecycle operation."}
         with self.lock:
             if not self.available:
                 return self._unavailable()
             try:
-                self.connection.send(operation)
+                self.connection.send(request)
                 if not self.connection.poll(5):
                     # Retiring the channel avoids interpreting a late reply as
                     # the response to a different operation.
