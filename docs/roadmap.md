@@ -1,6 +1,18 @@
 # PHOS roadmap
 
-## PHOS 1.1.0 — environmental and motion-awareness release candidate
+## PHOS 1.2.0 — Remote API release candidate
+
+PHOS 1.2.0 adds the authenticated, provider-neutral Remote API with semantic
+status and commands, capability discovery, temporary overlay overrides, local
+OpenAPI/Swagger documentation and SSE events. See the
+[release record](release-1.2.0.md). Target-Pi and complete-suite release gates
+remain before tagging.
+
+- [x] Versioned 1.2.0 source, package metadata and documentation homepage.
+- [x] Remote API application-service boundary, local authentication, OpenAPI and
+  offline Swagger UI.
+
+## PHOS 1.1.0 — environmental and motion-awareness historical baseline
 
 PHOS 1.1.0 combines the established 1.0 baseline with the implemented optional
 environmental, air-quality, IMU, WS2812B and visual-arbitration capabilities.

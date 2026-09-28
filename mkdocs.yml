@@ -38,6 +38,9 @@ theme:
 plugins:
   - search
 
+hooks:
+  - docs/hooks/version.py
+
 markdown_extensions:
   - admonition
   - attr_list
@@ -107,5 +110,6 @@ nav:
 
   - Releases:
       - Releases overview: releases.md
+      - PHOS 1.2.0: release-1.2.0.md
       - PHOS 1.1.0: release-1.1.0.md
       - PHOS 1.0.0: release-1.0.0.md
