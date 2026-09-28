@@ -10,14 +10,23 @@ from robot.lifecycle_channel import LifecycleClient, serve_lifecycle
 from pathlib import Path
 
 
+def bind_address(active_document):
+    """Return the already-validated canonical Web Admin/API listener address."""
+    web = active_document["web"]
+    return web["host"], web["port"]
+
+
 def _serve(path, active, connection, lifecycle_connection):
     server = None
     try:
         from waitress import create_server
         from robot.web.app import create_app
-        app = create_app(Path(path), active_document=active,
-                         lifecycle=LifecycleClient(lifecycle_connection))
-        server = create_server(app, host=active["web"]["host"], port=active["web"]["port"],
+        from robot.services import RemoteApplicationService
+        lifecycle = LifecycleClient(lifecycle_connection)
+        app = create_app(Path(path), active_document=active, lifecycle=lifecycle,
+                         application_service=RemoteApplicationService(lifecycle))
+        host, port = bind_address(active)
+        server = create_server(app, host=host, port=port,
                                threads=2, connection_limit=32, channel_timeout=30,
                                max_request_body_size=64 * 1024, max_request_header_size=8192,
                                expose_tracebacks=False, clear_untrusted_proxy_headers=True)

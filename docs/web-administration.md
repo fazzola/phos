@@ -55,6 +55,10 @@ With dependencies already available to system Python, the unchanged command is
 Open **http://<PI-LAN-IP>:8080/** from your phone, tablet or desktop. Obtain the
 Pi address locally with `hostname -I`. With the default loopback binding, only
 **http://127.0.0.1:8080/** on the Pi can connect. A custom port changes both URLs.
+`web.host` and `web.port` are startup-only listener settings: save the complete
+canonical JSON and restart PHOS (for example, `systemctl --user restart
+phos.service`) before using the newly configured address. They are not applied
+by Reload configuration.
 Do not configure router port forwarding or expose this interface to the Internet.
 
 ## First login and password changes
@@ -339,7 +343,11 @@ All changes, including timing and disable, require **System actions → Restart
 PHOS** (or a manual stop/start). Reload leaves them pending without touching
 sensor, display or Vision services. Saving enabled does not mean a sensor exists.
 
-The read-only panel reflects the parent sensor service at page load: temperature
+The read-only panel reflects the parent application/status service at page load:
+it shows the runtime's semantic robot state, active visual source, resolved
+expression and interpreted motion state alongside the provider-neutral sensor
+snapshot. The web worker never imports or reads a sensor provider directly.
+Temperature
 (°C), relative humidity (%) for BME280, and atmospheric/station pressure (hPa), last successful
 UTC update, age in seconds, and status. Refresh for another snapshot after saving
 any edits. This is not an automatically refreshing dashboard. No sensor driver

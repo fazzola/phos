@@ -59,6 +59,9 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
     try:
         runtime = build_application(config=config)
         if lifecycle is not None:
+            if hasattr(runtime, "core"):
+                from robot.services import PhosApplicationService
+                lifecycle.register_application_service(PhosApplicationService(runtime, lifecycle=lifecycle))
             lifecycle.register_appearance_applier(runtime.apply_appearance)
             source_applier = getattr(runtime, "apply_base_visual_source", None)
             if source_applier is not None:
@@ -84,6 +87,9 @@ async def async_main(*, config: RuntimeConfig | None = None, lifecycle=None, web
             sensor_status = getattr(runtime, "sensor_status", None)
             if sensor_status is not None:
                 lifecycle.register_sensor_status(sensor_status)
+            application_status = getattr(runtime, "application_status", None)
+            if application_status is not None:
+                lifecycle.register_application_status(application_status)
         await runtime.run(stop_event)
         if watcher is not None and watcher.done():
             watcher.result()

@@ -27,7 +27,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.setuptools.package-data]
-"robot.web" = ["templates/*.html", "static/*.css", "static/*.js"]
+"robot.web" = ["templates/*.html", "static/*.css", "static/*.js", "static/swagger-ui/*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "robot.__version__"}
