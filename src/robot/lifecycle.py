@@ -87,6 +87,8 @@ class LifecycleService:
         self._apply_led_ring = None
         self._apply_environmental_behavior = None
         self._sensor_status = None
+        self._application_status = None
+        self._application_service = None
         self._clock = clock
         self._lock = RLock()
 
@@ -133,6 +135,16 @@ class LifecycleService:
         with self._lock:
             self._sensor_status = supplier
 
+    def register_application_status(self, supplier):
+        """Register the runtime's provider-neutral application status model."""
+        with self._lock:
+            self._application_status = supplier
+
+    def register_application_service(self, service):
+        """Register the semantic command/status boundary for remote adapters."""
+        with self._lock:
+            self._application_service = service
+
     def _snapshot(self, saved):
         changed = changed_fields(self.active, saved)
         return {"active": deepcopy(self.active), "config_path": str(self.path),
@@ -141,11 +153,14 @@ class LifecycleService:
                 "restart_required": sorted(set(changed) - RELOADABLE),
                 "restart_supported": self.restart_supported,
                 "restart_requested": self.restart_at is not None,
-                "sensors": self._sensor_status() if self._sensor_status is not None else {}}
+                "sensors": self._sensor_status() if self._sensor_status is not None else {},
+                "runtime": self._application_status() if self._application_status is not None else {}}
 
     def execute(self, operation):
         """Fixed allowlist; no command/path/config payload is accepted from adapters."""
         with self._lock:
+            if isinstance(operation, dict):
+                return self._execute_application(operation)
             if not isinstance(operation, str) or operation not in {"status", "reload", "restart"}:
                 return {"ok": False, "error": "Unsupported lifecycle operation."}
             try:
@@ -252,3 +267,34 @@ class LifecycleService:
                     applied.append("logging.level")
                 self.loaded_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             return {"ok": True, **self._snapshot(saved), "applied": applied}
+
+    def _execute_application(self, request):
+        name, payload = request.get("operation"), request.get("payload")
+        handlers = {
+            "application.status": lambda: self._application_service.status(),
+            "application.state": lambda: self._application_service.robot_state(),
+            "application.environment": lambda: self._application_service.environment(),
+            "application.motion": lambda: self._application_service.motion(),
+            "application.health": lambda: self._application_service.health(),
+            "application.capabilities": lambda: self._application_service.capabilities(),
+            "application.overlay": lambda: self._application_service.overlay(),
+            "application.set_overlay": lambda: self._application_service.set_overlay(payload),
+            "application.clear_overlay": lambda: self._application_service.clear_overlay(),
+            "application.config": lambda: self._application_service.config(),
+            "application.update_config": lambda: self._application_service.update_config(payload),
+            "application.expression": lambda: self._application_service.set_expression(payload.get("expression")),
+            "application.set_state": lambda: self._application_service.set_state(payload.get("state")),
+            "application.visual_source": lambda: self._application_service.set_visual_source(payload.get("source")),
+        }
+        if name not in handlers or not isinstance(payload, (dict, type(None))):
+            return {"ok": False, "error": "Unsupported application operation."}
+        if self._application_service is None:
+            return {"ok": False, "error": "Application service is unavailable.", "status": 503}
+        try:
+            return {"ok": True, "result": handlers[name]()}
+        except Exception as error:
+            document = getattr(error, "document", None)
+            if document is not None:
+                return {"ok": False, **document(), "status": getattr(error, "status", 400)}
+            logging.getLogger(__name__).exception("Application service failed")
+            return {"ok": False, "error": "PHOS could not process the request.", "status": 500}

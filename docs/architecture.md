@@ -2,6 +2,14 @@
 
 ## High-level model
 
+## Remote application boundary
+
+Remote control is mediated by `robot.services.PhosApplicationService`. REST,
+Web Admin, event-stream, and future MCP/Voice adapters use semantic commands
+and read models from this boundary; they do not access camera, GPIO, I2C
+sensors, LED providers, or renderer internals. The service delegates state
+changes to `RobotCore`/`BehaviorEngine` and configuration work to lifecycle.
+
 ```text
                 +----------------------+
                 |      Robot Core      |

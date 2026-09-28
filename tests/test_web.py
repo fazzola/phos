@@ -89,6 +89,41 @@ def test_bootstrap_login_forces_change_and_never_exposes_config(setup):
     assert (path.parent / ".phos-admin/password.json").stat().st_mode & 0o777 == 0o600
 
 
+def test_api_authentication_returns_json_while_browser_pages_redirect(setup):
+    from robot.core.behavior_engine import BehaviorEngine
+    from robot.core.runtime import RobotCore
+    from robot.services import PhosApplicationService
+
+    class Runtime:
+        def __init__(self):
+            self.core = RobotCore()
+            self._behavior_engine = BehaviorEngine(self.core.events)
+        def sensor_status(self): return {}
+        def apply_base_visual_source(self, config): pass
+
+    _, path, now = setup
+    app = create_app(path, clock=lambda: now[0], application_service=PhosApplicationService(Runtime()))
+    client = app.test_client()
+    # Browser administration retains its redirect-based user experience.
+    assert client.get("/").status_code == 302
+    assert client.get("/").location == "/login"
+    # API clients always receive a machine-readable authentication failure.
+    response = client.get("/api/v1/status", follow_redirects=False)
+    assert response.status_code == 401
+    assert response.is_json
+    assert response.json == {"error": {"code": "unauthorized", "message": "Authentication required.", "details": {}}}
+    assert response.headers.get("Location") is None
+    assert "<html" not in response.get_data(as_text=True).lower()
+    assert login(client).location == "/password"
+    response = client.get("/api/v1/status", follow_redirects=False)
+    assert response.status_code == 403
+    assert response.is_json and response.json["error"]["code"] == "forbidden"
+    assert response.headers.get("Location") is None
+    authenticated = authorize(app)
+    response = authenticated.get("/api/v1/status")
+    assert response.status_code == 200 and response.is_json
+
+
 def test_incorrect_login_and_password_validation(setup):
     app, _, now = setup
     client = app.test_client()
@@ -312,6 +347,14 @@ def test_web_settings_use_canonical_validation(key, value, tmp_path):
     document["web"][key] = value
     with pytest.raises(ConfigurationError):
         RuntimeConfig.from_dict(document, base_dir=tmp_path)
+
+
+def test_web_server_uses_canonical_configured_host_and_port(tmp_path):
+    from robot.web.server import bind_address
+    document = load_document()
+    document["web"].update(enabled=True, host="0.0.0.0", port=8081)
+    config = RuntimeConfig.from_dict(document, base_dir=tmp_path)
+    assert bind_address(config.to_dict()) == ("0.0.0.0", 8081)
 
 
 def test_real_web_worker_serves_and_releases_port(setup):
@@ -746,6 +789,27 @@ def test_environmental_behavior_status_separates_warm_from_ccs811_warming_up(set
     assert "Environmental State</dt><dd>WARM" in page
     assert "temperature above warm threshold" in page
     assert "CCS811 freshness</dt><dd>warming_up" in page
+
+
+def test_sensors_page_shows_shared_semantic_runtime_status(setup):
+    from robot.lifecycle import LifecycleService
+    app, path, _ = setup
+    config = RuntimeConfig.from_file(path)
+    lifecycle = LifecycleService(path, config)
+    lifecycle.register_sensor_status(lambda: {"environmental_behavior": {
+        "state": "warm", "reason": "temperature above warm threshold",
+        "temperature_overlay": "warm", "air_quality_overlay": "none"}})
+    lifecycle.register_application_status(lambda: {
+        "robot": {"state": "idle", "running": True},
+        "active_visual_source": "environment",
+        "visual": {"expression": "curious", "motion_state": "tilt_left"},
+    })
+    page = authorize(create_app(path, active_document=config.to_dict(), lifecycle=lifecycle)).get(
+        "/configuration/sensors").get_data(as_text=True)
+    for text in ("Robot State</dt><dd>IDLE", "Active visual source</dt><dd>ENVIRONMENT",
+                 "Resolved expression</dt><dd>CURIOUS", "Motion state</dt><dd>TILT LEFT",
+                 "Environmental State</dt><dd>WARM", "Temperature overlay</dt><dd>WARM"):
+        assert text in page
 
 
 def test_bmp280_status_shows_unsupported_humidity_even_when_disabled(setup):

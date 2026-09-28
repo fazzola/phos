@@ -53,6 +53,16 @@ remains separate from implementation.
 - [x] Optional WS2812B semantic LED-ring provider/controller, canonical configuration and hardware-free tests.
 - [ ] Verify board wiring, address, stable readings and coexistence on Raspberry Pi 3.
 
+## PHOS 1.2 — remote application-service boundary
+
+- [x] Provider-neutral application service with semantic status/read models and commands.
+- [x] Versioned `/api/v1` JSON adapter for status, state, environment, motion,
+  health, configuration, visual-source, expression and state commands.
+- [x] Bounded semantic event contract with duplicate suppression; the WSGI
+  adapter provides an SSE compatibility stream at `/api/v1/events`.
+- [ ] Select and deploy a WebSocket-capable local server adapter if a true
+  WebSocket transport is required; it must reuse the same service contract.
+
 ## Post-1.0 — explicitly deferred
 
 | Area | Deferred work |

@@ -95,6 +95,8 @@ nav:
       - Hardware reference: hardware.md
       - Installation reference: installation.md
       - Web Admin manual: web-administration.md
+      - Remote API: remote-api.md
+      - API contract notes: api.md
       - Development & configuration: development.md
       - AI strategy: ai.md
       - TTS strategy: tts.md

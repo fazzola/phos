@@ -41,6 +41,15 @@ Your edits on this page have not been saved.</p>
 {% set sensor = runtime_state.get('sensors', {}).get('environmental') if runtime_state and runtime_state.ok else none %}
 {% set air = runtime_state.get('sensors', {}).get('ccs811') if runtime_state and runtime_state.ok else none %}
 {% set environmental_behavior = runtime_state.get('sensors', {}).get('environmental_behavior') if runtime_state and runtime_state.ok else none %}
+{% set runtime = runtime_state.get('runtime', {}) if runtime_state and runtime_state.ok else {} %}
+<section class="status" aria-label="Current PHOS semantic state">
+<h3>Current PHOS semantic state</h3>
+{% if runtime %}<dl><dt>Robot State</dt><dd>{{ runtime.robot.state | upper }}</dd>
+<dt>Active visual source</dt><dd>{{ runtime.active_visual_source | upper }}</dd>
+<dt>Resolved expression</dt><dd>{{ runtime.visual.expression | upper }}</dd>
+<dt>Motion state</dt><dd>{{ runtime.visual.motion_state | replace('_', ' ') | upper if runtime.visual.motion_state else 'Unavailable' }}</dd></dl>
+{% else %}<p>PHOS semantic status unavailable. The runtime has not reported a snapshot.</p>{% endif %}
+</section>
 <section class="status" aria-label="Current environmental behavior">
 <h3>Environmental behavior</h3>
 <p>Read-only runtime interpretation. PHOS computes this state from fresh sensor readings; this page does not infer it.</p>
