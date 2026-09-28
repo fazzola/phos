@@ -78,6 +78,15 @@ Logging, iris appearance and camera-preview settings can reload; other changes
 are explicitly restart-required.
 </article>
 
+<article class="phos-card" markdown>
+<span class="phos-status">IMPLEMENTED</span>
+### Remote API & OpenAPI
+[Explore the Remote API](remote-api.md)
+
+PHOS exposes a versioned local REST API for robot status, health, environmental and motion state, capabilities, semantic expressions, visual source control and face overlays. The API includes OpenAPI 3.x documentation, Swagger UI and structured JSON errors, and reuses the same application-service boundary as the Web Admin.
+
+</article>
+
 </div>
 
 ## Explicitly planned, not delivered
