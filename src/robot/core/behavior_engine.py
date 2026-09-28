@@ -18,6 +18,7 @@ from .events import Event, EventBus
 from .runtime import STATE_CHANGED
 from .state import RobotState, VisualSource
 from .environmental import EnvironmentalState
+from .overlay import OverlayArbiter
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,7 @@ class BehaviorEngine(Behavior):
         # application construction always supplies canonical configuration.
         self._base_visual_source = "environment"
         self._environment_overlays_enabled = True
+        self._overlay_arbiter = OverlayArbiter(clock=clock)
         self._unsubscribers: list[Callable[[], None]] = []
         self._task: Optional[asyncio.Task[None]] = None
 
@@ -106,7 +108,18 @@ class BehaviorEngine(Behavior):
             blink_phase=self._blink_phase,
             blink_progress=self._blink_progress(self._clock()),
         )
-        return self._with_motion_reaction(state, self._clock()).normalized()
+        overlay = self._overlay_arbiter.resolved() if self._environment_overlays_enabled else AmbientOverlayState()
+        return replace(self._with_motion_reaction(state, self._clock()), ambient_overlay=overlay).normalized()
+
+    def overlay_state(self):
+        """Read semantic overlay arbitration state; no renderer is involved."""
+        return self._overlay_arbiter.snapshot()
+
+    def set_overlay_override(self, *, temperature=None, air_quality=None, duration_ms=None):
+        self._overlay_arbiter.set_override(temperature=temperature, air_quality=air_quality, duration_ms=duration_ms)
+
+    def clear_overlay_override(self):
+        self._overlay_arbiter.clear_override()
 
     @property
     def base_visual_source(self) -> str:
@@ -266,9 +279,8 @@ class BehaviorEngine(Behavior):
     async def _on_environmental_state(self, event: Event) -> None:
         try:
             self._environmental_state = EnvironmentalState(event.data["state"])
-            self._state = replace(self._state, ambient_overlay=AmbientOverlayState(
-                event.data.get("temperature_overlay", "none"), event.data.get("air_quality_overlay", "none"))
-                if self._environment_overlays_enabled else AmbientOverlayState())
+            self._overlay_arbiter.set_environmental(AmbientOverlayState(
+                event.data.get("temperature_overlay", "none"), event.data.get("air_quality_overlay", "none")))
         except (KeyError, TypeError, ValueError):
             return
 

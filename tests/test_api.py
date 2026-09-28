@@ -32,6 +32,10 @@ def test_versioned_status_and_stable_error_document():
     assert response.status_code == 400
     assert response.json == {"error": {"code": "invalid_visual_source", "message": "Unsupported visual source.",
                                         "details": {"source": "GPIO18"}}}
+    overlay = client.post("/api/v1/overlay", json={"temperature": "warm", "air_quality": "warning", "duration_ms": 3000})
+    assert overlay.status_code == 200
+    assert overlay.json["resolved"] == {"temperature": "warm", "air_quality": "warning"}
+    assert client.delete("/api/v1/overlay").json["override"]["active"] is False
 
 
 def test_local_openapi_and_documentation_routes():

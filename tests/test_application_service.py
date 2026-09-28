@@ -1,6 +1,6 @@
 from robot.core.runtime import RobotCore
 from robot.core.behavior_engine import BehaviorEngine
-from robot.services.application import COMMANDS, PhosApplicationService
+from robot.services.application import COMMANDS, OVERLAY_COMMANDS, PhosApplicationService
 from robot.core.environmental import EnvironmentalState
 from robot.core.state import RobotState
 from robot.motion import MotionState
@@ -88,3 +88,51 @@ def test_runtime_only_or_unmapped_values_are_not_accepted_as_writable_commands()
             assert error.code == code
         else:
             raise AssertionError(f"{value} was accepted despite not being writable")
+
+
+def test_overlay_override_arbitrates_independent_channels_and_restores_current_environment():
+    runtime = Runtime()
+    service = PhosApplicationService(runtime)
+    from robot.ui import AmbientOverlayState
+    runtime._behavior_engine._overlay_arbiter.set_environmental(AmbientOverlayState("warm", "warning"))
+    assert service.overlay()["resolved"] == {"temperature": "warm", "air_quality": "warning"}
+    applied = service.set_overlay({"temperature": "cold", "duration_ms": 1000})
+    assert applied["override"]["active"] is True
+    assert applied["resolved"] == {"temperature": "cold", "air_quality": "warning"}
+    runtime._behavior_engine._overlay_arbiter.set_environmental(AmbientOverlayState("none", "bad"))
+    assert service.clear_overlay()["resolved"] == {"temperature": "none", "air_quality": "bad"}
+
+
+def test_overlay_expiry_resolves_against_current_environment_not_cached_intent():
+    from robot.core.overlay import OverlayArbiter
+    from robot.ui import AmbientOverlayState
+    now = [0.0]
+    arbiter = OverlayArbiter(clock=lambda: now[0])
+    arbiter.set_environmental(AmbientOverlayState("warm", "none"))
+    arbiter.set_override(temperature="cold", duration_ms=1000)
+    arbiter.set_environmental(AmbientOverlayState("none", "warning"))
+    now[0] = 1.0
+    assert arbiter.resolved() == AmbientOverlayState("none", "warning")
+
+
+def test_overlay_validation_and_capabilities_use_canonical_overlay_enums():
+    service = PhosApplicationService(Runtime())
+    capabilities = service.capabilities()
+    spec = load_spec()
+    capability_schema = _resolve(spec, spec["components"]["schemas"]["Capabilities"]["properties"]["commands"]["properties"]["set_overlay"]["$ref"])
+    request = spec["components"]["schemas"]["OverlayOverrideRequest"]["properties"]
+    for field in ("temperature", "air_quality"):
+        values = OVERLAY_COMMANDS["set_overlay"]["fields"][field]["allowed_values"]
+        assert capabilities["commands"]["set_overlay"]["fields"][field]["allowed_values"] == values
+        assert capability_schema["properties"]["fields"]["properties"][field]["properties"]["allowed_values"]["items"]["enum"] == values
+        assert request[field]["enum"] == values
+    for value, code in (({"temperature": "hot"}, "invalid_overlay_temperature"),
+                        ({"air_quality": "toxic"}, "invalid_overlay_air_quality"),
+                        ({"temperature": "warm", "duration_ms": 0}, "invalid_overlay_duration"),
+                        ({}, "invalid_overlay")):
+        try:
+            service.set_overlay(value)
+        except Exception as error:
+            assert error.code == code
+        else:
+            raise AssertionError("invalid overlay was accepted")

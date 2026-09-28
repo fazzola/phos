@@ -55,6 +55,15 @@ COMMANDS = {
     "set_visual_source": CommandDefinition("POST", "/api/v1/visual-source", "source", WRITABLE_VISUAL_SOURCES),
 }
 
+OVERLAY_COMMANDS = {
+    "set_overlay": {"method": "POST", "endpoint": "/api/v1/overlay", "fields": {
+        "temperature": {"allowed_values": [item.value for item in TemperatureOverlay]},
+        "air_quality": {"allowed_values": [item.value for item in AirQualityOverlay]},
+        "duration_ms": {"type": "integer", "optional": True},
+    }},
+    "clear_overlay": {"method": "DELETE", "endpoint": "/api/v1/overlay"},
+}
+
 
 class ApplicationError(Exception):
     """A stable adapter-safe error."""
@@ -91,6 +100,9 @@ class RemoteApplicationService:
     def set_expression(self, value): return self._call("expression", {"expression": value})
     def set_state(self, value): return self._call("set_state", {"state": value})
     def set_visual_source(self, value): return self._call("visual_source", {"source": value})
+    def overlay(self): return self._call("overlay")
+    def set_overlay(self, value): return self._call("set_overlay", value)
+    def clear_overlay(self): return self._call("clear_overlay")
     def subscribe(self, listener): return lambda: None
     def emit_snapshot_changes(self): pass
 
@@ -187,7 +199,7 @@ class PhosApplicationService:
     def capabilities(self) -> dict:
         """Operation-oriented semantic contract derived from domain validation."""
         return {
-            "commands": {name: _command(definition) for name, definition in COMMANDS.items()},
+            "commands": {**{name: _command(definition) for name, definition in COMMANDS.items()}, **OVERLAY_COMMANDS},
             "observable_states": {
                 "robot_state": [item.value for item in RobotState],
                 "motion_state": [item.value for item in MotionState],
@@ -198,6 +210,46 @@ class PhosApplicationService:
                 },
             },
         }
+
+    def overlay(self) -> dict:
+        environmental, override, resolved = self._behavior.overlay_state()
+        return {
+            "environmental": self._plain(environmental),
+            "override": {"active": override is not None,
+                         "temperature": None if override is None else override.temperature,
+                         "air_quality": None if override is None else override.air_quality,
+                         "expires_at": None if override is None else override.expires_at_iso},
+            "resolved": self._plain(resolved),
+        }
+
+    def set_overlay(self, value: dict) -> dict:
+        if not isinstance(value, dict):
+            raise ApplicationError("invalid_overlay", "Overlay override must be a JSON object.")
+        allowed_keys = {"temperature", "air_quality", "duration_ms"}
+        unknown = set(value) - allowed_keys
+        if unknown:
+            raise ApplicationError("invalid_overlay", "Unsupported overlay field.", {"fields": sorted(unknown)})
+        if "temperature" not in value and "air_quality" not in value:
+            raise ApplicationError("invalid_overlay", "At least one overlay field is required.")
+        temperature = value.get("temperature")
+        air_quality = value.get("air_quality")
+        if "temperature" in value and temperature not in OVERLAY_COMMANDS["set_overlay"]["fields"]["temperature"]["allowed_values"]:
+            raise ApplicationError("invalid_overlay_temperature", "Unsupported temperature overlay.", {"temperature": temperature})
+        if "air_quality" in value and air_quality not in OVERLAY_COMMANDS["set_overlay"]["fields"]["air_quality"]["allowed_values"]:
+            raise ApplicationError("invalid_overlay_air_quality", "Unsupported air-quality overlay.", {"air_quality": air_quality})
+        duration_ms = value.get("duration_ms")
+        if duration_ms is not None and (type(duration_ms) is not int or duration_ms <= 0):
+            raise ApplicationError("invalid_overlay_duration", "duration_ms must be a positive integer.", {"duration_ms": duration_ms})
+        self._behavior.set_overlay_override(temperature=temperature, air_quality=air_quality, duration_ms=duration_ms)
+        result = self.overlay()
+        self._emit("overlay_changed", result)
+        return result
+
+    def clear_overlay(self) -> dict:
+        self._behavior.clear_overlay_override()
+        result = self.overlay()
+        self._emit("overlay_changed", result)
+        return result
 
     def status(self) -> dict:
         # Runtime supplies this same provider-neutral snapshot to the local

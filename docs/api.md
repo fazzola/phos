@@ -10,6 +10,22 @@ request field, and allowed values. Its `observable_states` mapping lists
 runtime-readable vocabulary, including values such as `error` that clients must
 not submit. Both projections are derived from PHOS domain validation rules.
 
+`GET /api/v1/overlay` separates sensor-derived `environmental` intent, the
+manual transient `override`, and the arbitrated `resolved` intent currently
+presented by PHOS. A `POST /api/v1/overlay` request may set either independent
+channel (`temperature`: `none`/`cold`/`warm`; `air_quality`:
+`none`/`warning`/`bad`) for an optional positive `duration_ms`; `DELETE` clears
+only that override and immediately returns to current environmental intent.
+
+```sh
+curl -X GET http://localhost:8080/api/v1/overlay
+curl -X POST http://localhost:8080/api/v1/overlay -H 'Content-Type: application/json' \
+  -d '{"temperature":"warm","duration_ms":3000}'
+curl -X POST http://localhost:8080/api/v1/overlay -H 'Content-Type: application/json' \
+  -d '{"temperature":"cold","air_quality":"warning","duration_ms":5000}'
+curl -X DELETE http://localhost:8080/api/v1/overlay
+```
+
 Validate the checked-in contract with:
 
 ```sh

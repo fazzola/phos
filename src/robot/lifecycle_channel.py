@@ -15,7 +15,7 @@ class LifecycleClient:
         allowed = {"status", "reload", "restart"}
         application = {"application.status", "application.state", "application.environment", "application.motion",
                        "application.health", "application.capabilities", "application.config", "application.update_config", "application.expression",
-                       "application.set_state", "application.visual_source"}
+                       "application.set_state", "application.visual_source", "application.overlay", "application.set_overlay", "application.clear_overlay"}
         if not ((isinstance(request, str) and request in allowed)
                 or (isinstance(request, dict) and request.get("operation") in application)):
             return {"ok": False, "error": "Unsupported lifecycle operation."}

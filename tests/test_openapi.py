@@ -11,6 +11,9 @@ class Service:
     def motion(self): return {}
     def health(self): return {}
     def capabilities(self): return {}
+    def overlay(self): return {}
+    def set_overlay(self, value): return {}
+    def clear_overlay(self): return {}
     def config(self): return {}
     def update_config(self, value): return {}
     def set_expression(self, value): return {}
