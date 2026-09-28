@@ -140,7 +140,7 @@ hardware-free; Pi resource usage and LAN browser verification remain required.
 returns provider-neutral JSON models and accepts semantic operations only; it
 never exposes GPIO, I2C registers, pixels, camera frames, or renderer objects.
 The Flask adapter exposes `/api/v1/status`, `/state`, `/environment`, `/motion`,
-`/health`, `/config`, `/expression`, `/visual-source` and `/events`. Events use
+`/health`, `/capabilities`, `/overlay`, `/config`, `/expression`, `/visual-source` and `/events`. Events use
 `{type, timestamp, payload}` and suppress consecutive duplicate payloads.
 
 When composed into the optional local web process, the API uses canonical
@@ -150,6 +150,8 @@ authentication and terminate TLS/additional authentication at a trusted reverse
 proxy. Example after authenticating locally:
 `curl http://127.0.0.1:8080/api/v1/status`. WSGI uses a low-rate SSE-compatible
 event stream; a future WebSocket adapter must reuse this same service boundary.
+See [Remote API](remote-api.md) for the endpoint contract, authentication, and
+LAN deployment guidance.
 
 ## PHOS 1.0.0 finalization
 

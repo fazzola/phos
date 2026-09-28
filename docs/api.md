@@ -3,6 +3,8 @@
 The PHOS local REST contract is [OpenAPI 3.1](api/openapi.yaml). It is a
 versioned public contract for `/api/v1`; all control remains semantic and flows
 through `PhosApplicationService`, never directly to hardware.
+See [Remote API](remote-api.md) for the endpoint guide, authentication behavior,
+and operational examples.
 
 `GET /api/v1/capabilities` is operation-oriented. Its `commands` mapping
 identifies each writable semantic operation with its endpoint, HTTP method,
