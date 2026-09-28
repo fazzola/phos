@@ -12,9 +12,9 @@ classes:
 
 <span class="phos-kicker">CAPABILITY MAP</span>
 
-PHOS 1.1.0 is a **source release candidate**. The capabilities below are
+PHOS 1.2.0 is a **source release candidate**. The capabilities below are
 implemented in the repository; optional hardware paths still require target-Pi
-acceptance before a release tag. See the [release record](release-1.1.0.md) for
+acceptance before a release tag. See the [release record](release-1.2.0.md) for
 the exact scope and gates.
 
 </div>

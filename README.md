@@ -1,15 +1,15 @@
-# PHOS 1.1.0 — Raspberry Pi Robot
+# PHOS 1.2.0 — Raspberry Pi Robot
 
 ![PHOS robot](img/phos.png)
 
-Modular robot targeting Raspberry Pi 3. Version 1.1.0 adds optional motion and
-environmental awareness, WS2812B feedback, environmental face overlays and
-their Web Admin controls to the animated-eyes/tracking baseline. See the
-[release scope and limitations](docs/release-1.1.0.md),
+Modular robot targeting Raspberry Pi 3. Version 1.2.0 adds the authenticated,
+provider-neutral Remote API, capability discovery, overlay control and local
+OpenAPI/Swagger documentation to the motion and environmental-awareness
+baseline. See the [release scope and limitations](docs/release-1.2.0.md),
 [installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
 The public documentation portal is published through GitHub Pages at
-<https://fazzola.github.io/phos/>. It presents the 1.1.0 source release candidate
+<https://fazzola.github.io/phos/>. It presents the 1.2.0 source release candidate
 and links back to these canonical repository documents; it is not a release tag.
 
 For a local website preview, install `requirements-docs.txt` and run

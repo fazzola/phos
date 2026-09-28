@@ -546,7 +546,7 @@ def test_expression_groups_status_and_separate_password_page(setup, monkeypatch)
     assert 'name="display.width"' not in page
     status = client.get("/configuration/status").get_data(as_text=True)
     assert "Not monitored" in status and "Not checked" in status
-    assert "<dt>PHOS version</dt><dd>1.1.0</dd>" in status
+    assert "<dt>PHOS version</dt><dd>1.2.0</dd>" in status
     assert 'name="revision"' not in status
     security = client.get("/configuration/security").get_data(as_text=True)
     assert 'href="/password"' in security

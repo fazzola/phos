@@ -1,6 +1,6 @@
 # PHOS installation on Raspberry Pi
 
-## PHOS 1.1.0 reproducible installation
+## PHOS 1.2.0 reproducible installation
 
 Use Raspberry Pi OS **with a graphical desktop**, Python 3.11+ and an 800×600
 HDMI display on the Pi 3. Tk needs an active X display (XWayland on a Wayland
@@ -11,7 +11,7 @@ These instructions use the desktop user's `~/phos` (`/home/pi/phos` for user `pi
 This is a reproducible source/dependency procedure, not a frozen OS image. Record
 `cat /etc/os-release`, `uname -m`, `python3 --version` and apt package versions
 with the release acceptance results. Actual fresh-Pi acceptance is still pending;
-see [release checklist](release-1.1.0.md#release-checklist).
+see [release checklist](release-1.2.0.md#release-gates).
 
 ### 1. Install system dependencies and source
 
@@ -30,7 +30,7 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/python -c "import tkinter, cv2, flask, flask_wtf, waitress; from picamera2 import Picamera2; print('Runtime imports OK; OpenCV', cv2.__version__)"
 ```
 
-Use the audited commit when it becomes available; no `v1.1.0` tag is assumed to
+Use the audited commit when it becomes available; no `v1.2.0` tag is assumed to
 exist yet. The source checkout already contains `config/phos.json`; do not create
 an incomplete JSON file. No package installation is needed to run the source
 entry point. The web dependency snapshot is pinned; camera/OpenCV/Tk come from
@@ -111,7 +111,7 @@ cd ~/phos
 .venv/bin/python src/robot/main.py --config config/phos.json
 ```
 
-Check the startup version is **1.1.0** and the logged configuration path is the
+Check the startup version is **1.2.0** and the logged configuration path is the
 file you edited. Escape leaves fullscreen; Ctrl+C stops PHOS. Stop this process
 before installing/starting the production service below.
 
@@ -253,7 +253,7 @@ remain available; no obsolete provider-specific JSON files are required.
 
 ## Optional environmental sensor
 
-This is an optional PHOS 1.1.0 capability. Leave it
+This is an optional PHOS 1.2.0 capability. Leave it
 disabled until wired according to [hardware notes](hardware.md#bme280). Confirm
 the breakout accepts 3.3 V power/logic; the exact board revision is not assumed.
 With PHOS stopped, on Raspberry Pi OS as the desktop/service user:

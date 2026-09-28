@@ -19,7 +19,7 @@ classes:
 PHOS brings animated eyes, vision, motion and environmental awareness together
 in a modular physical robot platform designed for Raspberry Pi 3.
 
-<p class="phos-version">Current source: <strong>1.1.0 release candidate</strong> · target-hardware acceptance remains before tagging.</p>
+<p class="phos-version">Current source: <strong>{{ phos_version }}</strong> · target-hardware acceptance remains before tagging.</p>
 
 <div class="phos-actions" markdown>
 

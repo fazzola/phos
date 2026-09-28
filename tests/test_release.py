@@ -9,7 +9,7 @@ from robot.config import DEFAULT_CONFIG_PATH
 
 
 def test_authoritative_version_and_package_metadata():
-    assert __version__ == "1.1.0"
+    assert __version__ == "1.2.0"
     project = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
     assert 'dynamic = ["version"]' in project
     assert 'version = {attr = "robot.__version__"}' in project
