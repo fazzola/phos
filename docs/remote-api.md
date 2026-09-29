@@ -71,7 +71,7 @@ Current semantic command values are:
 | Command | Allowed values |
 | --- | --- |
 | `set_robot_state` | `idle`, `listening`, `thinking`, `speaking`, `sleeping` |
-| `set_expression` | `neutral`, `happy`, `surprised` |
+| `set_expression` | `neutral`, `happy`, `curious`, `surprised` |
 | `set_visual_source` | `manual`, `environment`, `state` |
 | `set_overlay.temperature` | `none`, `cold`, `warm` |
 | `set_overlay.air_quality` | `none`, `warning`, `bad` |
@@ -94,13 +94,22 @@ the form `{"error":{"code":...,"message":...,"details":...}}` with HTTP
 {"state":"sleeping"}
 ```
 
-Allowed values are `idle`, `listening`, `thinking`, `speaking`, and `sleeping`.
-`error` is observable only and is rejected as runtime-only. A successful response
+`/capabilities` lists the stable writable vocabulary; `error` is observable
+only and is rejected as runtime-only. The existing state machine enforces
+`IDLE → LISTENING → THINKING → SPEAKING → IDLE` with its documented sleeping
+alternatives, so a skipped transition returns HTTP `409` with
+`invalid_state_transition` and the current/target values. A successful response
 is the current robot-state document, for example:
 
 ```json
 {"state":"sleeping","running":true}
 ```
+
+`GET /api/v1/state` and the `robot` member of `/api/v1/status` also include
+`current`, stable `writable` values and state-dependent `allowed_next` values.
+`/api/v1/capabilities` exposes the complete stable transition graph under
+`commands.set_robot_state.transitions`; clients use it to disable invalid
+targets without removing or reordering the writable options.
 
 ```sh
 curl --cookie "$PHOS_ADMIN_COOKIE" -X POST http://127.0.0.1:8080/api/v1/state \
@@ -116,10 +125,13 @@ curl --cookie "$PHOS_ADMIN_COOKIE" -X POST http://127.0.0.1:8080/api/v1/expressi
   -H 'Content-Type: application/json' -d '{"expression":"happy"}'
 ```
 
-Allowed values are `neutral`, `happy`, and `surprised`. A successful response is
-`{"expression":"happy"}`. Other readable expressions, such as `worried`, are
-not writable and return `unsupported_expression_command`; unknown values return
-`invalid_expression`.
+Allowed values are `neutral`, `happy`, `curious`, and `surprised`. A successful response is
+`{"expression":"happy"}`. A command is a 30-second manual semantic override
+owned by `BehaviorEngine`: it takes priority over Vision, environment and motion
+expression selection while PHOS is IDLE, but RobotState visual intent remains
+higher priority. The response includes its remaining lifetime. Other readable
+expressions, such as `worried`, are not writable and return
+`unsupported_expression_command`; unknown values return `invalid_expression`.
 
 ### Set visual source
 

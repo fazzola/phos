@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from enum import Enum
+import math
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 import platform
@@ -16,6 +17,7 @@ from threading import RLock
 from typing import Any, Callable
 
 from robot.core import Event, RobotState
+from robot.core.state import InvalidStateTransition, allowed_next_states, transition_graph, writable_states
 from robot.semantics import VisualSource
 from robot.core.environmental import AirQualityOverlay, EnvironmentalState, TemperatureOverlay
 from robot.core.runtime import STATE_CHANGED
@@ -27,8 +29,8 @@ from robot.ui.state import FaceExpression
 # These are enum members, not duplicated wire values. ERROR is lifecycle-only;
 # the current visual-event command deliberately supports only reactions that the
 # BehaviorEngine maps from a semantic expression event.
-WRITABLE_ROBOT_STATES = tuple(item for item in RobotState if item is not RobotState.ERROR)
-WRITABLE_EXPRESSIONS = (FaceExpression.NEUTRAL, FaceExpression.HAPPY, FaceExpression.SURPRISED)
+WRITABLE_ROBOT_STATES = writable_states()
+WRITABLE_EXPRESSIONS = (FaceExpression.NEUTRAL, FaceExpression.HAPPY, FaceExpression.CURIOUS, FaceExpression.SURPRISED)
 WRITABLE_VISUAL_SOURCES = tuple(VisualSource)
 
 
@@ -77,12 +79,17 @@ class ApplicationError(Exception):
 
 class RemoteApplicationService:
     """Web-worker proxy for the parent-owned application service."""
-    def __init__(self, lifecycle): self._lifecycle = lifecycle
+    def __init__(self, lifecycle):
+        self._lifecycle = lifecycle
+        self._listeners, self._last = [], {}
 
     def _call(self, name, payload=None):
         response = self._lifecycle.execute(f"application.{name}", payload)
         if response.get("ok"):
-            return response["result"]
+            # Lifecycle transport can carry a provider snapshot containing a
+            # non-finite float.  JSON has no representation for it; expose it
+            # as unavailable rather than emitting invalid browser JSON.
+            return PhosApplicationService._plain(response["result"])
         error = response.get("error", {})
         if isinstance(error, dict):
             raise ApplicationError(error.get("code", "runtime_error"), error.get("message", "PHOS request failed."),
@@ -103,8 +110,43 @@ class RemoteApplicationService:
     def overlay(self): return self._call("overlay")
     def set_overlay(self, value): return self._call("set_overlay", value)
     def clear_overlay(self): return self._call("clear_overlay")
-    def subscribe(self, listener): return lambda: None
-    def emit_snapshot_changes(self): pass
+    def subscribe(self, listener):
+        self._listeners.append(listener)
+        def unsubscribe():
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+        return unsubscribe
+
+    def emit_snapshot_changes(self):
+        """Bridge the parent snapshot into bounded events for a WSGI worker.
+
+        The process channel cannot carry a permanently subscribed callback. The
+        SSE endpoint invokes this at its 15-second keepalive boundary, so a
+        connected browser gets only changed semantic snapshots, never raw
+        provider readings or a second high-rate polling loop.
+        """
+        try:
+            current = self.status()
+            payloads = {
+                "robot_state_changed": current.get("robot", {}),
+                "visual_state_changed": current.get("visual", {}),
+                "environmental_state_changed": current.get("environment", {}),
+                "motion_state_changed": current.get("motion", {}),
+                "health_changed": current.get("health", {}),
+                "overlay_changed": current.get("overlay", {}),
+            }
+        except ApplicationError:
+            return
+        for event_type, payload in payloads.items():
+            frozen = repr(payload)
+            if self._last.get(event_type) == frozen:
+                continue
+            self._last[event_type] = frozen
+            event = {"type": event_type,
+                     "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+                     "payload": payload}
+            for listener in tuple(self._listeners):
+                listener(event)
 
 
 class PhosApplicationService:
@@ -157,6 +199,8 @@ class PhosApplicationService:
 
     @staticmethod
     def _plain(value: Any):
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
         if is_dataclass(value):
             return {key: PhosApplicationService._plain(item) for key, item in asdict(value).items()}
         if hasattr(value, "value"):
@@ -172,10 +216,13 @@ class PhosApplicationService:
         return self._plain(state)
 
     def robot_state(self) -> dict:
-        return {"state": self._core.state.value, "running": self._core.is_running}
+        current = self._core.state
+        return {"state": current.value, "current": current.value, "running": self._core.is_running,
+                "writable": [item.value for item in WRITABLE_ROBOT_STATES],
+                "allowed_next": [item.value for item in allowed_next_states(current)]}
 
     def sensors(self) -> dict:
-        return self._runtime.sensor_status()
+        return self._plain(self._runtime.sensor_status())
 
     def environment(self) -> dict:
         return self.sensors().get("environmental", {"status": "unavailable", "available": False})
@@ -199,6 +246,8 @@ class PhosApplicationService:
     def capabilities(self) -> dict:
         """Operation-oriented semantic contract derived from domain validation."""
         return {
+            # This is the stable writable vocabulary. Current-state transition
+            # validation is separate, and observable ERROR remains absent.
             "commands": {**{name: _command(definition) for name, definition in COMMANDS.items()}, **OVERLAY_COMMANDS},
             "observable_states": {
                 "robot_state": [item.value for item in RobotState],
@@ -243,7 +292,7 @@ class PhosApplicationService:
         self._behavior.set_overlay_override(temperature=temperature, air_quality=air_quality, duration_ms=duration_ms)
         result = self.overlay()
         self._emit("overlay_changed", result)
-        return result
+        return self._plain(result)
 
     def clear_overlay(self) -> dict:
         self._behavior.clear_overlay_override()
@@ -259,7 +308,10 @@ class PhosApplicationService:
             "robot": self.robot_state(), "visual": self.visual_state(),
             "environment": self.environment(), "motion": self.motion(),
         }
+        result["robot"] = self.robot_state()
         result["health"] = self.health()
+        result["overlay"] = self.overlay()
+        result.setdefault("sensors", self.sensors())
         self._emit("visual_state_changed", result["visual"])
         return result
 
@@ -303,8 +355,18 @@ class PhosApplicationService:
     def set_visual_source(self, source: str) -> dict:
         if source not in COMMANDS["set_visual_source"].allowed_values:
             raise ApplicationError("invalid_visual_source", "Unsupported visual source.", {"source": source})
-        self._runtime.apply_base_visual_source(type("Config", (), {"base_visual_source": source})())
-        payload = {"source": source}
+        if self._lifecycle is not None:
+            # This is a canonical runtime setting.  Persist and validate it
+            # through the existing configuration/lifecycle boundary rather
+            # than leaving a browser command to be lost at the next restart.
+            self.update_config({"display": {"base_visual_source": source}})
+        else:
+            # Direct service construction (tests/local embedding) has no
+            # canonical persistence boundary, but still uses the runtime's
+            # semantic source application service.
+            self._runtime.apply_base_visual_source(type("Config", (), {"base_visual_source": source})())
+        payload = {"source": source, "active_visual_source": self._behavior.base_visual_source,
+                   "visual": self.visual_state()}
         self._emit("visual_state_changed", payload)
         return payload
 
@@ -316,16 +378,9 @@ class PhosApplicationService:
         if target not in COMMANDS["set_expression"].allowed_members:
             raise ApplicationError("unsupported_expression_command", "Expression is not writable through this command.",
                                    {"expression": expression})
-        # Expression is a semantic transient event, not a renderer mutation.
-        loop = self._runtime._loop
-        if loop is None:
-            raise ApplicationError("runtime_unavailable", "PHOS runtime is not running.", status=503)
-        async def publish():
-            await self._core.events.publish(Event("vision.visual_expression_stable", {"visual_expression": {
-                "label": target.value, "confidence": 1.0}}))
-        future = asyncio.run_coroutine_threadsafe(publish(), loop)
-        future.result(timeout=2)
-        payload = {"expression": target.value}
+        self._behavior.set_manual_expression(target, duration_seconds=30.0)
+        payload = {"expression": target.value, "manual_override": self._behavior.manual_expression_state(),
+                   "visual": self.visual_state()}
         self._emit("expression_changed", payload)
         return payload
 
@@ -339,7 +394,13 @@ class PhosApplicationService:
         loop = self._runtime._loop
         if loop is None:
             raise ApplicationError("runtime_unavailable", "PHOS runtime is not running.", status=503)
-        asyncio.run_coroutine_threadsafe(self._core.transition_to(target, reason="remote_api"), loop).result(timeout=2)
+        try:
+            asyncio.run_coroutine_threadsafe(self._core.transition_to(target, reason="remote_api"), loop).result(timeout=2)
+        except InvalidStateTransition as error:
+            raise ApplicationError("invalid_state_transition", str(error),
+                                   {"current": self._core.state.value, "target": target.value}, status=409) from error
+        except TimeoutError as error:
+            raise ApplicationError("runtime_unavailable", "PHOS did not accept the state command in time.", status=503) from error
         return self.robot_state()
 
 
@@ -356,5 +417,8 @@ def _merge(target: dict, patch: dict) -> None:
 
 
 def _command(definition: CommandDefinition) -> dict:
-    return {"method": definition.method, "endpoint": definition.endpoint,
-            "field": definition.field, "allowed_values": definition.allowed_values}
+    command = {"method": definition.method, "endpoint": definition.endpoint,
+               "field": definition.field, "allowed_values": definition.allowed_values}
+    if definition is COMMANDS["set_robot_state"]:
+        command["transitions"] = transition_graph()
+    return command

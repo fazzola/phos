@@ -124,6 +124,36 @@ def test_api_authentication_returns_json_while_browser_pages_redirect(setup):
     assert response.status_code == 200 and response.is_json
 
 
+def test_live_dashboard_is_an_api_client_and_retains_server_rendered_sensor_fallback(setup):
+    from robot.core.behavior_engine import BehaviorEngine
+    from robot.core.runtime import RobotCore
+    from robot.services import PhosApplicationService
+
+    class Runtime:
+        def __init__(self):
+            self.core = RobotCore()
+            self._behavior_engine = BehaviorEngine(self.core.events)
+        def sensor_status(self): return {}
+        def apply_base_visual_source(self, config): pass
+
+    _, path, now = setup
+    app = create_app(path, clock=lambda: now[0], application_service=PhosApplicationService(Runtime()))
+    page = authorize(app).get("/configuration/sensors").get_data(as_text=True)
+    assert 'data-phos-live' in page
+    assert 'data-command="set_robot_state"' in page
+    assert 'data-overlay-submit' in page
+    source = (app.root_path and __import__("pathlib").Path(app.root_path) / "static" / "admin.js").read_text()
+    assert '"/events"' in source and '"/capabilities"' in source
+    assert 'const apiUrl = (path) => path.startsWith(`${endpoint}/`) ? path : endpoint + path;' in source
+    assert 'fetch(apiUrl(path)' in source
+    assert 'snapshot({refreshCapabilities: true}).then(connect)' in source
+    assert 'node.prepend(option); node.value = value;' in source
+    assert 'state: payload.state || payload.current' in source
+    assert 'PHOS returned HTML instead of its API response' in source
+    assert 'Your administrator session has expired' in source
+    assert 'sensor_status' not in source and 'GPIO' not in source
+
+
 def test_incorrect_login_and_password_validation(setup):
     app, _, now = setup
     client = app.test_client()

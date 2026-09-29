@@ -132,6 +132,12 @@ Logging level, iris appearance and camera-preview settings are live-reloadable a
 PHOS restart uses the supplied user systemd service; manual launches reject
 browser restart. No OS reboot, AWS credential probe, automatic backup or Internet
 deployment.
+The General, System / Status and Sensors pages additionally use the authenticated
+Remote API for an initial semantic runtime snapshot and live SSE updates. The
+Waitress-compatible event stream reconnects with bounded backoff and retains
+last-known values; the Sensors dashboard presents optional sensor states
+independently and capabilities populate runtime controls. Server-rendered status
+remains available when JavaScript is unavailable.
 See [user manual](web-administration.md) for installation and recovery. Tests are
 hardware-free; Pi resource usage and LAN browser verification remain required.
 

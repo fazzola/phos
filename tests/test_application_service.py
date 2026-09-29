@@ -2,7 +2,7 @@ from robot.core.runtime import RobotCore
 from robot.core.behavior_engine import BehaviorEngine
 from robot.services.application import COMMANDS, OVERLAY_COMMANDS, PhosApplicationService
 from robot.core.environmental import EnvironmentalState
-from robot.core.state import RobotState
+from robot.core.state import InvalidStateTransition, RobotState, RobotStateMachine, transition_graph, writable_states
 from robot.motion import MotionState
 from robot.web.openapi import _resolve, load_spec
 
@@ -56,10 +56,16 @@ def test_capabilities_are_derived_from_canonical_semantic_enums():
     assert observable["environmental_overlays"]["temperature"] == ["none", "cold", "warm"]
     assert observable["environmental_overlays"]["air_quality"] == ["none", "warning", "bad"]
     for name, definition in COMMANDS.items():
-        assert capabilities["commands"][name] == {
+        expected = {
             "method": definition.method, "endpoint": definition.endpoint,
             "field": definition.field, "allowed_values": definition.allowed_values,
         }
+        if name == "set_robot_state":
+            expected["transitions"] = {
+                "idle": ["listening", "sleeping"], "listening": ["idle", "thinking", "sleeping"],
+                "thinking": ["idle", "speaking"], "speaking": ["idle", "listening"], "sleeping": ["idle"],
+            }
+        assert capabilities["commands"][name] == expected
     assert "error" not in capabilities["commands"]["set_robot_state"]["allowed_values"]
 
 
@@ -88,6 +94,74 @@ def test_runtime_only_or_unmapped_values_are_not_accepted_as_writable_commands()
             assert error.code == code
         else:
             raise AssertionError(f"{value} was accepted despite not being writable")
+
+
+def test_invalid_robot_transition_becomes_a_structured_application_error(monkeypatch):
+    import robot.services.application as application
+    runtime = Runtime()
+    runtime._loop = object()
+    service = PhosApplicationService(runtime)
+
+    class Rejected:
+        def result(self, timeout):
+            from robot.core.state import InvalidStateTransition
+            raise InvalidStateTransition("Cannot transition from idle to thinking.")
+
+    def reject(coroutine, loop):
+        coroutine.close()
+        return Rejected()
+
+    monkeypatch.setattr(application.asyncio, "run_coroutine_threadsafe", reject)
+    try:
+        service.set_state("thinking")
+    except Exception as error:
+        assert error.code == "invalid_state_transition"
+        assert error.status == 409
+        assert error.details == {"current": "idle", "target": "thinking"}
+    else:
+        raise AssertionError("invalid state transition was accepted")
+
+
+def test_robot_state_model_and_capabilities_share_canonical_transition_graph():
+    service = PhosApplicationService(Runtime())
+    state = service.robot_state()
+    command = service.capabilities()["commands"]["set_robot_state"]
+    assert state == {"state": "idle", "current": "idle", "running": False,
+                     "writable": ["idle", "listening", "thinking", "speaking", "sleeping"],
+                     "allowed_next": ["listening", "sleeping"]}
+    assert command["transitions"][state["current"]] == state["allowed_next"]
+
+
+def test_every_exported_transition_is_accepted_and_other_writable_targets_rejected():
+    graph = transition_graph()
+    for source, targets in graph.items():
+        for target in targets:
+            assert RobotStateMachine(RobotState(source)).transition_to(RobotState(target)).current.value == target
+        for target in writable_states():
+            if target.value == source or target.value in targets:
+                continue
+            try:
+                RobotStateMachine(RobotState(source)).transition_to(target)
+            except InvalidStateTransition:
+                pass
+            else:
+                raise AssertionError(f"{source} -> {target.value} was missing from the exported graph")
+
+
+def test_manual_expression_is_behavior_owned_bounded_intent_not_a_renderer_mutation():
+    now = [0.0]
+    runtime = Runtime()
+    runtime._behavior_engine = BehaviorEngine(runtime.core.events, clock=lambda: now[0])
+    service = PhosApplicationService(runtime)
+    applied = service.set_expression("curious")
+    assert applied["manual_override"]["expression"] == "curious"
+    assert service.visual_state()["expression"] == "curious"
+    # The override outlives ordinary environmental/source arbitration, then
+    # expires without a Web Admin or renderer callback.
+    runtime._behavior_engine.configure_base_visual_source("manual")
+    assert service.visual_state()["expression"] == "curious"
+    now[0] = 31.0
+    assert service.visual_state()["expression"] == "neutral"
 
 
 def test_overlay_override_arbitrates_independent_channels_and_restores_current_environment():
