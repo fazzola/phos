@@ -42,6 +42,7 @@ code { overflow-wrap: anywhere; }
 .live-controls { align-items: end; margin-top: 1rem; }
 .live-controls button { align-self: end; }
 .live-error { color: #ffb5a7; }
+.live-success { color: #a7ecea; }
 .domain-card { display: grid; gap: .6rem; padding: 1rem; border: 1px solid #45616a; border-radius: .5rem; text-decoration: none; }
 .domain-card span { color: #d2e4e8; line-height: 1.5; }
 dt { font-weight: bold; margin-top: 1rem; }

@@ -144,6 +144,13 @@ def test_live_dashboard_is_an_api_client_and_retains_server_rendered_sensor_fall
     assert 'data-overlay-submit' in page
     source = (app.root_path and __import__("pathlib").Path(app.root_path) / "static" / "admin.js").read_text()
     assert '"/events"' in source and '"/capabilities"' in source
+    assert 'const apiUrl = (path) => path.startsWith(`${endpoint}/`) ? path : endpoint + path;' in source
+    assert 'fetch(apiUrl(path)' in source
+    assert 'snapshot({refreshCapabilities: true}).then(connect)' in source
+    assert 'node.prepend(option); node.value = value;' in source
+    assert 'state: payload.state || payload.current' in source
+    assert 'PHOS returned HTML instead of its API response' in source
+    assert 'Your administrator session has expired' in source
     assert 'sensor_status' not in source and 'GPIO' not in source
 
 

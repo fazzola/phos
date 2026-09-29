@@ -19,14 +19,18 @@
 {% endif %}
 <div class="live-controls" data-live-controls hidden>
 <label>Robot state <select data-command="set_robot_state"></select></label>
+<button type="button" data-command-apply="set_robot_state">Apply robot state</button>
 <label>Expression <select data-command="set_expression"></select></label>
+<button type="button" data-command-apply="set_expression">Apply expression</button>
 <label>Visual source <select data-command="set_visual_source"></select></label>
+<button type="button" data-command-apply="set_visual_source">Apply visual source</button>
 <label>Temperature overlay <select data-overlay="temperature"></select></label>
 <label>Air-quality overlay <select data-overlay="air_quality"></select></label>
 <label>Override duration (ms) <input data-overlay="duration_ms" type="number" min="1" value="30000"></label>
 <button type="button" data-overlay-submit>Apply overlay</button><button type="button" data-overlay-clear>Clear overlay</button>
 </div>
 <p class="live-error" role="status" hidden></p>
+<p class="live-success" role="status" hidden></p>
 </section>
 {% endif %}
 {% if related_area and related_area != area %}

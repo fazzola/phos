@@ -73,7 +73,10 @@ def create_api(service):
                 while True:
                     try:
                         event = queue.get(timeout=15)
-                        yield "event: %s\ndata: %s\n\n" % (event["type"], json.dumps(event, separators=(",", ":")))
+                        # Application-service values are JSON-safe.  Keep
+                        # this strict as a final adapter guard: browsers must
+                        # never receive Python's non-standard NaN/Infinity.
+                        yield "event: %s\ndata: %s\n\n" % (event["type"], json.dumps(event, separators=(",", ":"), allow_nan=False))
                     except Empty:
                         # A separate-process WSGI worker can only ask its
                         # parent for a bounded snapshot at this keepalive

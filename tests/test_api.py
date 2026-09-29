@@ -31,7 +31,9 @@ def test_versioned_status_and_stable_error_document():
     capabilities = client.get("/api/v1/capabilities").json
     assert capabilities["commands"]["set_visual_source"]["allowed_values"] == ["manual", "environment", "state"]
     assert capabilities["commands"]["set_robot_state"] == {"endpoint": "/api/v1/state", "method": "POST",
-                                                               "field": "state", "allowed_values": ["idle", "listening", "thinking", "speaking", "sleeping"]}
+                                                               "field": "state", "allowed_values": ["idle", "listening", "thinking", "speaking", "sleeping"],
+                                                               "transitions": {"idle": ["listening", "sleeping"], "listening": ["idle", "thinking", "sleeping"],
+                                                                               "thinking": ["idle", "speaking"], "speaking": ["idle", "listening"], "sleeping": ["idle"]}}
     response = client.post("/api/v1/visual-source", json={"source": "GPIO18"})
     assert response.status_code == 400
     assert response.json == {"error": {"code": "invalid_visual_source", "message": "Unsupported visual source.",
@@ -40,6 +42,36 @@ def test_versioned_status_and_stable_error_document():
     assert overlay.status_code == 200
     assert overlay.json["resolved"] == {"temperature": "warm", "air_quality": "warning"}
     assert client.delete("/api/v1/overlay").json["override"]["active"] is False
+
+
+def test_runtime_non_finite_sensor_values_become_json_null():
+    runtime = Runtime()
+    runtime.sensor_status = lambda: {"environmental": {
+        "status": "available", "available": True,
+        "measurements": {"temperature_c": float("-inf"), "pressure_hpa": float("nan")},
+    }}
+    app = Flask(__name__)
+    app.register_blueprint(create_api(PhosApplicationService(runtime)))
+    response = app.test_client().get("/api/v1/status")
+    assert response.status_code == 200
+    assert response.json["environment"]["measurements"] == {"pressure_hpa": None, "temperature_c": None}
+
+
+def test_semantic_command_routes_forward_the_capability_field_to_application_service():
+    class RecordingService:
+        def __init__(self): self.calls = []
+        def set_state(self, value): self.calls.append(("state", value)); return {"state": value}
+        def set_expression(self, value): self.calls.append(("expression", value)); return {"expression": value}
+        def set_visual_source(self, value): self.calls.append(("source", value)); return {"source": value}
+
+    service = RecordingService()
+    app = Flask(__name__)
+    app.register_blueprint(create_api(service))
+    client = app.test_client()
+    assert client.post("/api/v1/state", json={"state": "listening"}).json == {"state": "listening"}
+    assert client.post("/api/v1/expression", json={"expression": "curious"}).json == {"expression": "curious"}
+    assert client.post("/api/v1/visual-source", json={"source": "manual"}).json == {"source": "manual"}
+    assert service.calls == [("state", "listening"), ("expression", "curious"), ("source", "manual")]
 
 
 def test_local_openapi_and_documentation_routes():
