@@ -8,6 +8,10 @@ h1 small { display: block; color: #d2e4e8; font-size: 1rem; font-weight: normal;
 nav { display: flex; align-items: center; flex-wrap: wrap; gap: 1.2rem; }
 a { color: #b2f4f1; }
 nav form { margin: 0; }
+.connection { margin-left: auto; font-size: .85rem; padding: .35rem .6rem; border: 1px solid #72919b; border-radius: 1rem; }
+.connection.connected { color: #a7ecea; border-color: #87c5c1; }
+.connection.reconnecting { color: #ffd380; border-color: #ffd380; }
+.connection.disconnected { color: #ffb5a7; border-color: #ffb5a7; }
 fieldset, .status, .account { border: 1px solid #45616a; border-radius: .5rem; padding: 1rem; margin: 1.2rem 0; min-width: 0; }
 legend { font-weight: bold; color: #b2f4f1; }
 p { line-height: 1.5; }
@@ -32,6 +36,12 @@ code { overflow-wrap: anywhere; }
 .domain-nav a { padding: .8rem; border: 1px solid #45616a; border-radius: .3rem; text-decoration: none; }
 .domain-nav a[aria-current=page] { background: #b2f4f1; color: #13252d; font-weight: bold; }
 .domain-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; }
+.live-cards, .live-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 1rem; }
+.live-cards dl { margin: 0; padding: .7rem; border: 1px solid #45616a; border-radius: .3rem; }
+.live-cards dt { margin-top: .3rem; }
+.live-controls { align-items: end; margin-top: 1rem; }
+.live-controls button { align-self: end; }
+.live-error { color: #ffb5a7; }
 .domain-card { display: grid; gap: .6rem; padding: 1rem; border: 1px solid #45616a; border-radius: .5rem; text-decoration: none; }
 .domain-card span { color: #d2e4e8; line-height: 1.5; }
 dt { font-weight: bold; margin-top: 1rem; }

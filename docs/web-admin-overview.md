@@ -38,6 +38,24 @@ Status reports saved-versus-active configuration, version, active expression
 selection and reload/restart-required differences; it does not claim live
 hardware health or probe AWS credentials.
 
+## Live runtime dashboard
+
+General, System / Status and Sensors show a current semantic snapshot, then keep
+it updated through the authenticated Remote API event stream. The default
+Waitress deployment uses Server-Sent Events at `/api/v1/events` (rather than a
+WebSocket upgrade), preserving the same application-service event contract.
+The connection indicator reports connected, reconnecting or disconnected. Last
+valid values remain visible while reconnecting; a bounded reconnect backoff uses
+a conservative 30-second snapshot fallback and always obtains a fresh snapshot
+after reconnection.
+
+The Sensors dashboard presents each optional BMP280/environmental sensor,
+CCS811 and MPU6050 independently, including freshness and unavailable, stale,
+warming-up or degraded conditions. It displays PHOS's interpreted environment,
+motion, visual source and overlay intent without reimplementing sensor
+interpreters in the browser. Runtime controls and overlay choices are populated
+from Remote API capabilities, not browser-maintained enum lists.
+
 ## Save, reload, restart
 
 <div class="phos-callout" markdown>

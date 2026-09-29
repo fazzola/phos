@@ -75,6 +75,11 @@ def create_api(service):
                         event = queue.get(timeout=15)
                         yield "event: %s\ndata: %s\n\n" % (event["type"], json.dumps(event, separators=(",", ":")))
                     except Empty:
+                        # A separate-process WSGI worker can only ask its
+                        # parent for a bounded snapshot at this keepalive
+                        # boundary.  Direct in-process services simply emit
+                        # their already-published semantic changes here.
+                        service.emit_snapshot_changes()
                         yield ": keepalive\n\n"
             finally:
                 unsubscribe()

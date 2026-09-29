@@ -77,7 +77,9 @@ class ApplicationError(Exception):
 
 class RemoteApplicationService:
     """Web-worker proxy for the parent-owned application service."""
-    def __init__(self, lifecycle): self._lifecycle = lifecycle
+    def __init__(self, lifecycle):
+        self._lifecycle = lifecycle
+        self._listeners, self._last = [], {}
 
     def _call(self, name, payload=None):
         response = self._lifecycle.execute(f"application.{name}", payload)
@@ -103,8 +105,43 @@ class RemoteApplicationService:
     def overlay(self): return self._call("overlay")
     def set_overlay(self, value): return self._call("set_overlay", value)
     def clear_overlay(self): return self._call("clear_overlay")
-    def subscribe(self, listener): return lambda: None
-    def emit_snapshot_changes(self): pass
+    def subscribe(self, listener):
+        self._listeners.append(listener)
+        def unsubscribe():
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+        return unsubscribe
+
+    def emit_snapshot_changes(self):
+        """Bridge the parent snapshot into bounded events for a WSGI worker.
+
+        The process channel cannot carry a permanently subscribed callback. The
+        SSE endpoint invokes this at its 15-second keepalive boundary, so a
+        connected browser gets only changed semantic snapshots, never raw
+        provider readings or a second high-rate polling loop.
+        """
+        try:
+            current = self.status()
+            payloads = {
+                "robot_state_changed": current.get("robot", {}),
+                "visual_state_changed": current.get("visual", {}),
+                "environmental_state_changed": current.get("environment", {}),
+                "motion_state_changed": current.get("motion", {}),
+                "health_changed": current.get("health", {}),
+                "overlay_changed": current.get("overlay", {}),
+            }
+        except ApplicationError:
+            return
+        for event_type, payload in payloads.items():
+            frozen = repr(payload)
+            if self._last.get(event_type) == frozen:
+                continue
+            self._last[event_type] = frozen
+            event = {"type": event_type,
+                     "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+                     "payload": payload}
+            for listener in tuple(self._listeners):
+                listener(event)
 
 
 class PhosApplicationService:
@@ -260,6 +297,8 @@ class PhosApplicationService:
             "environment": self.environment(), "motion": self.motion(),
         }
         result["health"] = self.health()
+        result["overlay"] = self.overlay()
+        result.setdefault("sensors", self.sensors())
         self._emit("visual_state_changed", result["visual"])
         return result
 

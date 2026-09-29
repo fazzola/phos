@@ -23,7 +23,11 @@ def test_versioned_status_and_stable_error_document():
     app = Flask(__name__)
     app.register_blueprint(create_api(PhosApplicationService(Runtime())))
     client = app.test_client()
-    assert client.get("/api/v1/status").status_code == 200
+    snapshot = client.get("/api/v1/status")
+    assert snapshot.status_code == 200
+    # A dashboard can initialize from one semantic status document; sensor
+    # adapters remain behind the application service.
+    assert {"robot", "visual", "environment", "motion", "sensors", "health", "overlay"} <= set(snapshot.json)
     capabilities = client.get("/api/v1/capabilities").json
     assert capabilities["commands"]["set_visual_source"]["allowed_values"] == ["manual", "environment", "state"]
     assert capabilities["commands"]["set_robot_state"] == {"endpoint": "/api/v1/state", "method": "POST",
