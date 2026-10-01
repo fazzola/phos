@@ -28,19 +28,17 @@ protection. This is HTTP for a trusted LAN—not a public Internet service.
 
 ## Configuration domains
 
-The current editor exposes General, Network, Display & Appearance, Vision,
-Expression Recognition, Sensors, Logging, Web Administration / Security and
-read-only System / Status. Sensor and appearance areas include the implemented
-environmental behavior, IMU, LED ring and visual-source controls where those
-options are enabled in the canonical configuration.
+The sidebar exposes Dashboard, PHOS Status, Controls, Sensors, API, Diagnostics,
+System Actions and focused Settings pages. Controls is the only writable runtime
+action page: Robot State, Expression, Visual Source and Overlay are separate,
+responsive cards. System Actions exposes only supported lifecycle operations.
 
-Status reports saved-versus-active configuration, version, active expression
-selection and reload/restart-required differences; it does not claim live
-hardware health or probe AWS credentials.
+Diagnostics reports saved-versus-active configuration and reload/restart-required
+differences. Status does not claim live hardware health or probe AWS credentials.
 
 ## Live runtime dashboard
 
-General, System / Status and Sensors show a current semantic snapshot, then keep
+Dashboard, PHOS Status and Sensors show a current semantic snapshot, then keep
 it updated through the authenticated Remote API event stream. The default
 Waitress deployment uses Server-Sent Events at `/api/v1/events` (rather than a
 WebSocket upgrade), preserving the same application-service event contract.
@@ -54,7 +52,7 @@ CCS811 and MPU6050 independently, including freshness and unavailable, stale,
 warming-up or degraded conditions. It displays PHOS's interpreted environment,
 motion, visual source and overlay intent without reimplementing sensor
 interpreters in the browser. Runtime controls and overlay choices are populated
-from Remote API capabilities, not browser-maintained enum lists.
+from Remote API capabilities on Controls, not browser-maintained enum lists.
 
 ## Save, reload, restart
 

@@ -83,13 +83,17 @@ on restart. There is no persistent lockout or remote password reset.
 
 ## Edit configuration
 
-The administration home is **General**, with links to each configuration domain.
-The same navigation appears on every authenticated page and wraps for phone and
-tablet screens. The current page is highlighted. No frontend framework is needed.
+The administration home is **Dashboard**. The sidebar groups read-only and
+writable runtime pages under Basic/Advanced, followed by configuration Settings;
+**System Actions** is a direct Advanced destination. The same navigation appears
+on every authenticated page and wraps for phone and tablet screens. The current
+page is highlighted. No frontend framework is needed.
 
 | Page | Settings and actions |
 | --- | --- |
-| General | Overview and navigation to configuration pages. |
+| Dashboard | Read-only overview and navigation to configuration pages. |
+| PHOS Status | Read-only semantic state and subsystem health summary. |
+| Controls | Writable runtime actions only: separate Robot State, Expression, Visual Source and Overlay cards. Each action uses Remote API capabilities and reports feedback in its own card. |
 | Network | Web bind address (`web.host`) and port (`web.port`). Wi-Fi, DNS and other OS networking remain managed on the Pi. |
 | Display & Appearance | Display dimensions, fps, fullscreen and transitions; blink/gaze intervals, gaze smoothing and reaction decay from `behavior`. |
 | Vision | Face tracking, camera resolution/cadence, face detection and optional display-only camera picture-in-picture preview. |
@@ -98,9 +102,10 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Sensors | Environmental type (BME280/BMP280), CCS811 air quality, environmental behavior and GY-521/MPU-6050 motion: enable, I2C address, polling and stale timeout; read-only current readings, interpreter state/reason, age and sensor health from the parent runtime. Hardware settings require Restart PHOS; IMU and environmental interpretation settings use Reload configuration. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
-| System / Status | Read-only PHOS version, configuration path, active expression provider/enabled state, last successful load/reload time, saved-versus-active comparison and restart-required fields. Live robot state is not monitored and AWS credential availability is not probed. |
+| Diagnostics | Read-only runtime health and saved-versus-active configuration diagnostics. |
+| System Actions | Reload configuration and, when managed by the documented systemd service, review/confirm Restart PHOS. Restart is visually marked as disruptive; reboot and shutdown are not supported. |
 
-Active-configuration information is shown on **System / Status**, visually separated
+Active-configuration information is shown in **Diagnostics**, visually separated
 from editable settings. Deprecated CLI overrides, if used, appear in startup
 settings but do not change the saved file. The software version comes from the authoritative `robot.__version__`; live
 health is not inferred from the active configuration snapshot.

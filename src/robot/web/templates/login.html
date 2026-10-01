@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="account"><h2>Administrator login</h2>
+<section class="login-panel" aria-label="PHOS administrator login"><div class="login-branding"><img src="{{ url_for('static', filename='images/phos-login-black.webp') }}" alt="PHOS"><p class="eyebrow">LOCAL ROBOT CONSOLE</p><p>PHOS administration</p></div>
+<div class="account login-form"><h2>Administrator login</h2>
 <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
-<button>Log in</button></form></section>
+<button>Log in</button></form></div></section>
 {% endblock %}

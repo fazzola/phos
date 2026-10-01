@@ -89,6 +89,19 @@ def test_bootstrap_login_forces_change_and_never_exposes_config(setup):
     assert (path.parent / ".phos-admin/password.json").stat().st_mode & 0o777 == 0o600
 
 
+def test_existing_phos_images_are_used_as_responsive_visuals(setup):
+    app, _, _ = setup
+    login_page = app.test_client().get("/login").get_data(as_text=True)
+    dashboard = authorize(app).get("/").get_data(as_text=True)
+    assert 'images/phos-login-black.webp' in login_page and 'alt="PHOS"' in login_page
+    assert 'images/phos-dashboard-black.webp' in dashboard and 'alt="" loading="lazy"' in dashboard
+    css = (app.root_path and __import__("pathlib").Path(app.root_path) / "static" / "admin.css").read_text()
+    assert ".login-panel { display: grid" in css
+    assert ".login-branding img" in css and "height: auto" in css
+    assert "mask-image: radial-gradient" in css
+    assert ".dashboard-phos-image" in css and "@media (max-width: 430px)" in css
+
+
 def test_api_authentication_returns_json_while_browser_pages_redirect(setup):
     from robot.core.behavior_engine import BehaviorEngine
     from robot.core.runtime import RobotCore
@@ -124,6 +137,73 @@ def test_api_authentication_returns_json_while_browser_pages_redirect(setup):
     assert response.status_code == 200 and response.is_json
 
 
+def test_canonical_admin_navigation_has_unique_destinations_and_redirects_legacy_areas(setup):
+    app, _, _ = setup
+    client = authorize(app)
+    page = client.get("/").get_data(as_text=True)
+    for label in ("Dashboard", "PHOS Status", "Controls", "Sensors", "API", "Diagnostics", "System Actions", "Settings"):
+        assert label in page
+    assert page.count('href="/system"') == 1
+    system_routes = [rule for rule in app.url_map.iter_rules() if rule.rule == "/system"]
+    assert len(system_routes) == 1 and system_routes[0].endpoint == "system"
+    assert 'href="/configuration/vision"' not in page
+    assert 'href="/configuration/logging"' not in page
+    assert client.get("/configuration/display").location == "/configuration/appearance#display"
+    assert client.get("/configuration/logging").location == "/configuration/runtime#logging"
+    controls = client.get("/configuration/controls").get_data(as_text=True)
+    assert "Apply robot state" in controls and "Editing saved settings" not in controls
+    status = client.get("/configuration/status").get_data(as_text=True)
+    assert "Detailed runtime diagnostics" in status
+
+
+def test_focused_settings_and_page_responsibilities(setup):
+    app, _, _ = setup
+    client = authorize(app)
+    eyes = client.get("/configuration/eyes").get_data(as_text=True)
+    network = client.get("/configuration/network").get_data(as_text=True)
+    dashboard = client.get("/").get_data(as_text=True)
+    status = client.get("/configuration/status").get_data(as_text=True)
+    controls = client.get("/configuration/controls").get_data(as_text=True)
+    sensors = client.get("/configuration/sensors").get_data(as_text=True)
+    assert 'name="display.iris_color"' in eyes
+    assert 'name="web.host"' in network and 'name="web.port"' in network
+    assert 'data-live="environment.temperature"' in dashboard
+    assert 'data-command="set_robot_state"' not in status
+    assert 'data-command="set_robot_state"' in controls
+    assert 'data-command="set_robot_state"' not in sensors
+
+
+def test_controls_are_separated_into_responsive_action_sections(setup):
+    app, _, _ = setup
+    client = authorize(app)
+    controls = client.get("/configuration/controls").get_data(as_text=True)
+    for section, command, action in (
+        ("robot-state", "set_robot_state", "Apply robot state"),
+        ("expression", "set_expression", "Apply expression"),
+        ("visual-source", "set_visual_source", "Apply visual source"),
+    ):
+        match = re.search(rf'<section class="control-card" data-control-section="{section}">(.*?)</section>', controls)
+        assert match and f'data-command="{command}"' in match.group(1) and action in match.group(1)
+    overlay = re.search(r'<section class="control-card" data-control-section="overlay">(.*?)</section>', controls)
+    assert overlay and 'data-overlay-submit' in overlay.group(1) and 'data-overlay-clear' in overlay.group(1)
+    assert controls.count('data-command="set_robot_state"') == 1
+    assert controls.count('data-command="set_expression"') == 1
+    assert controls.count('data-command="set_visual_source"') == 1
+    for page in (client.get("/").get_data(as_text=True), client.get("/configuration/status").get_data(as_text=True), client.get("/configuration/sensors").get_data(as_text=True)):
+        assert 'data-command=' not in page and 'data-overlay-submit' not in page
+
+
+def test_controls_responsive_layout_and_button_groups_do_not_overflow():
+    from pathlib import Path
+
+    css = (Path(__file__).parents[1] / "src/robot/web/static/admin.css").read_text()
+    assert ".control-grid { grid-template-columns: repeat(2, minmax(0, 1fr))" in css
+    assert ".button-group { display: flex; flex-wrap: wrap;" in css
+    assert "@media (max-width: 760px)" in css
+    assert ".control-grid { grid-template-columns: minmax(0, 1fr); }" in css
+    assert ".button-group { flex-direction: column; }" in css
+
+
 def test_live_dashboard_is_an_api_client_and_retains_server_rendered_sensor_fallback(setup):
     from robot.core.behavior_engine import BehaviorEngine
     from robot.core.runtime import RobotCore
@@ -138,12 +218,14 @@ def test_live_dashboard_is_an_api_client_and_retains_server_rendered_sensor_fall
 
     _, path, now = setup
     app = create_app(path, clock=lambda: now[0], application_service=PhosApplicationService(Runtime()))
-    page = authorize(app).get("/configuration/sensors").get_data(as_text=True)
+    page = authorize(app).get("/configuration/controls").get_data(as_text=True)
     assert 'data-phos-live' in page
     assert 'data-command="set_robot_state"' in page
     assert 'data-overlay-submit' in page
     source = (app.root_path and __import__("pathlib").Path(app.root_path) / "static" / "admin.js").read_text()
     assert '"/events"' in source and '"/capabilities"' in source
+    for endpoint in ('"/status"', '"/health"', '"/environment"', '"/motion"', '"/overlay"'):
+        assert endpoint in source
     assert 'const apiUrl = (path) => path.startsWith(`${endpoint}/`) ? path : endpoint + path;' in source
     assert 'fetch(apiUrl(path)' in source
     assert 'snapshot({refreshCapabilities: true}).then(connect)' in source

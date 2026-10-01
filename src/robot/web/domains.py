@@ -8,15 +8,18 @@ import re
 from robot.web.configuration import editor_sections
 
 DOMAINS = {
-    "general": {"title": "General", "description": "Choose an area to manage PHOS. Save changes within each page before navigating away."},
-    "network": {"title": "Network", "description": "Choose where web administration listens. Wi-Fi and other operating-system network settings are managed on the Pi."},
-    "display": {"title": "Display & Appearance", "description": "Display size, animation timing and eye appearance; iris theme applies on configuration reload."},
-    "vision": {"title": "Vision", "description": "Local camera tracking, face detection and an optional display-only diagnostic preview."},
-    "expression": {"title": "Expression Recognition", "description": "Select a provider and configure observations, model preprocessing and cloud request limits."},
-    "sensors": {"title": "Sensors", "description": "Environmental, air-quality and MPU-6050 motion readings and configuration. Hardware settings require Restart PHOS; IMU motion settings support Reload configuration."},
-    "logging": {"title": "Logging", "description": "Log level, destination and expression diagnostics. SDK credential/request debug output remains suppressed; no credential or payload logging controls are provided."},
-    "security": {"title": "Web Administration / Security", "description": "Enable administration and manage your administrator password separately from runtime settings."},
-    "status": {"title": "System / Status", "description": "Read-only active configuration metadata and saved configuration status. Lifecycle actions are on a separate System actions page; robot health is not monitored."},
+    "general": {"title": "Dashboard", "description": "PHOS administration overview and shortcuts."},
+    "status": {"title": "PHOS Status", "description": "Live semantic state, motion, environment and subsystem health summary."},
+    "controls": {"title": "Controls", "description": "Apply supported semantic PHOS commands through the authenticated Remote API."},
+    "sensors": {"title": "Sensors", "description": "Detailed BMP280/BME280, CCS811 and MPU6050 readings, freshness and availability."},
+    "api": {"title": "API", "description": "Remote API documentation, OpenAPI contract and authenticated capability discovery."},
+    "diagnostics": {"title": "Diagnostics", "description": "Runtime health, saved-versus-active configuration and system diagnostic actions."},
+    "appearance": {"title": "Appearance", "description": "Display geometry, animation and LED-ring appearance settings."},
+    "eyes": {"title": "Eyes", "description": "PHOS iris color and supported eye visual settings."},
+    "network": {"title": "Network", "description": "Web Admin host, bind address and local network exposure settings."},
+    "runtime": {"title": "Runtime", "description": "Vision, expression and safe logging configuration."},
+    "behavior": {"title": "Behavior", "description": "Supported eye and environmental behavior settings."},
+    "integrations": {"title": "Integrations", "description": "Optional Web Administration integration settings."},
 }
 
 # Paths select fields that already exist in the canonical document. A trailing
@@ -44,6 +47,14 @@ GROUPS = {
     "logging": [("logging", "Safe logging settings", ("logging.",), None)],
     "security": [("web", "Administration service", ("web.enabled",), None)],
 }
+
+# The unified Settings editor keeps the existing canonical groups and schema;
+# it changes navigation only, not configuration meaning or validation.
+GROUPS["appearance"] = [("display", "Display", ("display.width", "display.height", "display.fps", "display.fullscreen"), None), *GROUPS["display"][1:3]]
+GROUPS["eyes"] = [("eyes", "Eye appearance", ("display.iris_color", "display.base_visual_source", "display.environment_overlays_enabled"), None)]
+GROUPS["runtime"] = [*GROUPS["vision"], *GROUPS["expression"], *GROUPS["logging"]]
+GROUPS["behavior"] = [("behavior", "Eye behavior", ("behavior.",), None)]
+GROUPS["integrations"] = GROUPS["security"]
 
 
 def domain_sections(document, area):
