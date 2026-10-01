@@ -61,6 +61,8 @@ if (provider) {
     display("ccs811.tvoc", reading(ccs811, "tvoc_ppb", "ppb")); display("ccs811.age", age(ccs811));
     display("motion.status", status(motion)); display("motion.age", age(motion));
     display("overlay.resolved", `${overlay.temperature || "none"} / ${overlay.air_quality || "none"}`);
+    const manual = (state.overlay || {}).override || (state.overlay || {}).manual || {};
+    display("overlay.override", Object.keys(manual).length ? `${manual.temperature || "none"} / ${manual.air_quality || "none"}` : "None");
     const subsystems = ((state.health || {}).subsystems) || {};
     display("health", Object.entries(subsystems).map(([name, item]) => `${name}: ${item.state}`).join(", "));
     if (note) note.textContent = "Semantic runtime state; retained while reconnecting.";
@@ -83,12 +85,16 @@ if (provider) {
   };
   const snapshot = async ({refreshCapabilities = false} = {}) => {
     try {
-      const requests = [fetchJson("/status"), fetchJson("/overlay")];
+      // Read models are fetched together, then controls are populated from the
+      // stable capability document before current values are selected.  None
+      // of these initialization reads sends a semantic command.
+      const requests = [fetchJson("/status"), fetchJson("/health"), fetchJson("/environment"),
+                        fetchJson("/motion"), fetchJson("/overlay")];
       if (refreshCapabilities || !capabilities) requests.push(fetchJson("/capabilities"));
       const values = await Promise.all(requests);
-      const [current, overlay, nextCapabilities] = values;
+      const [current, health, environment, motion, overlay, nextCapabilities] = values;
       if (nextCapabilities) capabilities = nextCapabilities;
-      Object.assign(state, current, {overlay}); configure(capabilities); render(); syncControls();
+      Object.assign(state, current, {health, environment, motion, overlay}); configure(capabilities); render(); syncControls();
       if (error) error.hidden = true;
     } catch (problem) {
       if (error) { error.textContent = problem.message; error.hidden = false; }
@@ -104,7 +110,7 @@ if (provider) {
       const apply = controls.querySelector(`[data-command-apply="${node.dataset.command}"]`);
       if (!apply) { node.disabled = true; continue; }
       if (!apply.dataset.bound) {
-        apply.addEventListener("click", async () => { await commandRequest(command.endpoint, {[command.field]: node.value}, "POST", apply.textContent); });
+        apply.addEventListener("click", async () => { await commandRequest(command.endpoint, {[command.field]: node.value}, "POST", apply.textContent, apply); });
         apply.dataset.bound = "true";
       }
     }
@@ -115,9 +121,9 @@ if (provider) {
     }
     controls.querySelector("[data-overlay-submit]").addEventListener("click", async () => {
       const payload = {}; for (const node of controls.querySelectorAll("[data-overlay]")) payload[node.dataset.overlay] = node.type === "number" ? Number(node.value) : node.value;
-      await commandRequest("/overlay", payload, "POST", "Overlay applied");
+      await commandRequest("/overlay", payload, "POST", "Overlay applied", controls.querySelector("[data-overlay-submit]"));
     });
-    controls.querySelector("[data-overlay-clear]").addEventListener("click", async () => { await commandRequest("/overlay", undefined, "DELETE", "Overlay cleared"); });
+    controls.querySelector("[data-overlay-clear]").addEventListener("click", async () => { await commandRequest("/overlay", undefined, "DELETE", "Overlay cancelled", controls.querySelector("[data-overlay-clear]")); });
     controls.hidden = false; controls.dataset.ready = "true";
   };
   const syncControls = () => {
@@ -144,6 +150,7 @@ if (provider) {
       if (node.dataset.command === "set_robot_state") {
         const transitions = ((capabilities.commands || {}).set_robot_state || {}).transitions || {};
         const allowed = new Set(transitions[value] || []);
+        display("robot.transitions", allowed.size ? [...allowed].join(", ") : "No transition available");
         for (const option of node.options) {
           option.disabled = option.dataset.currentOnly === "true" ||
             (option.value !== value && !allowed.has(option.value));
@@ -151,9 +158,15 @@ if (provider) {
       }
     }
   };
-  const commandRequest = async (path, payload, method = "POST", message = "Command applied") => {
-    try { const response = await fetch(apiUrl(path), {method, credentials: "same-origin", headers: {"Content-Type": "application/json", Accept: "application/json"}, body: payload ? JSON.stringify(payload) : undefined}); await readJson(response, `Command failed (${response.status})`); await snapshot(); if (success) { success.textContent = message; success.hidden = false; } }
-    catch (problem) { if (success) success.hidden = true; error.textContent = problem.message; error.hidden = false; }
+  const commandRequest = async (path, payload, method = "POST", message = "Command applied", trigger) => {
+    const feedback = trigger && trigger.closest(".control-card")?.querySelector(".control-feedback");
+    const report = (text, kind) => {
+      if (feedback) { feedback.textContent = text; feedback.className = `control-feedback ${kind}`; feedback.hidden = false; }
+      else if (kind === "success" && success) { success.textContent = text; success.hidden = false; }
+      else if (kind === "error" && error) { error.textContent = text; error.hidden = false; }
+    };
+    try { const response = await fetch(apiUrl(path), {method, credentials: "same-origin", headers: {"Content-Type": "application/json", Accept: "application/json"}, body: payload ? JSON.stringify(payload) : undefined}); await readJson(response, `Command failed (${response.status})`); await snapshot(); report(message, "success"); }
+    catch (problem) { report(problem.message, "error"); }
   };
   const applyEvent = (event) => {
     const payload = event.payload || {};

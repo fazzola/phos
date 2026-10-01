@@ -173,6 +173,10 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
     @app.route("/", methods=["GET", "POST"])
     @app.route("/configuration/<area>", methods=["GET", "POST"])
     def configuration(area="general"):
+        aliases = {"settings": "appearance", "display": "appearance", "vision": "runtime",
+                   "expression": "runtime", "logging": "runtime", "security": "integrations"}
+        if area in aliases:
+            return redirect(url_for("configuration", area=aliases[area]) + f"#{area}")
         # Keep the original save URL usable with a page's explicit area value.
         if request.method == "POST" and request.path == "/":
             area = request.form.get("area", "general")
@@ -201,7 +205,7 @@ def create_app(config_path: Path, *, active_document=None, password_store=None, 
         # Sensors are a read-only status view just like System / Status.  The
         # lifecycle status service owns the cross-process, provider-neutral
         # runtime snapshot; the web worker must not reach into sensor adapters.
-        runtime_state = lifecycle.execute("status") if area in {"status", "sensors"} and lifecycle is not None else None
+        runtime_state = lifecycle.execute("status") if area in {"status", "sensors", "diagnostics"} and lifecycle is not None else None
         current = runtime_state["active"] if runtime_state and runtime_state["ok"] else active_document
         related_area, error_group = error_domain(document, error) if error else (None, None)
         return render_template("configuration.html", sections=domain_sections(document, area),
