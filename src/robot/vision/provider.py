@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Tuple
+import math
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,34 @@ class FacePosition:
 
     x: float
     y: float
+
+
+@dataclass(frozen=True)
+class VisionObservation:
+    """Canonical selected-detection semantics; IDs are runtime-local only."""
+    kind: str
+    target_id: str
+    x: float
+    y: float
+    width_normalized: float
+    height_normalized: float
+    confidence: Optional[float]
+    timestamp: float
+
+    def __post_init__(self) -> None:
+        if self.kind != "face" or not self.target_id:
+            raise ValueError("Vision observation requires a face kind and runtime-local target ID.")
+        if not all(math.isfinite(value) and -1 <= value <= 1 for value in (self.x, self.y)):
+            raise ValueError("Vision observation center must be normalized to [-1, 1].")
+        if not all(math.isfinite(value) and 0 < value <= 1 for value in (self.width_normalized, self.height_normalized)):
+            raise ValueError("Vision observation dimensions must be normalized to (0, 1].")
+        if self.confidence is not None and (not math.isfinite(self.confidence) or not 0 <= self.confidence <= 1):
+            raise ValueError("Vision observation confidence must be null or normalized to [0, 1].")
+
+    def document(self) -> dict:
+        return {"kind": self.kind, "target_id": self.target_id, "x": self.x, "y": self.y,
+                "width_normalized": self.width_normalized, "height_normalized": self.height_normalized,
+                "confidence": self.confidence, "timestamp": self.timestamp}
 
 
 @dataclass(frozen=True)

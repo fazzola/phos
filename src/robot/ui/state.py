@@ -38,6 +38,11 @@ class EnvironmentalLEDIntent(str, Enum):
     AIR_QUALITY_BAD = "air_quality_bad"
 
 
+class TransientVisualEffect(str, Enum):
+    PRESENCE_ENTERED = "presence_entered"
+    PRESENCE_LEFT = "presence_left"
+
+
 @dataclass(frozen=True)
 class AmbientOverlayState:
     temperature: str = "none"
@@ -77,6 +82,9 @@ class FaceState:
     motion_state: Optional[str] = None
     motion_event_at: Optional[float] = None
     motion_started_at: Optional[float] = None
+    transient_effect: Optional[TransientVisualEffect] = None
+    transient_effect_started_at: Optional[float] = None
+    transient_effect_duration_seconds: Optional[float] = None
 
     def normalized(self) -> "FaceState":
         expression = self.expression if isinstance(self.expression, FaceExpression) else FaceExpression.NEUTRAL
@@ -101,6 +109,9 @@ class FaceState:
             motion_state=self.motion_state if isinstance(self.motion_state, str) else None,
             motion_event_at=self.motion_event_at if isinstance(self.motion_event_at, (int, float)) else None,
             motion_started_at=self.motion_started_at if isinstance(self.motion_started_at, (int, float)) else None,
+            transient_effect=self.transient_effect if isinstance(self.transient_effect, TransientVisualEffect) else None,
+            transient_effect_started_at=self.transient_effect_started_at if isinstance(self.transient_effect_started_at, (int, float)) else None,
+            transient_effect_duration_seconds=self.transient_effect_duration_seconds if isinstance(self.transient_effect_duration_seconds, (int, float)) and self.transient_effect_duration_seconds > 0 else None,
         )
 
 

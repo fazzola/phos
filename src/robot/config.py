@@ -7,6 +7,7 @@ import math
 import os
 import tempfile
 import sys
+import copy
 from dataclasses import asdict, dataclass, fields, field
 from pathlib import Path
 from typing import Optional, Tuple
@@ -62,7 +63,12 @@ def load_document(path: Path = DEFAULT_CONFIG_PATH) -> dict:
             result[key] = value
         return result
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+        document = json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+        # Explicit schema evolution only: no general missing-key permissiveness.
+        if "presence" not in document and Path(path).resolve() != DEFAULT_CONFIG_PATH.resolve():
+            default = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+            document["presence"] = copy.deepcopy(default["presence"])
+        return document
     except json.JSONDecodeError as error:
         raise ConfigurationError(f"{path}: invalid JSON at line {error.lineno}, column {error.colno}") from error
     except (OSError, UnicodeError) as error:
@@ -141,6 +147,7 @@ _SCHEMA = {
                  "imu_animation_color": "led_ring_imu_animation_color",
                  "directional_animation_speed": "led_ring_directional_animation_speed",
                  "bottom_led_index": "led_ring_bottom_led_index", "forward_led_index": "led_ring_forward_led_index", "clockwise": "led_ring_clockwise"},
+    "presence": {"led_reactions": {"enabled": "presence_led_reactions_enabled", "entered": {"duration_ms": "presence_led_entered_duration_ms", "direction": "presence_led_entered_direction"}, "left": {"duration_ms": "presence_led_left_duration_ms", "direction": "presence_led_left_direction"}}},
     "behavior": {"blink_interval_seconds": "blink_interval_seconds", "gaze_interval_seconds": "gaze_interval_seconds",
                  "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second",
                  "imu_reaction_strength": "imu_reaction_strength", "imu_tilt_gaze_strength": "imu_tilt_gaze_strength",
@@ -238,6 +245,11 @@ class RuntimeConfig:
     """
 
     environmental_type: str
+    presence_led_reactions_enabled: bool
+    presence_led_entered_duration_ms: int
+    presence_led_entered_direction: str
+    presence_led_left_duration_ms: int
+    presence_led_left_direction: str
     environmental_enabled: bool
     environmental_i2c_address: str
     environmental_poll_interval_seconds: float
