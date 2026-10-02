@@ -7,11 +7,12 @@
 <p class="live-note">Loading the current semantic snapshot…</p>
 {% if area != 'controls' %}
 <div class="domain-cards live-cards status-summary">
-<dl><dt>Robot state</dt><dd data-live="robot.state">Unavailable</dd><dt>Expression</dt><dd data-live="visual.expression">Unavailable</dd><dt>Motion</dt><dd data-live="motion.motion_state">Unavailable</dd></dl>
+<dl><dt>Robot state</dt><dd data-live="robot.state">Unavailable</dd><dt>PHOS Expression</dt><dd data-live="visual.expression">Unavailable</dd><dt>Motion</dt><dd data-live="motion.motion_state">Unavailable</dd></dl>
 <dl><dt>Environment</dt><dd data-live="environment.state">Unavailable</dd><dt>Visual source</dt><dd data-live="visual.source">Unavailable</dd><dt>Resolved overlay</dt><dd data-live="overlay.resolved">Unavailable</dd></dl>
 <dl><dt>BMP280 / environmental</dt><dd data-live="environment.status">Unavailable</dd><dt>CCS811</dt><dd data-live="ccs811.status">Unavailable</dd><dt>MPU6050</dt><dd data-live="motion.status">Unavailable</dd></dl>
 <dl><dt>Presence</dt><dd data-live="presence.state">Unavailable</dd><dt>People</dt><dd data-live="presence.people_count">Unavailable</dd><dt>Attention</dt><dd data-live="attention.state">Unavailable</dd><dt>Target</dt><dd data-live="attention.target_id">Unavailable</dd><dt>Target position</dt><dd data-live="attention.target_position">Unavailable</dd><dt>Target confidence</dt><dd data-live="attention.target_confidence">Unavailable</dd></dl>
 <dl><dt>Observed Expression</dt><dd data-live="observed_expression.label">Unavailable</dd><dt>Confidence</dt><dd data-live="observed_expression.confidence">Unavailable</dd><dt>Provider</dt><dd data-live="observed_expression.provider">Unavailable</dd><dt>Model</dt><dd data-live="observed_expression.model">Unavailable</dd><dt>Availability</dt><dd data-live="observed_expression.available">Unavailable</dd><dt>Observation</dt><dd data-live="observed_expression.detail">No valid facial-expression observation</dd><dt>Observed at</dt><dd data-live="observed_expression.observed_at">Unavailable</dd></dl>
+<dl><dt>Expression Reaction</dt><dd data-live="expression_reaction.active">Inactive</dd><dt>Reaction type</dt><dd data-live="expression_reaction.reaction">Unavailable</dd><dt>Source observed label</dt><dd data-live="expression_reaction.observed_label">Unavailable</dd></dl>
 </div>
 {% endif %}
 {% if area in ('general', 'sensors') %}

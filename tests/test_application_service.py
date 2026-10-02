@@ -45,6 +45,7 @@ def test_status_reads_the_runtime_observed_expression_instance():
 
     assert service.observed_expression() == observation.document()
     assert service.status()["observed_expression"] == observation.document()
+    assert service.status()["expression_reaction"]["active"] is False
 
 
 def test_fresh_observed_expression_event_is_forwarded_to_remote_subscribers():

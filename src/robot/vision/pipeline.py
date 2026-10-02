@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 from robot.core import Behavior, Event, EventBus
 from robot.core.presence import VISION_FACE_OBSERVATION
+from robot.core.expression_reaction import EXPRESSION_REACTION_REQUESTED, ExpressionReactionPolicy
 
 from .provider import (CameraProvider, ExpressionObservation, ExpressionProvider, FaceDetector, FacePosition,
                        FaceRegion, ObservedExpression, VisionObservation, VisualExpression)
@@ -85,6 +86,7 @@ class VisionPipeline(Behavior):
         observed_expression_provider: Optional[str] = None,
         observed_expression_model: Optional[str] = None,
         observed_expression_ttl_seconds: float = _OBSERVED_EXPRESSION_TTL_SECONDS,
+        expression_reaction_policy: Optional[ExpressionReactionPolicy] = None,
         clock=time.monotonic,
     ) -> None:
         for name, value in (
@@ -131,6 +133,7 @@ class VisionPipeline(Behavior):
         # timestamps remain useful observation metadata but must never be
         # compared against a potentially different clock domain for TTL.
         self._observed_expression_fresh_at: Optional[float] = None
+        self._expression_reaction_policy = expression_reaction_policy
         self._last_expression_inference_at: Optional[float] = None
         self._task: Optional[asyncio.Task[None]] = None
 
@@ -289,6 +292,10 @@ class VisionPipeline(Behavior):
                     None if observation is None else observation.confidence, observed_now)
         await self._set_observed_expression(observation, observed_now,
                                             "no_observation" if observation is None else None)
+        if self._expression_reaction_policy is not None:
+            intent = self._expression_reaction_policy.observe(self._observed_expression, now=observed_now)
+            if intent is not None and self._events is not None:
+                await self._events.publish(Event(EXPRESSION_REACTION_REQUESTED, intent.document()))
         if observation is not None:
             self._log_expression_observation(observation.label, observation.confidence, now)
         stable = self._smoother.observe(observation, timestamp=now)

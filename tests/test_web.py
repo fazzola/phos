@@ -178,6 +178,9 @@ def test_focused_settings_and_page_responsibilities(setup):
                 "observed_expression.observed_at"):
         assert f'data-live="{key}"' in dashboard
         assert f'data-live="{key}"' in status
+    assert "PHOS Expression" in status
+    for key in ("expression_reaction.active", "expression_reaction.reaction", "expression_reaction.observed_label"):
+        assert f'data-live="{key}"' in status
     assert 'data-command="set_robot_state"' not in status
     assert 'data-command="set_robot_state"' in controls
     assert 'data-command="set_robot_state"' not in sensors

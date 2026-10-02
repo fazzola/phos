@@ -78,7 +78,7 @@ def create_api(service):
                 service.emit_snapshot_changes()
                 while True:
                     try:
-                        event = queue.get(timeout=15)
+                        event = queue.get(timeout=.25)
                         # Application-service values are JSON-safe.  Keep
                         # this strict as a final adapter guard: browsers must
                         # never receive Python's non-standard NaN/Infinity.
@@ -88,6 +88,9 @@ def create_api(service):
                         # parent for a bounded snapshot at this keepalive
                         # boundary.  Direct in-process services simply emit
                         # their already-published semantic changes here.
+                        # Runtime and WSGI worker are separate processes. A
+                        # short transient reaction must cross this bounded
+                        # snapshot bridge before it completes.
                         service.emit_snapshot_changes()
                         yield ": keepalive\n\n"
             finally:

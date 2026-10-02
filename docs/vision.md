@@ -402,6 +402,18 @@ face's current visual resemblance. A disabled, slow, missing, or failing
 classifier produces an unavailable observation only. It never changes Presence
 hysteresis, Presence events, Attention, or face-loss semantics.
 
+### Expression reaction policy
+
+`ObservedExpression` is classifier telemetry; `ExpressionReactionPolicy` is a
+separate conservative behavioral decision; and `ReactionIntent` is a transient
+semantic request consumed by `BehaviorEngine`. PHOS's resulting expression is
+its own visual output, not a mirror of a person. The default policy requires
+70% confidence, 500ms label confirmation, and a 2500ms per-reaction cooldown;
+it displays reactions for 1200ms. Happy maps to HAPPY, surprised to SURPRISED,
+and sad/fearful/angry to CURIOUS; neutral, disgust and unknown labels do not
+react. Reactions are suppressed outside IDLE or during a motion transient, and
+preserve attention gaze and environmental overlays.
+
 ## Selectable local / AWS expressions
 
 `expression.provider` in `config/phos.json` selects `local` (existing ONNX

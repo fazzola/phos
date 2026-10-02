@@ -26,6 +26,8 @@ from robot.core.presence import PRESENCE_CHANGED, PERSON_ENTERED, PERSON_LEFT
 from robot.core.attention import (ATTENTION_CHANGED, ATTENTION_TARGET_ACQUIRED,
                                   ATTENTION_TARGET_CHANGED, ATTENTION_TARGET_LOST)
 from robot.vision.pipeline import OBSERVED_EXPRESSION_CHANGED
+from robot.core.expression_reaction import (EXPRESSION_REACTION_STARTED, EXPRESSION_REACTION_COMPLETED,
+                                            EXPRESSION_REACTION_SUPPRESSED)
 from robot.config import ConfigurationError, RuntimeConfig
 from robot.motion import MotionState
 from robot.ui.state import FaceExpression
@@ -150,6 +152,7 @@ class RemoteApplicationService:
                 "presence_changed": current.get("presence", {}),
                 "attention_changed": current.get("attention", {}),
                 "observed_expression_changed": current.get("observed_expression", {}),
+                "expression_reaction_changed": current.get("expression_reaction", {}),
             }
         except ApplicationError:
             return
@@ -161,6 +164,8 @@ class RemoteApplicationService:
             if event_type == "observed_expression_changed":
                 logger.info("EXPR SSE SNAPSHOT: available=%s label=%s confidence=%s",
                             payload.get("available"), payload.get("label"), payload.get("confidence"))
+            if event_type == "expression_reaction_changed":
+                logger.info("SSE OUT: type=%s payload=%s", event_type, payload)
             event = {"type": event_type,
                      "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
                      "payload": payload}
@@ -190,6 +195,9 @@ class PhosApplicationService:
             self._core.events.subscribe(ATTENTION_TARGET_CHANGED, lambda event: self._emit("attention_target_changed", event.data)),
             self._core.events.subscribe(ATTENTION_TARGET_LOST, lambda event: self._emit("attention_target_lost", event.data)),
             self._core.events.subscribe(OBSERVED_EXPRESSION_CHANGED, self._on_observed_expression_changed),
+            self._core.events.subscribe(EXPRESSION_REACTION_STARTED, lambda event: self._emit("expression_reaction_changed", self.expression_reaction())),
+            self._core.events.subscribe(EXPRESSION_REACTION_COMPLETED, lambda event: self._emit("expression_reaction_changed", self.expression_reaction())),
+            self._core.events.subscribe(EXPRESSION_REACTION_SUPPRESSED, lambda event: self._emit("expression_reaction_changed", self.expression_reaction())),
         ]
 
     def close(self):
@@ -294,6 +302,9 @@ class PhosApplicationService:
                      id(pipeline), id(observation), observation.available, observation.label, observation.confidence)
         return self._plain(observation)
 
+    def expression_reaction(self) -> dict:
+        return self._plain(self._behavior.expression_reaction_state())
+
     def health(self) -> dict:
         snapshots = self.sensors()
         mapping = {"environmental": "environmental", "ccs811": "ccs811", "imu": "mpu6050", "led_ring": "led_ring"}
@@ -381,6 +392,7 @@ class PhosApplicationService:
         result["presence"] = self.presence()
         result["attention"] = self.attention()
         result["observed_expression"] = self.observed_expression()
+        result["expression_reaction"] = self.expression_reaction()
         result.setdefault("sensors", self.sensors())
         self._emit("visual_state_changed", result["visual"])
         return result
@@ -398,6 +410,7 @@ class PhosApplicationService:
         self._emit("presence_changed", self.presence())
         self._emit("attention_changed", self.attention())
         self._emit("observed_expression_changed", self.observed_expression())
+        self._emit("expression_reaction_changed", self.expression_reaction())
 
     def config(self) -> dict:
         if self._lifecycle is None:
