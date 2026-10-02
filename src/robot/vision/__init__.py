@@ -22,6 +22,7 @@ from .provider import (
     FaceDetector,
     FacePosition,
     FaceRegion,
+    ObservedExpression,
     VisionObservation,
     VisualExpression,
 )
@@ -30,6 +31,7 @@ from .smoother import ExpressionSmoother
 __all__ = [
     "CameraProvider",
     "ExpressionObservation",
+    "ObservedExpression",
     "ExpressionProvider",
     "ExpressionSmoother",
     "FaceDetector",

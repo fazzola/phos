@@ -43,6 +43,7 @@ All read endpoints use `GET` and return JSON.
 | `/api/v1/status` | Consolidated robot, visual, environmental, motion, health, presence and attention state. |
 | `/api/v1/presence` | Current provider-neutral Presence read model. |
 | `/api/v1/attention` | Current provider-neutral Attention read model and optional target. |
+| `/api/v1/observed-expression` | Latest uncertain classifier observation for the selected face. |
 | `/api/v1/state` | Lifecycle state and whether Core is running. |
 | `/api/v1/environment` | Environmental sensor availability and current measurements when available. |
 | `/api/v1/motion` | IMU availability and current semantic motion snapshot. |
@@ -66,6 +67,13 @@ Attention has `idle`, `acquiring`, `tracking`, and `lost` values. Target ID is
 runtime-local only; position is normalized, and confidence may be `null` when a
 detector did not supply it. These are observation models, not identity or
 biometric-recognition APIs.
+
+Observed Expression is independent telemetry, not PHOS's own visual expression
+and not a statement of a person's emotion. It returns HTTP 200 with
+`available: false` when no current classified face exists (or its 1.5-second
+freshness window has expired); this does not imply that Presence is `no_one`. When available, confidence is the actual classifier
+confidence. `observed_expression_changed` SSE events are emitted only when
+availability or label changes, not for confidence jitter alone.
 
 ## Capabilities
 

@@ -53,6 +53,7 @@ if (provider) {
     const presence = state.presence || {};
     const attention = state.attention || {};
     const target = attention.target || {};
+    const observedExpression = state.observed_expression || {};
     display("robot.state", (state.robot || {}).state);
     display("visual.expression", visual.expression);
     display("visual.source", state.active_visual_source || visual.source);
@@ -72,6 +73,13 @@ if (provider) {
     display("attention.target_id", target.id);
     display("attention.target_position", target.x === null || target.x === undefined || target.y === null || target.y === undefined ? null : `${target.x}, ${target.y}`);
     display("attention.target_confidence", target.confidence);
+    display("observed_expression.label", observedExpression.label);
+    display("observed_expression.confidence", Number.isFinite(observedExpression.confidence) ? `${(observedExpression.confidence * 100).toFixed(0)}%` : null);
+    display("observed_expression.provider", observedExpression.provider === "local" ? "Local ONNX" : observedExpression.provider);
+    display("observed_expression.model", observedExpression.model);
+    display("observed_expression.available", observedExpression.available === undefined ? null : (observedExpression.available ? "Available" : "Unavailable"));
+    display("observed_expression.detail", observedExpression.available === false ? "No valid facial-expression observation" : null);
+    display("observed_expression.observed_at", observedExpression.observed_at);
     const subsystems = ((state.health || {}).subsystems) || {};
     display("health", Object.entries(subsystems).map(([name, item]) => `${name}: ${item.state}`).join(", "));
     if (note) note.textContent = "Semantic runtime state; retained while reconnecting.";
@@ -188,6 +196,7 @@ if (provider) {
     else if (event.type === "overlay_changed" || event.type === "environmental_overlay_changed") state.overlay = payload;
     else if (event.type === "presence_changed") state.presence = payload;
     else if (event.type === "attention_changed") state.attention = payload;
+    else if (event.type === "observed_expression_changed") state.observed_expression = payload;
     else if (["person_entered", "person_left", "attention_target_acquired", "attention_target_changed", "attention_target_lost"].includes(event.type)) {
       snapshot(); return;
     }
@@ -200,7 +209,7 @@ if (provider) {
     stream.onopen = async () => { const reconnect = opened; opened = true; retries = 0; setConnection("connected"); window.clearInterval(fallbackTimer); fallbackTimer = undefined; if (reconnect) await snapshot(); };
     // The SSE adapter uses named semantic events, so listen explicitly rather
     // than relying on EventSource's unnamed-message default.
-    for (const type of ["robot_state_changed", "expression_changed", "visual_state_changed", "environmental_state_changed", "environmental_overlay_changed", "motion_state_changed", "health_changed", "presence_changed", "attention_changed", "person_entered", "person_left", "attention_target_acquired", "attention_target_changed", "attention_target_lost", "overlay_changed"]) {
+    for (const type of ["robot_state_changed", "expression_changed", "visual_state_changed", "environmental_state_changed", "environmental_overlay_changed", "motion_state_changed", "health_changed", "presence_changed", "attention_changed", "observed_expression_changed", "person_entered", "person_left", "attention_target_acquired", "attention_target_changed", "attention_target_lost", "overlay_changed"]) {
       stream.addEventListener(type, (message) => { try { applyEvent(JSON.parse(message.data)); } catch (_) {} });
     }
     stream.onerror = () => { stream.close(); setConnection("reconnecting"); fallback(); const delay = Math.min(30000, 1000 * 2 ** Math.min(retries++, 5)); retryTimer = window.setTimeout(connect, delay); };

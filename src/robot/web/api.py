@@ -38,6 +38,8 @@ def create_api(service):
     def presence(): return jsonify(service.presence())
     @api.get("/attention")
     def attention(): return jsonify(service.attention())
+    @api.get("/observed-expression")
+    def observed_expression(): return jsonify(service.observed_expression())
     @api.get("/health")
     def health(): return jsonify(service.health())
     @api.get("/capabilities")

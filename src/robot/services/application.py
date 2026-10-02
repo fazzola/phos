@@ -25,6 +25,7 @@ from robot.core.runtime import STATE_CHANGED
 from robot.core.presence import PRESENCE_CHANGED, PERSON_ENTERED, PERSON_LEFT
 from robot.core.attention import (ATTENTION_CHANGED, ATTENTION_TARGET_ACQUIRED,
                                   ATTENTION_TARGET_CHANGED, ATTENTION_TARGET_LOST)
+from robot.vision.pipeline import OBSERVED_EXPRESSION_CHANGED
 from robot.config import ConfigurationError, RuntimeConfig
 from robot.motion import MotionState
 from robot.ui.state import FaceExpression
@@ -111,6 +112,7 @@ class RemoteApplicationService:
     def motion(self): return self._call("motion")
     def presence(self): return self._call("presence")
     def attention(self): return self._call("attention")
+    def observed_expression(self): return self._call("observed_expression")
     def health(self): return self._call("health")
     def capabilities(self): return self._call("capabilities")
     def config(self): return self._call("config")
@@ -147,6 +149,7 @@ class RemoteApplicationService:
                 "overlay_changed": current.get("overlay", {}),
                 "presence_changed": current.get("presence", {}),
                 "attention_changed": current.get("attention", {}),
+                "observed_expression_changed": current.get("observed_expression", {}),
             }
         except ApplicationError:
             return
@@ -155,6 +158,9 @@ class RemoteApplicationService:
             if self._last.get(event_type) == frozen:
                 continue
             self._last[event_type] = frozen
+            if event_type == "observed_expression_changed":
+                logger.info("EXPR SSE SNAPSHOT: available=%s label=%s confidence=%s",
+                            payload.get("available"), payload.get("label"), payload.get("confidence"))
             event = {"type": event_type,
                      "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
                      "payload": payload}
@@ -183,6 +189,7 @@ class PhosApplicationService:
             self._core.events.subscribe(ATTENTION_TARGET_ACQUIRED, lambda event: self._emit("attention_target_acquired", event.data)),
             self._core.events.subscribe(ATTENTION_TARGET_CHANGED, lambda event: self._emit("attention_target_changed", event.data)),
             self._core.events.subscribe(ATTENTION_TARGET_LOST, lambda event: self._emit("attention_target_lost", event.data)),
+            self._core.events.subscribe(OBSERVED_EXPRESSION_CHANGED, self._on_observed_expression_changed),
         ]
 
     def close(self):
@@ -216,6 +223,14 @@ class PhosApplicationService:
             except Exception:
                 # A disconnected remote client cannot affect robot behavior.
                 continue
+
+    def _on_observed_expression_changed(self, event) -> None:
+        """Trace the exact runtime snapshot forwarded to remote adapters."""
+        self._emit("observed_expression_changed", event.data)
+        snapshot = self.observed_expression()
+        logger.info("EXPR SNAPSHOT: state_id=%s available=%s label=%s confidence=%s",
+                    id(getattr(getattr(self._runtime, "_vision_pipeline", None), "observed_expression", None)),
+                    snapshot.get("available"), snapshot.get("label"), snapshot.get("confidence"))
 
     @staticmethod
     def _plain(value: Any):
@@ -266,6 +281,18 @@ class PhosApplicationService:
         return {"state": plain["state"], "target": {"id": plain["target_id"], "x": plain["target_x"],
                 "y": plain["target_y"], "confidence": plain["confidence"]}, "acquired_at": plain["acquired_at"],
                 "last_seen": plain["last_seen"]}
+
+    def observed_expression(self) -> dict:
+        pipeline = getattr(self._runtime, "_vision_pipeline", None)
+        observation = getattr(pipeline, "observed_expression", None)
+        if observation is None:
+            logger.debug("OBSERVED STATE READER: pipeline=%s state=%s reason=vision_unavailable",
+                         id(pipeline) if pipeline is not None else None, None)
+            return {"available": False, "label": None, "confidence": None, "provider": None,
+                    "model": None, "observed_at": None, "unavailable_reason": "unavailable"}
+        logger.debug("OBSERVED STATE READER: pipeline=%s state=%s available=%s label=%s confidence=%s",
+                     id(pipeline), id(observation), observation.available, observation.label, observation.confidence)
+        return self._plain(observation)
 
     def health(self) -> dict:
         snapshots = self.sensors()
@@ -353,6 +380,7 @@ class PhosApplicationService:
         result["overlay"] = self.overlay()
         result["presence"] = self.presence()
         result["attention"] = self.attention()
+        result["observed_expression"] = self.observed_expression()
         result.setdefault("sensors", self.sensors())
         self._emit("visual_state_changed", result["visual"])
         return result
@@ -369,6 +397,7 @@ class PhosApplicationService:
         self._emit("health_changed", self.health())
         self._emit("presence_changed", self.presence())
         self._emit("attention_changed", self.attention())
+        self._emit("observed_expression_changed", self.observed_expression())
 
     def config(self) -> dict:
         if self._lifecycle is None:

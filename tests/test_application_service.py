@@ -1,9 +1,15 @@
+import asyncio
+from types import SimpleNamespace
+
 from robot.core.runtime import RobotCore
 from robot.core.behavior_engine import BehaviorEngine
 from robot.services.application import COMMANDS, OVERLAY_COMMANDS, PhosApplicationService
 from robot.core.environmental import EnvironmentalState
 from robot.core.state import InvalidStateTransition, RobotState, RobotStateMachine, transition_graph, writable_states
 from robot.motion import MotionState
+from robot.vision.provider import ObservedExpression
+from robot.vision.pipeline import OBSERVED_EXPRESSION_CHANGED
+from robot.core import Event
 from robot.web.openapi import _resolve, load_spec
 
 
@@ -29,6 +35,30 @@ def test_status_has_semantic_environment_and_health():
     assert status["environment"]["status"] == "available"
     assert status["health"]["subsystems"]["ccs811"]["state"] == "warming_up"
     assert status["health"]["subsystems"]["imu"]["state"] == "unavailable"
+
+
+def test_status_reads_the_runtime_observed_expression_instance():
+    runtime = Runtime()
+    observation = ObservedExpression(True, "happy", 1.0, "local", "FER+", 42.0)
+    runtime._vision_pipeline = SimpleNamespace(observed_expression=observation)
+    service = PhosApplicationService(runtime)
+
+    assert service.observed_expression() == observation.document()
+    assert service.status()["observed_expression"] == observation.document()
+
+
+def test_fresh_observed_expression_event_is_forwarded_to_remote_subscribers():
+    runtime = Runtime()
+    observation = ObservedExpression(True, "happy", 1.0, "local", "FER+", 42.0)
+    runtime._vision_pipeline = SimpleNamespace(observed_expression=observation)
+    service = PhosApplicationService(runtime)
+    received = []
+    service.subscribe(received.append)
+
+    asyncio.run(runtime.core.events.publish(Event(OBSERVED_EXPRESSION_CHANGED, observation.document())))
+
+    assert received[-1]["type"] == "observed_expression_changed"
+    assert received[-1]["payload"] == observation.document()
 
 
 def test_visual_source_rejects_hardware_command_and_events_are_deduplicated():

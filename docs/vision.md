@@ -381,6 +381,27 @@ Confirmed departure produces `attention_target_lost`, holds `lost` for canonical
 are edge-triggered. Behavior consumes this semantic state to update `FaceState`;
 neither component drives the renderer directly.
 
+### Observed facial expression
+
+The same selected-face path also exposes an **Observed Expression** read model:
+an uncertain expression-classifier result for the visible selected face. It is
+not a confirmed emotion, mood, identity, PHOS's expression, or an identity
+recognition result. The model retains the classifier's real confidence, provider
+and configured local-model filename when available; no detector or Presence
+confidence is substituted.
+
+Known provider aliases are normalized once in this read model (for example,
+`happiness` to `happy`, `surprise` to `surprised`, and `sadness` to `sad`),
+without treating an unknown value as neutral. The preview overlay and Remote
+API consume this same state. A valid result remains current for 1.5 seconds to
+bridge ordinary inference-frame gaps, then becomes explicitly unavailable.
+
+Face selection has independent sibling consumers: Presence answers whether
+someone is present, while the expression classifier describes the selected
+face's current visual resemblance. A disabled, slow, missing, or failing
+classifier produces an unavailable observation only. It never changes Presence
+hysteresis, Presence events, Attention, or face-loss semantics.
+
 ## Selectable local / AWS expressions
 
 `expression.provider` in `config/phos.json` selects `local` (existing ONNX

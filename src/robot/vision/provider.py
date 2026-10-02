@@ -69,6 +69,24 @@ class ExpressionObservation:
 
 
 @dataclass(frozen=True)
+class ObservedExpression:
+    """Latest uncertain classifier output for the selected face, not PHOS state."""
+
+    available: bool
+    label: Optional[str]
+    confidence: Optional[float]
+    provider: Optional[str]
+    model: Optional[str]
+    observed_at: Optional[float]
+    unavailable_reason: Optional[str] = None
+
+    def document(self) -> dict:
+        return {"available": self.available, "label": self.label, "confidence": self.confidence,
+                "provider": self.provider, "model": self.model, "observed_at": self.observed_at,
+                "unavailable_reason": self.unavailable_reason}
+
+
+@dataclass(frozen=True)
 class VisualExpression:
     """A confirmed semantic observation, or explicit UNKNOWN abstention."""
 

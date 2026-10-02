@@ -601,6 +601,10 @@ def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optiona
         crop_margin=config.expression_crop_margin,
         preview_enabled=config.camera_preview_enabled,
         publish_face_position=config.face_tracking_enabled or config.expression_enabled,
+        observed_expression_provider=config.expression_provider if config.expression_enabled else None,
+        observed_expression_model=(config.resolve_path(config.expression_model_path).name
+                                   if config.expression_enabled and config.expression_provider == "local"
+                                   and config.expression_model_path is not None else None),
     )
 
 
