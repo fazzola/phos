@@ -21,6 +21,7 @@ from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorServi
 from robot.core import (BehaviorEngine, EnvironmentalInterpreter, EnvironmentalSettings, Event, EventBus,
                         RobotCore, RobotState, STATE_CHANGED, PresenceInterpreter, AttentionManager)
 from robot.core.behavior_engine import ENVIRONMENTAL_STATE_CHANGED, IMU_MOTION_STATE
+from robot.core.expression_reaction import ExpressionReactionPolicy
 from robot.ui import (CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, LEDRingController,
                       LEDRingSettings, TkEyeDisplay)
 from robot.ui.runtime import EyeRenderLoop
@@ -601,6 +602,17 @@ def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optiona
         crop_margin=config.expression_crop_margin,
         preview_enabled=config.camera_preview_enabled,
         publish_face_position=config.face_tracking_enabled or config.expression_enabled,
+        observed_expression_provider=config.expression_provider if config.expression_enabled else None,
+        observed_expression_model=(config.resolve_path(config.expression_model_path).name
+                                   if config.expression_enabled and config.expression_provider == "local"
+                                   and config.expression_model_path is not None else None),
+        expression_reaction_policy=ExpressionReactionPolicy(
+            enabled=config.expression_reactions_enabled,
+            min_confidence=config.expression_reactions_min_confidence,
+            confirmation_ms=config.expression_reactions_confirmation_ms,
+            cooldown_ms=config.expression_reactions_cooldown_ms,
+            reaction_duration_ms=config.expression_reactions_duration_ms,
+        ),
     )
 
 

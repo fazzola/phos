@@ -21,6 +21,8 @@ from .environmental import EnvironmentalState
 from .overlay import OverlayArbiter
 from .attention import ATTENTION_CHANGED, AttentionKind
 from .presence import PERSON_ENTERED, PERSON_LEFT
+from .expression_reaction import (EXPRESSION_REACTION_COMPLETED, EXPRESSION_REACTION_REQUESTED,
+                                  EXPRESSION_REACTION_STARTED, EXPRESSION_REACTION_SUPPRESSED)
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +104,7 @@ class BehaviorEngine(Behavior):
         self._motion_state_started_at = float("-inf")
         self._motion_transient = None
         self._motion_last_at = float("-inf")
+        self._expression_reaction = None
         self._environmental_state = EnvironmentalState.NORMAL
         # Standalone engine users retain historical environmental behavior;
         # application construction always supplies canonical configuration.
@@ -123,6 +126,13 @@ class BehaviorEngine(Behavior):
         overlay = self._overlay_arbiter.resolved() if self._environment_overlays_enabled else AmbientOverlayState()
         resolved = self._with_motion_reaction(state, self._clock())
         manual = self.manual_expression_state()
+        reaction = self._active_expression_reaction()
+        if reaction is not None:
+            expression = FaceExpression(reaction["reaction"])
+            accent = {FaceExpression.HAPPY: VisualAccent.CURIOUS,
+                      FaceExpression.CURIOUS: VisualAccent.CURIOUS,
+                      FaceExpression.SURPRISED: VisualAccent.ALERT}[expression]
+            resolved = replace(resolved, expression=expression, accent=accent, reaction_strength=1.0)
         # Operator intent is applied here, at the semantic arbitration point.
         # Robot states remain higher priority than a cosmetic manual command.
         if manual is not None and self._robot_state is RobotState.IDLE:
@@ -136,6 +146,13 @@ class BehaviorEngine(Behavior):
     def overlay_state(self):
         """Read semantic overlay arbitration state; no renderer is involved."""
         return self._overlay_arbiter.snapshot()
+
+    def expression_reaction_state(self):
+        active = self._active_expression_reaction()
+        if active is None:
+            return {"active": False, "reaction": None, "observed_label": None, "remaining_ms": 0}
+        return {"active": True, "reaction": active["reaction"], "observed_label": active.get("observed_label"),
+                "remaining_ms": max(0, round((active["until"] - self._clock()) * 1000))}
 
     def set_overlay_override(self, *, temperature=None, air_quality=None, duration_ms=None):
         self._overlay_arbiter.set_override(temperature=temperature, air_quality=air_quality, duration_ms=duration_ms)
@@ -197,6 +214,7 @@ class BehaviorEngine(Behavior):
         self._unsubscribers = [
             self._events.subscribe(STATE_CHANGED, self._on_robot_state),
             self._events.subscribe(VISION_EXPRESSION_STABLE, self._on_visual_expression),
+            self._events.subscribe(EXPRESSION_REACTION_REQUESTED, self._on_expression_reaction),
             self._events.subscribe(VISION_FACE_POSITION, self._on_face_position),
             self._events.subscribe(VISION_FACE_LOST, self._on_face_lost),
             self._events.subscribe(ATTENTION_CHANGED, self._on_attention),
@@ -260,6 +278,32 @@ class BehaviorEngine(Behavior):
         expression, accent, strength = reaction
         self._state = replace(self._state, expression=expression, accent=accent, reaction_strength=strength)
         self._last_reaction_update_at = self._clock()
+
+    async def _on_expression_reaction(self, event: Event) -> None:
+        payload = dict(event.data)
+        if self._robot_state is not RobotState.IDLE or self._motion_transient is not None:
+            logger.info("EXPRESSION REACTION SUPPRESSED: reason=priority")
+            await self._events.publish(Event(EXPRESSION_REACTION_SUPPRESSED, {**payload, "reason": "priority"}))
+            return
+        try:
+            expression = FaceExpression(payload["reaction"])
+            duration = int(payload["duration_ms"])
+        except (KeyError, ValueError, TypeError):
+            return
+        if duration <= 0:
+            return
+        self._expression_reaction = {**payload, "reaction": expression.value,
+                                     "until": self._clock() + duration / 1000}
+        logger.info("EXPRESSION REACTION START: observed=%s reaction=%s duration_ms=%s",
+                    payload.get("observed_label"), expression.value, duration)
+        await self._events.publish(Event(EXPRESSION_REACTION_STARTED, payload))
+
+    def _active_expression_reaction(self):
+        if self._expression_reaction is None:
+            return None
+        if self._clock() < self._expression_reaction["until"]:
+            return self._expression_reaction
+        return None
 
     async def _on_face_lost(self, event: Event) -> None:
         if not self._attention_tracking:
@@ -432,6 +476,10 @@ class BehaviorEngine(Behavior):
         while True:
             now = self._clock()
             self._advance_blink(now)
+            if self._expression_reaction is not None and now >= self._expression_reaction["until"]:
+                payload, self._expression_reaction = self._expression_reaction, None
+                logger.info("EXPRESSION REACTION COMPLETE: reaction=%s", payload["reaction"])
+                await self._events.publish(Event(EXPRESSION_REACTION_COMPLETED, payload))
             self._decay_visual_reaction(now)
             if self._robot_state is RobotState.IDLE and not self._face_is_tracked and now >= self._next_gaze_at:
                 pupil_x, pupil_y = random.choice(_IDLE_GAZE_OFFSETS)

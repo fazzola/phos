@@ -65,9 +65,9 @@ def load_document(path: Path = DEFAULT_CONFIG_PATH) -> dict:
     try:
         document = json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique_object)
         # Explicit schema evolution only: no general missing-key permissiveness.
-        if isinstance(document, dict) and Path(path).resolve() != DEFAULT_CONFIG_PATH.resolve() and ("presence" not in document or "attention" not in document):
+        if isinstance(document, dict) and Path(path).resolve() != DEFAULT_CONFIG_PATH.resolve() and any(section not in document for section in ("presence", "attention", "expression_reactions")):
             default = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
-            for section in ("presence", "attention"):
+            for section in ("presence", "attention", "expression_reactions"):
                 if section not in document:
                     document[section] = copy.deepcopy(default[section])
         return document
@@ -187,6 +187,7 @@ _SCHEMA = {
                   "swap_rb": "expression_swap_rb", "grayscale": "expression_grayscale"},
         "aws": "cloud_expression",
     },
+    "expression_reactions": {"enabled": "expression_reactions_enabled", "min_confidence": "expression_reactions_min_confidence", "confirmation_ms": "expression_reactions_confirmation_ms", "cooldown_ms": "expression_reactions_cooldown_ms", "reaction_duration_ms": "expression_reactions_duration_ms"},
     "sensors": {"environmental": {"type": "environmental_type",
                            "enabled": "environmental_enabled",
                            "i2c_address": "environmental_i2c_address",
@@ -358,6 +359,11 @@ class RuntimeConfig:
     expression_grayscale: bool
     expression_diagnostics: bool
     expression_crop_margin: float
+    expression_reactions_enabled: bool
+    expression_reactions_min_confidence: float
+    expression_reactions_confirmation_ms: int
+    expression_reactions_cooldown_ms: int
+    expression_reactions_duration_ms: int
     log_level: str
     log_file: Optional[Path]
     _base_dir: Path = field(init=False, repr=False, compare=False)
@@ -561,6 +567,9 @@ class RuntimeConfig:
         for name in ("environmental_confirmation_seconds", "environmental_recovery_seconds"):
             number(name, minimum=1, inclusive=True, maximum=86400)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
+        number("expression_reactions_min_confidence", inclusive=True, maximum=1)
+        for name in ("expression_reactions_confirmation_ms", "expression_reactions_cooldown_ms", "expression_reactions_duration_ms"):
+            number(name, minimum=0 if name != "expression_reactions_duration_ms" else 1, inclusive=True, maximum=60000, integer=True)
         number("expression_crop_margin", inclusive=True, maximum=.5)
         number("attention_lost_hold_ms", minimum=0, inclusive=True, maximum=60000, integer=True)
         for name in ("presence_led_entered_duration_ms", "presence_led_left_duration_ms"):
@@ -569,7 +578,7 @@ class RuntimeConfig:
             raise ConfigurationError("presence LED directions must be clockwise or counter_clockwise")
         for name in ("ccs811_enabled", "environmental_enabled", "environmental_behavior_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "led_ring_imu_reactions_enabled", "led_ring_clockwise", "presence_led_reactions_enabled", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
                      "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
-                     "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
+                     "expression_swap_rb", "expression_grayscale", "expression_diagnostics", "expression_reactions_enabled"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(f"{name} must be a boolean")
         for name in ("camera_resolution", "expression_input_size", "detector_min_size"):

@@ -133,6 +133,13 @@
       "read_timeout_seconds": 5.0
     }
   },
+  "expression_reactions": {
+    "enabled": true,
+    "min_confidence": 0.7,
+    "confirmation_ms": 500,
+    "cooldown_ms": 2500,
+    "reaction_duration_ms": 1200
+  },
   "sensors": {
     "environmental": {
       "type": "bme280",

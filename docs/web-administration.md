@@ -90,6 +90,11 @@ edge events refresh the target state without adding a writable vision control.
 Unavailable detector confidence is displayed as unavailable rather than as a
 synthetic 100% value.
 
+They also show **Observed Expression** separately from PHOS's own expression.
+This is a read-only, uncertain selected-face classifier result with availability,
+label, confidence, provider, model and observation time. It may be unavailable
+while Presence remains present; it never controls PHOS expression or state.
+
 ## Edit configuration
 
 The administration home is **Dashboard**. The sidebar groups read-only and

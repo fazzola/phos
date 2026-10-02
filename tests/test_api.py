@@ -6,6 +6,8 @@ from flask import Flask
 from robot.core import Event
 from robot.core.attention import ATTENTION_CHANGED, AttentionKind, AttentionState
 from robot.core.presence import PERSON_ENTERED, PRESENCE_CHANGED, PresenceKind, PresenceState
+from robot.vision.provider import ObservedExpression
+from robot.vision.pipeline import OBSERVED_EXPRESSION_CHANGED
 from robot.core.runtime import RobotCore
 from robot.core.behavior_engine import BehaviorEngine
 from robot.services import PhosApplicationService, RemoteApplicationService
@@ -63,6 +65,25 @@ def test_runtime_non_finite_sensor_values_become_json_null():
     assert response.json["environment"]["measurements"] == {"pressure_hpa": None, "temperature_c": None}
 
 
+def test_observed_expression_endpoint_is_read_only_and_unavailable_is_not_a_failure():
+    runtime = Runtime()
+    app = Flask(__name__)
+    app.register_blueprint(create_api(PhosApplicationService(runtime)))
+    client = app.test_client()
+    unavailable = client.get("/api/v1/observed-expression")
+    assert unavailable.status_code == 200
+    assert unavailable.json["available"] is False and unavailable.json["label"] is None
+    runtime._vision_pipeline = SimpleNamespace(observed_expression=ObservedExpression(
+        True, "happy", .82, "local", "emotion-ferplus-8.onnx", 12.0))
+    observed = client.get("/api/v1/observed-expression")
+    assert observed.status_code == 200
+    assert observed.json["label"] == "happy" and observed.json["confidence"] == .82
+    snapshot = client.get("/api/v1/status")
+    assert snapshot.status_code == 200
+    assert snapshot.json["observed_expression"] == observed.json
+    assert client.post("/api/v1/observed-expression", json={}).status_code == 405
+
+
 def test_presence_and_attention_read_endpoints_use_live_runtime_state():
     runtime = Runtime()
     presence = SimpleNamespace(state=PresenceState())
@@ -115,11 +136,15 @@ def test_presence_and_attention_core_events_are_forwarded_as_semantic_applicatio
     asyncio.run(runtime.core.events.publish(Event(ATTENTION_CHANGED, {
         "state": "tracking", "target": {"id": "face-1", "x": 0.2, "y": -0.1, "confidence": 0.82},
     })))
+    asyncio.run(runtime.core.events.publish(Event(OBSERVED_EXPRESSION_CHANGED, {
+        "available": True, "label": "happy", "confidence": .82, "provider": "local",
+    })))
 
     assert [(event["type"], event["payload"]) for event in received] == [
         ("presence_changed", {"state": "person_present", "people_count": 1, "primary_candidate_id": "face-1"}),
         ("person_entered", {"state": "person_present", "people_count": 1, "primary_candidate_id": "face-1"}),
         ("attention_changed", {"state": "tracking", "target": {"id": "face-1", "x": 0.2, "y": -0.1, "confidence": 0.82}}),
+        ("observed_expression_changed", {"available": True, "label": "happy", "confidence": .82, "provider": "local"}),
     ]
     service.close()
 

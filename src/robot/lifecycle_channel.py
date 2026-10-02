@@ -14,7 +14,7 @@ class LifecycleClient:
                    else operation if payload is None else {"operation": operation, "payload": payload})
         allowed = {"status", "reload", "restart"}
         application = {"application.status", "application.state", "application.environment", "application.motion",
-                       "application.presence", "application.attention", "application.health", "application.capabilities", "application.config", "application.update_config", "application.expression",
+                       "application.presence", "application.attention", "application.observed_expression", "application.health", "application.capabilities", "application.config", "application.update_config", "application.expression",
                        "application.set_state", "application.visual_source", "application.overlay", "application.set_overlay", "application.clear_overlay"}
         if not ((isinstance(request, str) and request in allowed)
                 or (isinstance(request, dict) and request.get("operation") in application)):

@@ -3,6 +3,7 @@ import json
 from html.parser import HTMLParser
 import re
 import socket
+from pathlib import Path
 from urllib.request import urlopen
 
 import pytest
@@ -172,9 +173,23 @@ def test_focused_settings_and_page_responsibilities(setup):
                 "attention.target_position", "attention.target_confidence"):
         assert f'data-live="{key}"' in dashboard
         assert f'data-live="{key}"' in status
+    for key in ("observed_expression.label", "observed_expression.confidence", "observed_expression.provider",
+                "observed_expression.model", "observed_expression.available", "observed_expression.detail",
+                "observed_expression.observed_at"):
+        assert f'data-live="{key}"' in dashboard
+        assert f'data-live="{key}"' in status
+    assert "PHOS Expression" in status
+    for key in ("expression_reaction.active", "expression_reaction.reaction", "expression_reaction.observed_label"):
+        assert f'data-live="{key}"' in status
     assert 'data-command="set_robot_state"' not in status
     assert 'data-command="set_robot_state"' in controls
     assert 'data-command="set_robot_state"' not in sensors
+
+
+def test_observed_expression_ui_has_no_neutral_fallback():
+    script = Path("src/robot/web/static/admin.js").read_text()
+    assert 'display("observed_expression.label", observedExpression.label);' in script
+    assert 'observedExpression.label || "neutral"' not in script
 
 
 def test_controls_are_separated_into_responsive_action_sections(setup):
@@ -239,7 +254,8 @@ def test_live_dashboard_is_an_api_client_and_retains_server_rendered_sensor_fall
     assert 'Your administrator session has expired' in source
     assert 'sensor_status' not in source and 'GPIO' not in source
     for event_type in ("presence_changed", "attention_changed", "person_entered", "person_left",
-                       "attention_target_acquired", "attention_target_changed", "attention_target_lost"):
+                       "attention_target_acquired", "attention_target_changed", "attention_target_lost",
+                       "observed_expression_changed"):
         assert f'"{event_type}"' in source
 
 
