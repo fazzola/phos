@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from enum import Enum
+import logging
 import math
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
@@ -21,9 +22,14 @@ from robot.core.state import InvalidStateTransition, allowed_next_states, transi
 from robot.semantics import VisualSource
 from robot.core.environmental import AirQualityOverlay, EnvironmentalState, TemperatureOverlay
 from robot.core.runtime import STATE_CHANGED
+from robot.core.presence import PRESENCE_CHANGED, PERSON_ENTERED, PERSON_LEFT
+from robot.core.attention import (ATTENTION_CHANGED, ATTENTION_TARGET_ACQUIRED,
+                                  ATTENTION_TARGET_CHANGED, ATTENTION_TARGET_LOST)
 from robot.config import ConfigurationError, RuntimeConfig
 from robot.motion import MotionState
 from robot.ui.state import FaceExpression
+
+logger = logging.getLogger(__name__)
 
 
 # These are enum members, not duplicated wire values. ERROR is lifecycle-only;
@@ -91,6 +97,9 @@ class RemoteApplicationService:
             # as unavailable rather than emitting invalid browser JSON.
             return PhosApplicationService._plain(response["result"])
         error = response.get("error", {})
+        if name in {"presence", "attention"}:
+            logger.debug("%s API: available=%s service=%s state=%s reason=%s", name.upper(), False,
+                         type(self._lifecycle).__name__, None, error)
         if isinstance(error, dict):
             raise ApplicationError(error.get("code", "runtime_error"), error.get("message", "PHOS request failed."),
                                    error.get("details", {}), response.get("status", 400))
@@ -136,6 +145,8 @@ class RemoteApplicationService:
                 "motion_state_changed": current.get("motion", {}),
                 "health_changed": current.get("health", {}),
                 "overlay_changed": current.get("overlay", {}),
+                "presence_changed": current.get("presence", {}),
+                "attention_changed": current.get("attention", {}),
             }
         except ApplicationError:
             return
@@ -165,6 +176,13 @@ class PhosApplicationService:
         self._lock = RLock()
         self._unsubscribers = [
             self._core.events.subscribe(STATE_CHANGED, lambda event: self._emit("robot_state_changed", event.data)),
+            self._core.events.subscribe(PRESENCE_CHANGED, lambda event: self._emit("presence_changed", event.data)),
+            self._core.events.subscribe(PERSON_ENTERED, lambda event: self._emit("person_entered", event.data)),
+            self._core.events.subscribe(PERSON_LEFT, lambda event: self._emit("person_left", event.data)),
+            self._core.events.subscribe(ATTENTION_CHANGED, lambda event: self._emit("attention_changed", event.data)),
+            self._core.events.subscribe(ATTENTION_TARGET_ACQUIRED, lambda event: self._emit("attention_target_acquired", event.data)),
+            self._core.events.subscribe(ATTENTION_TARGET_CHANGED, lambda event: self._emit("attention_target_changed", event.data)),
+            self._core.events.subscribe(ATTENTION_TARGET_LOST, lambda event: self._emit("attention_target_lost", event.data)),
         ]
 
     def close(self):
@@ -349,6 +367,8 @@ class PhosApplicationService:
         self._emit("environmental_state_changed", self.environment())
         self._emit("motion_state_changed", self.motion())
         self._emit("health_changed", self.health())
+        self._emit("presence_changed", self.presence())
+        self._emit("attention_changed", self.attention())
 
     def config(self) -> dict:
         if self._lifecycle is None:

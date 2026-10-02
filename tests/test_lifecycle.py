@@ -285,6 +285,31 @@ def test_local_channel_updates_parent_service(runtime):
         assert not thread.is_alive()
 
 
+def test_lifecycle_channel_forwards_presence_and_attention_read_models(runtime):
+    _, service, _, _ = runtime
+
+    class Application:
+        def presence(self): return {"state": "no_one", "people_count": 0}
+        def attention(self): return {"state": "idle", "target": None}
+
+    service.register_application_service(Application())
+    parent, child = multiprocessing.Pipe()
+    stop = Event()
+    thread = Thread(target=serve_lifecycle, args=(parent, service, stop))
+    thread.start()
+    try:
+        client = LifecycleClient(child)
+        assert client.execute("application.presence") == {
+            "ok": True, "result": {"state": "no_one", "people_count": 0}}
+        assert client.execute("application.attention") == {
+            "ok": True, "result": {"state": "idle", "target": None}}
+    finally:
+        stop.set()
+        child.close()
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+
+
 def test_restart_request_stops_runtime_through_existing_stop_event(runtime, monkeypatch):
     from robot import main
     _, service, _, now = runtime

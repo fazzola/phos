@@ -12,6 +12,7 @@ from .presence import PRESENCE_CHANGED, PresenceKind, VISION_FACE_OBSERVATION
 ATTENTION_CHANGED = "attention.changed"
 ATTENTION_TARGET_ACQUIRED = "attention.target_acquired"
 ATTENTION_TARGET_LOST = "attention.target_lost"
+ATTENTION_TARGET_CHANGED = "attention.target_changed"
 logger = logging.getLogger(__name__)
 
 class AttentionKind(str, Enum): IDLE="idle"; ACQUIRING="acquiring"; TRACKING="tracking"; LOST="lost"
@@ -28,7 +29,7 @@ class AttentionState:
 
 class AttentionManager(Behavior):
     name="attention-manager"
-    def __init__(self, events: EventBus, *, lost_hold_seconds: float=.8, clock=time.monotonic) -> None:
+    def __init__(self, events: EventBus, *, lost_hold_seconds: float=0.0, clock=time.monotonic) -> None:
         if lost_hold_seconds < 0: raise ValueError("lost_hold_seconds must be nonnegative")
         self._events, self._hold, self._clock = events, lost_hold_seconds, clock
         self._state=AttentionState(); self._presence=PresenceKind.NO_ONE; self._unsubscribers=[]
@@ -44,7 +45,7 @@ class AttentionManager(Behavior):
     async def _on_presence(self,event):
         self._presence=PresenceKind(event.data["state"])
         if self._presence is PresenceKind.NO_ONE and self._state.state is AttentionKind.TRACKING:
-            self._state=AttentionState(AttentionKind.LOST,self._state.target_id,self._state.target_x,self._state.target_y,self._state.confidence,self._state.acquired_at,self._state.last_seen); await self._publish(ATTENTION_TARGET_LOST)
+            self._state=AttentionState(AttentionKind.LOST,self._state.target_id,self._state.target_x,self._state.target_y,self._state.confidence,self._state.acquired_at,self._state.last_seen); logger.info("ATTENTION TARGET LOST: %s", self._state.target_id); logger.info("ATTENTION TRANSITION: tracking -> lost"); await self._publish(ATTENTION_TARGET_LOST)
     async def _on_observation(self,event):
         observation=event.data.get("observation")
         candidate=None if observation is None else {"id":observation["target_id"],"x":observation["x"],"y":observation["y"],"confidence":observation["confidence"]}
@@ -56,12 +57,24 @@ class AttentionManager(Behavior):
             logger.info("ATTENTION: update called")
         logger.debug("Attention input: candidate=%s presence=%s current=%s", candidate, self._presence.value, self._state.state.value)
         if candidate and self._presence is not PresenceKind.NO_ONE:
+            if self._state.state is AttentionKind.IDLE:
+                self._state=AttentionState(AttentionKind.ACQUIRING, str(candidate.get("id", "face-1")), float(candidate["x"]), float(candidate["y"]), candidate.get("confidence"), None, now)
+                logger.info("ATTENTION TRANSITION: idle -> acquiring")
+                return
             confidence = candidate.get("confidence")
             state=AttentionState(AttentionKind.TRACKING,str(candidate.get("id","face-1")),float(candidate["x"]),float(candidate["y"]),None if confidence is None else float(confidence),self._state.acquired_at or now,now)
-            acquired=self._state.state is not AttentionKind.TRACKING; self._state=state
-            if acquired: await self._publish(ATTENTION_TARGET_ACQUIRED)
+            previous = self._state
+            acquired=previous.state is not AttentionKind.TRACKING; self._state=state
+            if acquired:
+                logger.info("ATTENTION TRANSITION: acquiring -> tracking"); logger.info("ATTENTION TARGET ACQUIRED: %s", state.target_id); await self._publish(ATTENTION_TARGET_ACQUIRED)
+            elif previous.target_id != state.target_id:
+                payload={"old_target_id":previous.target_id,"new_target_id":state.target_id,"target":{"id":state.target_id,"x":state.target_x,"y":state.target_y,"confidence":state.confidence}}
+                logger.info("ATTENTION TARGET CHANGED: %s -> %s", previous.target_id, state.target_id)
+                await self._events.publish(Event(ATTENTION_TARGET_CHANGED,payload))
+        elif self._state.state is AttentionKind.ACQUIRING:
+            self._state=AttentionState(); logger.info("ATTENTION TRANSITION: acquiring -> idle")
         elif self._state.state is AttentionKind.LOST and self._state.last_seen is not None and now-self._state.last_seen >= self._hold:
-            self._state=AttentionState(); await self._publish(ATTENTION_CHANGED)
+            self._state=AttentionState(); logger.info("ATTENTION TRANSITION: lost -> idle"); await self._publish(ATTENTION_CHANGED)
     async def _publish(self,event_name):
         payload={"state":self._state.state.value,"target":{"id":self._state.target_id,"x":self._state.target_x,"y":self._state.target_y,"confidence":self._state.confidence},"acquired_at":self._state.acquired_at,"last_seen":self._state.last_seen}
         await self._events.publish(Event(ATTENTION_CHANGED,payload))

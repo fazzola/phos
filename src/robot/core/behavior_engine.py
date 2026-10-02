@@ -60,8 +60,9 @@ class BehaviorEngine(Behavior):
         imu_shake_reaction_duration_seconds: float = 1.35,
         imu_impact_reaction_duration_seconds: float = 1.0,
         imu_reaction_cooldown_seconds: float = 2.0,
-        presence_led_reactions_enabled: bool = True, presence_led_entered_duration_seconds: float = .8,
-        presence_led_left_duration_seconds: float = .9,
+        presence_led_reactions_enabled: bool = False, presence_led_entered_duration_seconds: Optional[float] = None,
+        presence_led_left_duration_seconds: Optional[float] = None, presence_led_entered_direction: Optional[str] = None,
+        presence_led_left_direction: Optional[str] = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if blink_interval[0] <= 0 or blink_interval[1] < blink_interval[0]:
@@ -92,6 +93,7 @@ class BehaviorEngine(Behavior):
         self._attention_tracking = False
         self._presence_led_reactions_enabled = presence_led_reactions_enabled
         self._presence_led_durations = {PERSON_ENTERED: presence_led_entered_duration_seconds, PERSON_LEFT: presence_led_left_duration_seconds}
+        self._presence_led_directions = {PERSON_ENTERED: presence_led_entered_direction, PERSON_LEFT: presence_led_left_direction}
         self._last_attention_gaze_log = None
         self._last_reaction_update_at: Optional[float] = None
         self._surprise_armed = True
@@ -313,10 +315,13 @@ class BehaviorEngine(Behavior):
 
     async def _on_presence_event(self, event: Event) -> None:
         effect = TransientVisualEffect.PRESENCE_ENTERED if event.name == PERSON_ENTERED else TransientVisualEffect.PRESENCE_LEFT
-        if not self._presence_led_reactions_enabled:
+        duration = self._presence_led_durations[event.name]
+        direction = self._presence_led_directions[event.name]
+        if not self._presence_led_reactions_enabled or duration is None or duration <= 0 or direction is None:
             return
         self._state = replace(self._state, transient_effect=effect, transient_effect_started_at=self._clock(),
-                              transient_effect_duration_seconds=self._presence_led_durations[event.name])
+                              transient_effect_duration_seconds=duration,
+                              transient_effect_direction=direction)
         logger.info("BEHAVIOR EFFECT REQUEST: %s", effect.value)
 
     async def _on_motion_state(self, event: Event) -> None:

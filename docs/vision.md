@@ -358,6 +358,29 @@ it does not silently change the camera contract. A future correction must update
 camera, detector and expression configurations together and repeat the baseline.
 See the [Picamera2 format mapping](https://github.com/raspberrypi/picamera2/blob/main/picamera2/request.py).
 
+## Presence and attention
+
+The selected face is converted to a provider-neutral observation before it
+reaches Presence or Attention. It carries a runtime-local target ID, normalized
+`x`/`y` position, normalized width/height, an optional detector confidence, and
+a timestamp. A missing detector confidence remains unavailable; PHOS does not
+invent `1.0` confidence.
+
+`PresenceInterpreter` uses enter/leave hysteresis to move between `no_one` and
+`person_present`. It emits `person_entered` and `person_left` only on confirmed
+edges, never for every video frame. `person_engaged` is reserved in the state
+vocabulary but no eye-contact, identity, voice, or other engagement inference
+is implemented.
+
+`AttentionManager` keeps target continuity separately from Presence. Its states
+are `idle`, `acquiring`, `tracking`, and `lost`: a candidate first enters
+`acquiring`, then a subsequent eligible observation enters `tracking`; failed
+acquisition returns to `idle`. A changed target ID emits `attention_target_changed`.
+Confirmed departure produces `attention_target_lost`, holds `lost` for canonical
+`attention.lost_hold_ms`, then returns to `idle`. Acquisition and loss events
+are edge-triggered. Behavior consumes this semantic state to update `FaceState`;
+neither component drives the renderer directly.
+
 ## Selectable local / AWS expressions
 
 `expression.provider` in `config/phos.json` selects `local` (existing ONNX

@@ -50,6 +50,9 @@ if (provider) {
     const motion = state.motion || {};
     const ccs811 = state.ccs811 || (state.sensors || {}).ccs811 || {};
     const overlay = (state.overlay || {}).resolved || {};
+    const presence = state.presence || {};
+    const attention = state.attention || {};
+    const target = attention.target || {};
     display("robot.state", (state.robot || {}).state);
     display("visual.expression", visual.expression);
     display("visual.source", state.active_visual_source || visual.source);
@@ -63,6 +66,12 @@ if (provider) {
     display("overlay.resolved", `${overlay.temperature || "none"} / ${overlay.air_quality || "none"}`);
     const manual = (state.overlay || {}).override || (state.overlay || {}).manual || {};
     display("overlay.override", Object.keys(manual).length ? `${manual.temperature || "none"} / ${manual.air_quality || "none"}` : "None");
+    display("presence.state", presence.state);
+    display("presence.people_count", presence.people_count);
+    display("attention.state", attention.state);
+    display("attention.target_id", target.id);
+    display("attention.target_position", target.x === null || target.x === undefined || target.y === null || target.y === undefined ? null : `${target.x}, ${target.y}`);
+    display("attention.target_confidence", target.confidence);
     const subsystems = ((state.health || {}).subsystems) || {};
     display("health", Object.entries(subsystems).map(([name, item]) => `${name}: ${item.state}`).join(", "));
     if (note) note.textContent = "Semantic runtime state; retained while reconnecting.";
@@ -177,6 +186,11 @@ if (provider) {
     else if (event.type === "motion_state_changed") state.motion = payload;
     else if (event.type === "health_changed") state.health = payload;
     else if (event.type === "overlay_changed" || event.type === "environmental_overlay_changed") state.overlay = payload;
+    else if (event.type === "presence_changed") state.presence = payload;
+    else if (event.type === "attention_changed") state.attention = payload;
+    else if (["person_entered", "person_left", "attention_target_acquired", "attention_target_changed", "attention_target_lost"].includes(event.type)) {
+      snapshot(); return;
+    }
     else return;
     render(); syncControls();
   };
@@ -186,7 +200,7 @@ if (provider) {
     stream.onopen = async () => { const reconnect = opened; opened = true; retries = 0; setConnection("connected"); window.clearInterval(fallbackTimer); fallbackTimer = undefined; if (reconnect) await snapshot(); };
     // The SSE adapter uses named semantic events, so listen explicitly rather
     // than relying on EventSource's unnamed-message default.
-    for (const type of ["robot_state_changed", "expression_changed", "visual_state_changed", "environmental_state_changed", "environmental_overlay_changed", "motion_state_changed", "health_changed", "presence_changed", "overlay_changed"]) {
+    for (const type of ["robot_state_changed", "expression_changed", "visual_state_changed", "environmental_state_changed", "environmental_overlay_changed", "motion_state_changed", "health_changed", "presence_changed", "attention_changed", "person_entered", "person_left", "attention_target_acquired", "attention_target_changed", "attention_target_lost", "overlay_changed"]) {
       stream.addEventListener(type, (message) => { try { applyEvent(JSON.parse(message.data)); } catch (_) {} });
     }
     stream.onerror = () => { stream.close(); setConnection("reconnecting"); fallback(); const delay = Math.min(30000, 1000 * 2 ** Math.min(retries++, 5)); retryTimer = window.setTimeout(connect, delay); };

@@ -85,6 +85,7 @@ class FaceState:
     transient_effect: Optional[TransientVisualEffect] = None
     transient_effect_started_at: Optional[float] = None
     transient_effect_duration_seconds: Optional[float] = None
+    transient_effect_direction: Optional[str] = None
 
     def normalized(self) -> "FaceState":
         expression = self.expression if isinstance(self.expression, FaceExpression) else FaceExpression.NEUTRAL
@@ -112,6 +113,7 @@ class FaceState:
             transient_effect=self.transient_effect if isinstance(self.transient_effect, TransientVisualEffect) else None,
             transient_effect_started_at=self.transient_effect_started_at if isinstance(self.transient_effect_started_at, (int, float)) else None,
             transient_effect_duration_seconds=self.transient_effect_duration_seconds if isinstance(self.transient_effect_duration_seconds, (int, float)) and self.transient_effect_duration_seconds > 0 else None,
+            transient_effect_direction=self.transient_effect_direction if self.transient_effect_direction in {"clockwise", "counter_clockwise"} else None,
         )
 
 

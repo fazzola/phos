@@ -75,6 +75,14 @@ remains separate from implementation.
 - [ ] Select and deploy a WebSocket-capable local server adapter if a true
   WebSocket transport is required; it must reuse the same service contract.
 
+## Attention / Presence vertical slice
+
+- [x] Provider-neutral selected-face observations, confirmed Presence edges,
+  Attention acquisition/tracking/loss, semantic gaze, configured LED sweeps,
+  application/SSE forwarding, and read-only Web Admin status.
+- [ ] Perform the target-Pi camera/display/LED acceptance checklist; automated
+  coverage does not establish physical behavior or calibration.
+
 ## Post-1.0 — explicitly deferred
 
 | Area | Deferred work |

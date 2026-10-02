@@ -344,7 +344,10 @@ class PhosRuntime:
                 except Exception as error:
                     logger.exception("PHOS subsystem failed", exc_info=error)
                     await self._transition_to_error(type(error).__name__)
-                    raise
+                    # The failure is represented by Core's ERROR state and
+                    # clean shutdown below; callers must not receive a second
+                    # exception while the failing subsystem is being released.
+                    return
         finally:
             for task in [stop_task, *supervisors]:
                 if not task.done():
@@ -430,11 +433,13 @@ def build_runtime(
         presence_led_reactions_enabled=config.presence_led_reactions_enabled,
         presence_led_entered_duration_seconds=config.presence_led_entered_duration_ms / 1000,
         presence_led_left_duration_seconds=config.presence_led_left_duration_ms / 1000,
+        presence_led_entered_direction=config.presence_led_entered_direction,
+        presence_led_left_direction=config.presence_led_left_direction,
     )
     behavior_engine.configure_base_visual_source(config.base_visual_source)
     behavior_engine.configure_environment_overlays(config.environment_overlays_enabled)
     presence = PresenceInterpreter(core.events)
-    attention = AttentionManager(core.events)
+    attention = AttentionManager(core.events, lost_hold_seconds=config.attention_lost_hold_ms / 1000)
     vision_holder = {"pipeline": vision_pipeline}
     eye_render_loop = EyeRenderLoop(
         EyeRenderer(width=config.display_width, height=config.display_height,

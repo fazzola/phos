@@ -1,8 +1,14 @@
+import asyncio
+from types import SimpleNamespace
+
 from flask import Flask
 
+from robot.core import Event
+from robot.core.attention import ATTENTION_CHANGED, AttentionKind, AttentionState
+from robot.core.presence import PERSON_ENTERED, PRESENCE_CHANGED, PresenceKind, PresenceState
 from robot.core.runtime import RobotCore
 from robot.core.behavior_engine import BehaviorEngine
-from robot.services import PhosApplicationService
+from robot.services import PhosApplicationService, RemoteApplicationService
 from robot.web.api import create_api
 
 
@@ -27,7 +33,7 @@ def test_versioned_status_and_stable_error_document():
     assert snapshot.status_code == 200
     # A dashboard can initialize from one semantic status document; sensor
     # adapters remain behind the application service.
-    assert {"robot", "visual", "environment", "motion", "sensors", "health", "overlay"} <= set(snapshot.json)
+    assert {"robot", "visual", "environment", "motion", "sensors", "health", "overlay", "presence", "attention"} <= set(snapshot.json)
     capabilities = client.get("/api/v1/capabilities").json
     assert capabilities["commands"]["set_visual_source"]["allowed_values"] == ["manual", "environment", "state"]
     assert capabilities["commands"]["set_robot_state"] == {"endpoint": "/api/v1/state", "method": "POST",
@@ -55,6 +61,67 @@ def test_runtime_non_finite_sensor_values_become_json_null():
     response = app.test_client().get("/api/v1/status")
     assert response.status_code == 200
     assert response.json["environment"]["measurements"] == {"pressure_hpa": None, "temperature_c": None}
+
+
+def test_presence_and_attention_read_endpoints_use_live_runtime_state():
+    runtime = Runtime()
+    presence = SimpleNamespace(state=PresenceState())
+    attention = SimpleNamespace(state=AttentionState())
+    runtime._presence_interpreter = presence
+    runtime._attention_manager = attention
+    app = Flask(__name__)
+    app.register_blueprint(create_api(PhosApplicationService(runtime)))
+    client = app.test_client()
+    assert client.get("/api/v1/presence").status_code == 200
+    assert client.get("/api/v1/presence").json == {
+        "state": "no_one", "people_count": 0, "primary_candidate_id": None,
+        "visible_since": None, "last_seen": None, "confidence": None,
+    }
+    assert client.get("/api/v1/attention").json == {"state": "idle", "target": {
+        "id": None, "x": None, "y": None, "confidence": None}, "acquired_at": None, "last_seen": None}
+    presence.state = PresenceState(PresenceKind.PERSON_PRESENT, 1, "face-1", 1.0, 2.0, .82)
+    attention.state = AttentionState(AttentionKind.TRACKING, "face-1", .2, -.1, .82, 1.0, 2.0)
+    assert client.get("/api/v1/presence").json["state"] == "person_present"
+    assert client.get("/api/v1/attention").json == {
+        "state": "tracking", "target": {"id": "face-1", "x": .2, "y": -.1, "confidence": .82},
+        "acquired_at": 1.0, "last_seen": 2.0,
+    }
+
+
+def test_presence_and_attention_read_endpoints_report_actual_remote_unavailability():
+    class UnavailableLifecycle:
+        def execute(self, *_):
+            return {"ok": False, "error": "Application service is unavailable.", "status": 503}
+
+    app = Flask(__name__)
+    app.register_blueprint(create_api(RemoteApplicationService(UnavailableLifecycle())))
+    client = app.test_client()
+    for endpoint in ("/api/v1/presence", "/api/v1/attention"):
+        assert client.get(endpoint).status_code == 503
+
+
+def test_presence_and_attention_core_events_are_forwarded_as_semantic_application_events():
+    runtime = Runtime()
+    service = PhosApplicationService(runtime)
+    received = []
+    service.subscribe(received.append)
+
+    asyncio.run(runtime.core.events.publish(Event(PRESENCE_CHANGED, {
+        "state": "person_present", "people_count": 1, "primary_candidate_id": "face-1",
+    })))
+    asyncio.run(runtime.core.events.publish(Event(PERSON_ENTERED, {
+        "state": "person_present", "people_count": 1, "primary_candidate_id": "face-1",
+    })))
+    asyncio.run(runtime.core.events.publish(Event(ATTENTION_CHANGED, {
+        "state": "tracking", "target": {"id": "face-1", "x": 0.2, "y": -0.1, "confidence": 0.82},
+    })))
+
+    assert [(event["type"], event["payload"]) for event in received] == [
+        ("presence_changed", {"state": "person_present", "people_count": 1, "primary_candidate_id": "face-1"}),
+        ("person_entered", {"state": "person_present", "people_count": 1, "primary_candidate_id": "face-1"}),
+        ("attention_changed", {"state": "tracking", "target": {"id": "face-1", "x": 0.2, "y": -0.1, "confidence": 0.82}}),
+    ]
+    service.close()
 
 
 def test_semantic_command_routes_forward_the_capability_field_to_application_service():
