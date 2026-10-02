@@ -10,7 +10,7 @@ import time
 from dataclasses import replace
 from typing import Callable, Optional
 
-from robot.ui.state import AmbientOverlayState, BlinkPhase, EnvironmentalLEDIntent, FaceExpression, FaceState, VisualAccent
+from robot.ui.state import AmbientOverlayState, BlinkPhase, EnvironmentalLEDIntent, FaceExpression, FaceState, TransientVisualEffect, VisualAccent
 from robot.motion import MotionState
 
 from .behaviors import Behavior
@@ -19,6 +19,8 @@ from .runtime import STATE_CHANGED
 from .state import RobotState, VisualSource
 from .environmental import EnvironmentalState
 from .overlay import OverlayArbiter
+from .attention import ATTENTION_CHANGED, AttentionKind
+from .presence import PERSON_ENTERED, PERSON_LEFT
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,9 @@ class BehaviorEngine(Behavior):
         imu_shake_reaction_duration_seconds: float = 1.35,
         imu_impact_reaction_duration_seconds: float = 1.0,
         imu_reaction_cooldown_seconds: float = 2.0,
+        presence_led_reactions_enabled: bool = False, presence_led_entered_duration_seconds: Optional[float] = None,
+        presence_led_left_duration_seconds: Optional[float] = None, presence_led_entered_direction: Optional[str] = None,
+        presence_led_left_direction: Optional[str] = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if blink_interval[0] <= 0 or blink_interval[1] < blink_interval[0]:
@@ -85,6 +90,11 @@ class BehaviorEngine(Behavior):
         self._next_blink_at = 0.0
         self._next_gaze_at = 0.0
         self._face_is_tracked = False
+        self._attention_tracking = False
+        self._presence_led_reactions_enabled = presence_led_reactions_enabled
+        self._presence_led_durations = {PERSON_ENTERED: presence_led_entered_duration_seconds, PERSON_LEFT: presence_led_left_duration_seconds}
+        self._presence_led_directions = {PERSON_ENTERED: presence_led_entered_direction, PERSON_LEFT: presence_led_left_direction}
+        self._last_attention_gaze_log = None
         self._last_reaction_update_at: Optional[float] = None
         self._surprise_armed = True
         self._surprise_last_at = float("-inf")
@@ -189,6 +199,9 @@ class BehaviorEngine(Behavior):
             self._events.subscribe(VISION_EXPRESSION_STABLE, self._on_visual_expression),
             self._events.subscribe(VISION_FACE_POSITION, self._on_face_position),
             self._events.subscribe(VISION_FACE_LOST, self._on_face_lost),
+            self._events.subscribe(ATTENTION_CHANGED, self._on_attention),
+            self._events.subscribe(PERSON_ENTERED, self._on_presence_event),
+            self._events.subscribe(PERSON_LEFT, self._on_presence_event),
             self._events.subscribe(IMU_MOTION_STATE, self._on_motion_state),
             self._events.subscribe(ENVIRONMENTAL_STATE_CHANGED, self._on_environmental_state),
         ]
@@ -249,8 +262,9 @@ class BehaviorEngine(Behavior):
         self._last_reaction_update_at = self._clock()
 
     async def _on_face_lost(self, event: Event) -> None:
-        self._face_is_tracked = False
-        if self._robot_state is RobotState.IDLE:
+        if not self._attention_tracking:
+            self._face_is_tracked = False
+        if self._robot_state is RobotState.IDLE and not self._attention_tracking:
             self._state = replace(self._state, pupil_x=0.0, pupil_y=0.0)
 
     async def _on_face_position(self, event: Event) -> None:
@@ -261,6 +275,8 @@ class BehaviorEngine(Behavior):
         except (KeyError, TypeError, ValueError):
             return
         self._face_is_tracked = True
+        if self._attention_tracking:
+            return
         if self._robot_state is not RobotState.IDLE:
             return
         target_x = x * 0.65
@@ -270,6 +286,43 @@ class BehaviorEngine(Behavior):
             pupil_x=_smooth(self._state.pupil_x, target_x, self._face_gaze_smoothing),
             pupil_y=_smooth(self._state.pupil_y, target_y, self._face_gaze_smoothing),
         )
+
+    async def _on_attention(self, event: Event) -> None:
+        """Apply semantic target gaze; attention never manipulates a renderer."""
+        payload = event.data
+        target = payload.get("target") or {}
+        if payload.get("state") != AttentionKind.TRACKING.value:
+            self._attention_tracking = payload.get("state") == AttentionKind.LOST.value
+            if not self._attention_tracking:
+                self._face_is_tracked = False
+            return
+        try:
+            x, y = _clamp_unit(float(target["x"])), _clamp_unit(float(target["y"]))
+        except (KeyError, TypeError, ValueError):
+            return
+        logger.info("BEHAVIOR ATTENTION INPUT: state=tracking target_x=%.3f target_y=%.3f", x, y)
+        self._attention_tracking = True
+        self._face_is_tracked = True
+        if self._robot_state is RobotState.IDLE:
+            self._state = replace(self._state,
+                pupil_x=_smooth(self._state.pupil_x, x * .65, self._face_gaze_smoothing),
+                pupil_y=_smooth(self._state.pupil_y, y * .45, self._face_gaze_smoothing))
+            gaze = (self._state.pupil_x, self._state.pupil_y)
+            if self._last_attention_gaze_log is None or max(abs(a - b) for a, b in zip(gaze, self._last_attention_gaze_log)) >= .01:
+                self._last_attention_gaze_log = gaze
+                logger.info("BEHAVIOR GAZE OUTPUT: x=%.3f y=%.3f source=attention", *gaze)
+                logger.info("FACESTATE GAZE: x=%.3f y=%.3f source=attention", *gaze)
+
+    async def _on_presence_event(self, event: Event) -> None:
+        effect = TransientVisualEffect.PRESENCE_ENTERED if event.name == PERSON_ENTERED else TransientVisualEffect.PRESENCE_LEFT
+        duration = self._presence_led_durations[event.name]
+        direction = self._presence_led_directions[event.name]
+        if not self._presence_led_reactions_enabled or duration is None or duration <= 0 or direction is None:
+            return
+        self._state = replace(self._state, transient_effect=effect, transient_effect_started_at=self._clock(),
+                              transient_effect_duration_seconds=duration,
+                              transient_effect_direction=direction)
+        logger.info("BEHAVIOR EFFECT REQUEST: %s", effect.value)
 
     async def _on_motion_state(self, event: Event) -> None:
         try:

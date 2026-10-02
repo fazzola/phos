@@ -40,6 +40,16 @@ observations—not raw labels—reach behavior.
 </article>
 
 <article class="phos-card" markdown>
+<span class="phos-status">IMPLEMENTED</span>
+### Presence and attention
+Confirmed face presence produces edge-triggered enter/leave semantics. A
+provider-neutral attention state acquires, tracks, holds loss and returns to
+idle, driving semantic gaze and optional configured LED sweeps. It is not face
+recognition, biometric identity, eye-contact, multi-person arbitration, or
+voice engagement.
+</article>
+
+<article class="phos-card" markdown>
 <span class="phos-status phos-status--optional">OPTIONAL HARDWARE</span>
 ### Motion awareness
 Optional MPU-6050/GY-521 support turns six-axis readings into confirmed STILL,

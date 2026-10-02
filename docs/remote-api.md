@@ -40,7 +40,9 @@ All read endpoints use `GET` and return JSON.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `/api/v1/status` | Consolidated robot, visual, environmental, motion and health state. |
+| `/api/v1/status` | Consolidated robot, visual, environmental, motion, health, presence and attention state. |
+| `/api/v1/presence` | Current provider-neutral Presence read model. |
+| `/api/v1/attention` | Current provider-neutral Attention read model and optional target. |
 | `/api/v1/state` | Lifecycle state and whether Core is running. |
 | `/api/v1/environment` | Environmental sensor availability and current measurements when available. |
 | `/api/v1/motion` | IMU availability and current semantic motion snapshot. |
@@ -58,6 +60,12 @@ curl --cookie "$PHOS_ADMIN_COOKIE" http://127.0.0.1:8080/api/v1/environment
 
 Unavailable, stale, disabled, and warming-up sensor states remain explicit in
 responses; clients must not treat missing measurements as current data.
+
+Presence has `no_one`, `person_present`, and reserved `person_engaged` values.
+Attention has `idle`, `acquiring`, `tracking`, and `lost` values. Target ID is
+runtime-local only; position is normalized, and confidence may be `null` when a
+detector did not supply it. These are observation models, not identity or
+biometric-recognition APIs.
 
 ## Capabilities
 
@@ -215,6 +223,11 @@ Invalid temperature, air-quality, or duration values return respectively
 emits bounded semantic events as `type`, `timestamp`, and `payload`, suppresses
 consecutive duplicate payloads, and sends keepalive comments while idle. The
 current WSGI deployment does not implement a WebSocket endpoint.
+
+The stream forwards `presence_changed`, `person_entered`, `person_left`,
+`attention_changed`, and the acquired/lost/changed attention target events in
+addition to existing semantic updates. The Web Admin uses these only for its
+read-only status display.
 
 ```sh
 curl --cookie "$PHOS_ADMIN_COOKIE" -N http://127.0.0.1:8080/api/v1/events

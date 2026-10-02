@@ -11,8 +11,9 @@ from enum import Enum
 from typing import Any, Optional
 
 from robot.core import Behavior, Event, EventBus
+from robot.core.presence import VISION_FACE_OBSERVATION
 
-from .provider import CameraProvider, ExpressionProvider, FaceDetector, FacePosition, FaceRegion, VisualExpression
+from .provider import CameraProvider, ExpressionProvider, FaceDetector, FacePosition, FaceRegion, VisionObservation, VisualExpression
 from .smoother import ExpressionSmoother
 from .selection import FaceSelector
 
@@ -155,6 +156,12 @@ class VisionPipeline(Behavior):
         self._next_detection_at = now + self._detection_interval
         faces = await self._face_detector.detect(frame)
         height, width = frame.shape[:2]
+        if self._diagnostics:
+            # FaceDetector deliberately exposes provider-neutral geometry only.
+            # A detector label/class or confidence must be normalized by its
+            # adapter before this point; it is not silently inferred here.
+            logger.info("Vision raw detections: count=%s timestamp=%.3f boxes=%s", len(faces), now,
+                        [(face.x, face.y, face.width, face.height) for face in faces])
         selection = self._face_selector.select(faces, width=width, height=height, timestamp=now)
         face = selection.face
         if self._preview_enabled:
@@ -181,6 +188,8 @@ class VisionPipeline(Behavior):
             if self._publish_face_position and self._face_present and self._events is not None:
                 await self._events.publish(Event(VISION_FACE_LOST))
             self._face_present = False
+            if self._events is not None:
+                await self._events.publish(Event(VISION_FACE_OBSERVATION, {"observation": None, "timestamp": now}))
             return VisionResult(VisionStatus.NO_FACE)
 
         self._face_present = True
@@ -189,6 +198,14 @@ class VisionPipeline(Behavior):
             await self._events.publish(
                 Event(VISION_FACE_POSITION, {"face_position": {"x": position.x, "y": position.y}})
             )
+        if self._events is not None:
+            observation = vision_observation(frame, face, timestamp=now)
+            position = FacePosition(observation.x, observation.y)
+            if self._diagnostics:
+                logger.info("Vision normalized observation: type=face id=face-1 confidence=%s "
+                            "center=(%.3f,%.3f) bbox=(%s,%s,%s,%s)", observation.confidence, position.x, position.y,
+                            face.x, face.y, face.width, face.height)
+            await self._events.publish(Event(VISION_FACE_OBSERVATION, {"observation": observation.document()}))
         if self._expression_provider is None or self._smoother is None:
             return VisionResult(VisionStatus.FACE_DETECTED)
         if not selection.expression_ready:
@@ -348,6 +365,18 @@ def face_position(frame: Any, face: FaceRegion) -> FacePosition:
         x=_clamp_unit(center_x / (frame_width / 2) - 1.0),
         y=_clamp_unit(center_y / (frame_height / 2) - 1.0),
     )
+
+
+def vision_observation(frame: Any, face: FaceRegion, *, timestamp: float,
+                       target_id: str = "face-1", confidence: Optional[float] = None) -> VisionObservation:
+    """Normalize selected geometry; Haar has no confidence, so preserve null."""
+    shape = getattr(frame, "shape", None)
+    if not shape or len(shape) < 2:
+        raise ValueError("Camera frames must expose image-like shape information.")
+    height, width = int(shape[0]), int(shape[1])
+    position = face_position(frame, face)
+    return VisionObservation("face", target_id, position.x, position.y,
+                             min(1.0, face.width / width), min(1.0, face.height / height), confidence, timestamp)
 
 
 def _clamp_unit(value: float) -> float:

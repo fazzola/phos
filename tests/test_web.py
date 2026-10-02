@@ -168,6 +168,10 @@ def test_focused_settings_and_page_responsibilities(setup):
     assert 'name="display.iris_color"' in eyes
     assert 'name="web.host"' in network and 'name="web.port"' in network
     assert 'data-live="environment.temperature"' in dashboard
+    for key in ("presence.state", "presence.people_count", "attention.state", "attention.target_id",
+                "attention.target_position", "attention.target_confidence"):
+        assert f'data-live="{key}"' in dashboard
+        assert f'data-live="{key}"' in status
     assert 'data-command="set_robot_state"' not in status
     assert 'data-command="set_robot_state"' in controls
     assert 'data-command="set_robot_state"' not in sensors
@@ -234,6 +238,9 @@ def test_live_dashboard_is_an_api_client_and_retains_server_rendered_sensor_fall
     assert 'PHOS returned HTML instead of its API response' in source
     assert 'Your administrator session has expired' in source
     assert 'sensor_status' not in source and 'GPIO' not in source
+    for event_type in ("presence_changed", "attention_changed", "person_entered", "person_left",
+                       "attention_target_acquired", "attention_target_changed", "attention_target_lost"):
+        assert f'"{event_type}"' in source
 
 
 def test_incorrect_login_and_password_validation(setup):

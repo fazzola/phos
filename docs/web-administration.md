@@ -81,6 +81,15 @@ minute after a throttle message. This global budget prevents bypass by changing
 IP or cookies, but another LAN client can temporarily deny login. Limits reset
 on restart. There is no persistent lockout or remote password reset.
 
+## Live presence and attention
+
+Dashboard and PHOS Status show read-only Presence state, people count,
+Attention state, target ID, normalized target position, and confidence. The
+initial semantic status snapshot is refreshed through the existing SSE stream;
+edge events refresh the target state without adding a writable vision control.
+Unavailable detector confidence is displayed as unavailable rather than as a
+synthetic 100% value.
+
 ## Edit configuration
 
 The administration home is **Dashboard**. The sidebar groups read-only and

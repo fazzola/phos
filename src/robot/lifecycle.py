@@ -275,6 +275,8 @@ class LifecycleService:
             "application.state": lambda: self._application_service.robot_state(),
             "application.environment": lambda: self._application_service.environment(),
             "application.motion": lambda: self._application_service.motion(),
+            "application.presence": lambda: self._application_service.presence(),
+            "application.attention": lambda: self._application_service.attention(),
             "application.health": lambda: self._application_service.health(),
             "application.capabilities": lambda: self._application_service.capabilities(),
             "application.overlay": lambda: self._application_service.overlay(),

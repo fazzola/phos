@@ -29,6 +29,11 @@ below are retained as implementation history, not current release status.
 - Environmental overlays are additive display decoration: the interpreter also exposes independently confirmed temperature (`warm`/`cold`) and air-quality (`warning`/`bad`) intents, allowing sweat/snow and haze to coexist while the existing single priority `EnvironmentalState` continues to drive eyes and LEDs.
 - Behavior produces `FaceState` and handles blink/idle gaze.
 - Robot states include IDLE, LISTENING, THINKING, SPEAKING, SLEEPING and ERROR.
+- Presence/Attention vertical slice is implemented and covered by hardware-free
+  lifecycle tests: provider-neutral selected-face observations use confirmed
+  Presence edges and Attention `IDLE → ACQUIRING → TRACKING → LOST → IDLE`.
+  It supplies semantic gaze and optional configured LED enter/leave transients
+  through `BehaviorEngine` and `FaceState`, without identity recognition.
 
 ### UI / eyes
 - UI-neutral `FaceState` and expression/blink enums.
@@ -91,6 +96,19 @@ preprocessing, then verify semantic happy/surprised confirmation and UNKNOWN
 abstention on the Pi Camera/display while checking CPU use and clean shutdown.
 Neither current model has demonstrated reliable recognition; neutral activation
 requires calibration, not just a high softmax score.
+
+### Presence / Attention Pi acceptance (pending)
+
+This workspace does not establish physical Pi acceptance. On the Pi, start with
+no person (`no_one` / `idle`), enter and remain in frame (one confirmed
+`person_entered`, `idle → acquiring → tracking`, configured entered sweep and
+gaze), then move in each direction while checking environmental/expression
+visuals remain independent. A brief departure must not emit `person_left`; a
+confirmed departure must emit it once, run the configured reverse sweep and
+hold Attention in `lost` for `attention.lost_hold_ms` before `idle`. Re-entry
+must repeat one complete cycle. Finally verify Dashboard/Status update target
+details and show unavailable—not fake 100%—confidence when the detector has no
+confidence value.
 
 ## Selectable expression providers
 

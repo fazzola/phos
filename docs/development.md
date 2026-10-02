@@ -142,6 +142,25 @@ Geometric face association gates, class-specific semantic safeguards, visual
 profiles and SDK JPEG implementation details remain implementation constants.
 No AI/voice settings are added for subsystems outside this runtime milestone.
 
+### Presence and attention configuration
+
+`presence.led_reactions` controls optional LED-only semantic reactions. Its
+`enabled` flag gates the feature; `entered` defaults to an 800 ms clockwise
+sweep and `left` to a 900 ms counter-clockwise sweep. Each nested block has a
+positive `duration_ms` and a `direction` of `clockwise` or
+`counter_clockwise`. `attention.lost_hold_ms` is a non-negative millisecond
+hold between a confirmed departure and `attention=idle`. Presence is below
+error/sleep and IMU shake/impact transient priority; after a sweep completes,
+the LED controller resolves the current persistent visual state rather than a
+cached pre-sweep state.
+
+Older full configuration documents that predate these two known blocks are
+migrated in memory by explicit default injection before normal exact-key
+validation. The file is not rewritten merely at startup; the migrated canonical
+blocks are persisted by the next ordinary configuration save. This is a scoped
+schema evolution rule: unknown/misspelled keys and unrelated missing fields
+continue to fail strict validation.
+
 ### Reusable configuration API and web layer
 
 `robot.config.RuntimeConfig` is the existing typed surface moved out of runtime;

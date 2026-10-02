@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from enum import Enum
+import logging
 import math
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
@@ -21,9 +22,14 @@ from robot.core.state import InvalidStateTransition, allowed_next_states, transi
 from robot.semantics import VisualSource
 from robot.core.environmental import AirQualityOverlay, EnvironmentalState, TemperatureOverlay
 from robot.core.runtime import STATE_CHANGED
+from robot.core.presence import PRESENCE_CHANGED, PERSON_ENTERED, PERSON_LEFT
+from robot.core.attention import (ATTENTION_CHANGED, ATTENTION_TARGET_ACQUIRED,
+                                  ATTENTION_TARGET_CHANGED, ATTENTION_TARGET_LOST)
 from robot.config import ConfigurationError, RuntimeConfig
 from robot.motion import MotionState
 from robot.ui.state import FaceExpression
+
+logger = logging.getLogger(__name__)
 
 
 # These are enum members, not duplicated wire values. ERROR is lifecycle-only;
@@ -91,6 +97,9 @@ class RemoteApplicationService:
             # as unavailable rather than emitting invalid browser JSON.
             return PhosApplicationService._plain(response["result"])
         error = response.get("error", {})
+        if name in {"presence", "attention"}:
+            logger.debug("%s API: available=%s service=%s state=%s reason=%s", name.upper(), False,
+                         type(self._lifecycle).__name__, None, error)
         if isinstance(error, dict):
             raise ApplicationError(error.get("code", "runtime_error"), error.get("message", "PHOS request failed."),
                                    error.get("details", {}), response.get("status", 400))
@@ -100,6 +109,8 @@ class RemoteApplicationService:
     def robot_state(self): return self._call("state")
     def environment(self): return self._call("environment")
     def motion(self): return self._call("motion")
+    def presence(self): return self._call("presence")
+    def attention(self): return self._call("attention")
     def health(self): return self._call("health")
     def capabilities(self): return self._call("capabilities")
     def config(self): return self._call("config")
@@ -134,6 +145,8 @@ class RemoteApplicationService:
                 "motion_state_changed": current.get("motion", {}),
                 "health_changed": current.get("health", {}),
                 "overlay_changed": current.get("overlay", {}),
+                "presence_changed": current.get("presence", {}),
+                "attention_changed": current.get("attention", {}),
             }
         except ApplicationError:
             return
@@ -163,6 +176,13 @@ class PhosApplicationService:
         self._lock = RLock()
         self._unsubscribers = [
             self._core.events.subscribe(STATE_CHANGED, lambda event: self._emit("robot_state_changed", event.data)),
+            self._core.events.subscribe(PRESENCE_CHANGED, lambda event: self._emit("presence_changed", event.data)),
+            self._core.events.subscribe(PERSON_ENTERED, lambda event: self._emit("person_entered", event.data)),
+            self._core.events.subscribe(PERSON_LEFT, lambda event: self._emit("person_left", event.data)),
+            self._core.events.subscribe(ATTENTION_CHANGED, lambda event: self._emit("attention_changed", event.data)),
+            self._core.events.subscribe(ATTENTION_TARGET_ACQUIRED, lambda event: self._emit("attention_target_acquired", event.data)),
+            self._core.events.subscribe(ATTENTION_TARGET_CHANGED, lambda event: self._emit("attention_target_changed", event.data)),
+            self._core.events.subscribe(ATTENTION_TARGET_LOST, lambda event: self._emit("attention_target_lost", event.data)),
         ]
 
     def close(self):
@@ -230,6 +250,23 @@ class PhosApplicationService:
     def motion(self) -> dict:
         return self.sensors().get("imu", {"status": "unavailable", "available": False})
 
+    def presence(self) -> dict:
+        interpreter = getattr(self._runtime, "_presence_interpreter", None)
+        state = getattr(interpreter, "state", None)
+        return self._plain(state) if state is not None else {"state": "no_one", "people_count": 0,
+                                                             "primary_candidate_id": None, "visible_since": None,
+                                                             "last_seen": None, "confidence": None}
+
+    def attention(self) -> dict:
+        manager = getattr(self._runtime, "_attention_manager", None)
+        state = getattr(manager, "state", None)
+        if state is None:
+            return {"state": "idle", "target": None}
+        plain = self._plain(state)
+        return {"state": plain["state"], "target": {"id": plain["target_id"], "x": plain["target_x"],
+                "y": plain["target_y"], "confidence": plain["confidence"]}, "acquired_at": plain["acquired_at"],
+                "last_seen": plain["last_seen"]}
+
     def health(self) -> dict:
         snapshots = self.sensors()
         mapping = {"environmental": "environmental", "ccs811": "ccs811", "imu": "mpu6050", "led_ring": "led_ring"}
@@ -258,6 +295,9 @@ class PhosApplicationService:
                     "air_quality": [item.value for item in AirQualityOverlay],
                 },
             },
+            "features": {"vision": getattr(self._runtime, "_vision_pipeline", None) is not None,
+                         "presence": getattr(self._runtime, "_presence_interpreter", None) is not None,
+                         "attention": getattr(self._runtime, "_attention_manager", None) is not None},
         }
 
     def overlay(self) -> dict:
@@ -311,6 +351,8 @@ class PhosApplicationService:
         result["robot"] = self.robot_state()
         result["health"] = self.health()
         result["overlay"] = self.overlay()
+        result["presence"] = self.presence()
+        result["attention"] = self.attention()
         result.setdefault("sensors", self.sensors())
         self._emit("visual_state_changed", result["visual"])
         return result
@@ -325,6 +367,8 @@ class PhosApplicationService:
         self._emit("environmental_state_changed", self.environment())
         self._emit("motion_state_changed", self.motion())
         self._emit("health_changed", self.health())
+        self._emit("presence_changed", self.presence())
+        self._emit("attention_changed", self.attention())
 
     def config(self) -> dict:
         if self._lifecycle is None:
