@@ -233,9 +233,10 @@ consecutive duplicate payloads, and sends keepalive comments while idle. The
 current WSGI deployment does not implement a WebSocket endpoint.
 
 The stream forwards `presence_changed`, `person_entered`, `person_left`,
-`attention_changed`, and the acquired/lost/changed attention target events in
-addition to existing semantic updates. The Web Admin uses these only for its
-read-only status display.
+`attention_changed`, acquired/lost/changed attention target events,
+`observed_expression_changed`, and `expression_reaction_changed` in addition to
+existing semantic updates. The Web Admin uses these only for its read-only
+status display.
 
 ```sh
 curl --cookie "$PHOS_ADMIN_COOKIE" -N http://127.0.0.1:8080/api/v1/events

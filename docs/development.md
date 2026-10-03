@@ -161,6 +161,16 @@ blocks are persisted by the next ordinary configuration save. This is a scoped
 schema evolution rule: unknown/misspelled keys and unrelated missing fields
 continue to fail strict validation.
 
+### Expression reaction configuration
+
+`expression_reactions` is a provider-neutral policy for the uncertain
+`ObservedExpression` read model. `enabled`, `min_confidence`,
+`confirmation_ms`, `cooldown_ms`, and `reaction_duration_ms` bound whether a
+supported observation may produce a transient PHOS response. It is not an
+emotion inference or a direct classifier-to-renderer mapping. Existing complete
+documents missing this known block receive the scoped default injection above;
+strict validation still rejects all other missing or unknown fields.
+
 ### Reusable configuration API and web layer
 
 `robot.config.RuntimeConfig` is the existing typed surface moved out of runtime;

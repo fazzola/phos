@@ -8,20 +8,12 @@ require restarting PHOS.
 
 ## Install and enable
 
-Use the [PHOS 1.2.0 installation procedure](installation.md#phos-120-reproducible-installation)
-on the Pi (Python 3.11+). In `/home/pi/phos`, create the virtual environment with
-`--system-site-packages` so the system camera/OpenCV/Tk packages remain available,
-then install the pinned web dependencies:
-
-```bash
-python3 -m venv --system-site-packages .venv
-.venv/bin/python -m pip install -r requirements-web.txt
-```
-
-`run_pi.sh` now copies that snapshot and the manual alongside source. Full
-package installs may use `.venv/bin/python -m pip install -c requirements-web.txt
-'.[web]'`. The existing Python >=3.9 package compatibility remains, but older
-interpreters are not the pinned release-installation baseline.
+Use the [PHOS 1.3.0 installation procedure](installation.md#recommended-unified-installer)
+on the Pi (Python 3.11+). Its unified installer creates the canonical environment
+and installs the Web Admin dependency together with all other supported runtime
+components. For contributor-specific manual setup, use the concise
+[advanced/manual path](installation.md#advancedmanual-installation); do not create
+a separate Web Admin environment.
 
 The canonical `web` section defaults to `enabled: false`, `host: "127.0.0.1"`,
 `port: 8080`, preserving eyes-only startup without extra dependencies. Existing
@@ -335,7 +327,7 @@ install the user service. Manual terminal launches support Reload, but browser
 Restart is unavailable; stop and rerun the normal startup command locally. Do
 not run a manual copy beside the service (camera/port contention). No reboot,
 arbitrary command execution, privileged shell or generic service-management API
-is provided. **Reboot Raspberry Pi** is deferred beyond 1.2.0.
+is provided. **Reboot Raspberry Pi** is deferred beyond 1.3.0.
 
 Configuration must remain valid until restart completes. Avoid concurrent local
 file edits; a file changed or hardware removed after validation can still cause

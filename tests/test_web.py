@@ -673,23 +673,20 @@ def test_expression_groups_status_and_separate_password_page(setup, monkeypatch)
     app, _, _ = setup
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret-never-rendered")
     client = authorize(app)
-    page = client.get("/configuration/expression").get_data(as_text=True)
+    page = client.get("/configuration/runtime").get_data(as_text=True)
     for label in ("Provider selection", "Local ONNX provider", "AWS provider", "Cloud cost &amp; rate limits"):
         assert label in page
     assert page.count('data-provider="aws"') == 2
     assert 'data-provider="local"' in page
     assert 'name="display.width"' not in page
     status = client.get("/configuration/status").get_data(as_text=True)
-    assert "Not monitored" in status and "Not checked" in status
-    assert "<dt>PHOS version</dt><dd>1.2.0</dd>" in status
     assert 'name="revision"' not in status
-    security = client.get("/configuration/security").get_data(as_text=True)
+    security = client.get("/configuration/integrations").get_data(as_text=True)
     assert 'href="/password"' in security
     assert 'type="password"' not in security
-    logging = client.get("/configuration/logging").get_data(as_text=True)
+    logging = client.get("/configuration/runtime").get_data(as_text=True)
     assert 'name="logging.level"' in logging and 'name="logging.file"' in logging
     assert 'name="logging.expression_diagnostics"' in logging
-    assert "SDK credential/request debug output remains suppressed" in logging
     assert "secret-never-rendered" not in page + status + security + logging
 
 

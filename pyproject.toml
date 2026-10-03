@@ -17,6 +17,9 @@ vision = [
     "opencv-python-headless>=4.8",
     "picamera2>=0.3",
 ]
+all = [
+    "phos-robot[ccs811,imu,led-ring,environmental,web,aws,vision]",
+]
 
 [build-system]
 requires = ["setuptools>=61"]

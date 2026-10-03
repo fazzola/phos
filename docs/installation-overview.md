@@ -20,7 +20,7 @@ renderer needs an active graphical display.
 
 ## Recommended path
 
-1. Follow the canonical [Raspberry Pi installation procedure](installation.md), including the documented system packages, clone, virtual environment and import check.
+1. Clone PHOS and run `./scripts/install-phos.sh` as documented in the canonical [Raspberry Pi installation procedure](installation.md).
 2. Test the camera and eye demo before enabling optional Vision features.
 3. Edit the complete canonical `config/phos.json`; its defaults safely start eyes only.
 4. Validate configuration, then start PHOS with the documented foreground command.
