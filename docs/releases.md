@@ -1,5 +1,15 @@
 # Releases
 
+## PHOS 1.3.0 — Presence, Attention & Expression Awareness
+
+The authoritative source version is **1.3.0**. It adds semantic Presence and
+Attention, transient LED arrival/departure reactions, observed facial-expression
+telemetry, and cautious expression reactions with realtime Web Admin visibility.
+Automated regression has passed; target-Pi acceptance remains required before
+tagging.
+
+[Read the 1.3.0 release record](release-1.3.0.md){ .md-button .md-button--primary }
+
 ## PHOS 1.2.0 — Remote API source release candidate
 
 The authoritative source version is **1.2.0**. It adds the authenticated,

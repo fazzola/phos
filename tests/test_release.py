@@ -6,13 +6,15 @@ import sys
 
 from robot import __version__
 from robot.config import DEFAULT_CONFIG_PATH
+from robot.web.openapi import load_spec
 
 
 def test_authoritative_version_and_package_metadata():
-    assert __version__ == "1.2.0"
+    assert __version__ == "1.3.0"
     project = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
     assert 'dynamic = ["version"]' in project
     assert 'version = {attr = "robot.__version__"}' in project
+    assert load_spec()["info"]["version"] == __version__
 
 
 def test_installed_package_uses_shipped_canonical_document(tmp_path, monkeypatch):

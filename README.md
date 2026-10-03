@@ -1,16 +1,29 @@
-# PHOS 1.2.0 — Raspberry Pi Robot
+# PHOS 1.3.0 — Presence, Attention & Expression Awareness
 
 ![PHOS robot](img/phos.png)
 
-Modular robot targeting Raspberry Pi 3. Version 1.2.0 adds the authenticated,
-provider-neutral Remote API, capability discovery, overlay control and local
-OpenAPI/Swagger documentation to the motion and environmental-awareness
-baseline. See the [release scope and limitations](docs/release-1.2.0.md),
+Modular robot targeting Raspberry Pi 3. Version 1.3.0 adds semantic Presence
+and Attention, transient presence LED reactions, observed facial-expression
+telemetry, and a cautious expression-reaction policy to the existing Remote API
+and Web Admin baseline. See the [release scope and limitations](docs/release-1.3.0.md),
 [installation guide](docs/installation.md) and [administration manual](docs/web-administration.md).
 
 The public documentation portal is published through GitHub Pages at
-<https://fazzola.github.io/phos/>. It presents the 1.2.0 source release candidate
+<https://fazzola.github.io/phos/>. It presents the 1.3.0 source release candidate
 and links back to these canonical repository documents; it is not a release tag.
+
+## Install on Raspberry Pi OS
+
+```bash
+git clone https://github.com/phosairobot/phos.git
+cd phos
+./scripts/install-phos.sh
+```
+
+The installer is the recommended Raspberry Pi OS/Debian ARM setup path. It
+installs supported runtime software, prepares the Local ONNX model, and performs
+software-only checks; see the [canonical installation guide](docs/installation.md)
+for required display/camera/hardware steps and the manual contributor path.
 
 For a local website preview, install `requirements-docs.txt` and run
 `.venv/bin/python -m mkdocs serve`; use `.venv/bin/python -m mkdocs build --strict`

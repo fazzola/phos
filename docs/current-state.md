@@ -10,15 +10,21 @@ This file is an implementation handoff for coding agents. It records what is pre
 - Microphone available; exact interface remains TBD.
 - Display/eyes and Pi Camera/tracking are documented as operational in `docs/hardware.md`; exact camera model remains unspecified.
 
-## PHOS 1.2.0 release candidate
+## PHOS 1.3.0 release candidate
 
-The source version is **1.2.0**. It adds the authenticated Remote API,
-capability discovery, overlay arbitration and local API documentation to the
-implemented optional environmental, air-quality, IMU, WS2812B and visual-source
-paths. It is **not ready to tag**: complete-suite execution in a permissive
-environment and the target-Pi acceptance checklist remain required. See
-[release-1.2.0.md](release-1.2.0.md) for current gates; older release sections
+The source version is **1.3.0**. It adds stable Presence and Attention state,
+transient presence LED reactions, observed facial-expression telemetry, and a
+bounded expression-reaction policy to the existing Remote API and Web Admin.
+Automated regression has passed. It is **not ready to tag** until the target-Pi
+acceptance checklist is complete. See
+[release-1.3.0.md](release-1.3.0.md) for current gates; older release sections
 below are retained as implementation history, not current release status.
+
+The recommended Raspberry Pi OS installation path is now
+`./scripts/install-phos.sh`. It validates the supported platform, installs the
+canonical `.[all]` runtime dependency aggregate, prepares the configured local
+ONNX model, and performs software-only smoke checks. Physical hardware setup
+and acceptance remain separate.
 
 ## Present in the repository
 
@@ -86,10 +92,11 @@ below are retained as implementation history, not current release status.
 
 ## Current development priority
 
-Complete PHOS 1.2.0 release acceptance: the optional sensor, motion, LED and
-overlay paths are implemented, but must be verified together on the target Pi.
-See [the 1.2.0 release record](release-1.2.0.md) for the exact automated and
-manual gates. Other scope remains deferred.
+Complete PHOS 1.3.0 release acceptance on the target Pi: Presence/Attention,
+expression observation/reaction, optional LED feedback, and existing
+sensor/overlay paths must be verified together. Automated regression is passed.
+See [the 1.3.0 release record](release-1.3.0.md) for the remaining manual gates.
+Other scope remains deferred.
 The expression-reaction implementation needs target-hardware verification with
 a selected lightweight ONNX model. Confirm the model's labels, dimensions and
 preprocessing, then verify semantic happy/surprised confirmation and UNKNOWN

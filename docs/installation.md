@@ -1,6 +1,6 @@
 # PHOS installation on Raspberry Pi
 
-## PHOS 1.2.0 reproducible installation
+## PHOS 1.3.0 reproducible installation
 
 Use Raspberry Pi OS **with a graphical desktop**, Python 3.11+ and an 800×600
 HDMI display on the Pi 3. Tk needs an active X display (XWayland on a Wayland
@@ -11,32 +11,54 @@ These instructions use the desktop user's `~/phos` (`/home/pi/phos` for user `pi
 This is a reproducible source/dependency procedure, not a frozen OS image. Record
 `cat /etc/os-release`, `uname -m`, `python3 --version` and apt package versions
 with the release acceptance results. Actual fresh-Pi acceptance is still pending;
-see [release checklist](release-1.2.0.md#release-gates).
+see [release checklist](release-1.3.0.md#testing-and-release-gates).
 
-### 1. Install system dependencies and source
+## Recommended: unified installer
 
 On the Pi, as the desktop user:
 
 ```bash
-sudo apt update
-sudo apt install -y git wget ca-certificates python3-venv python3-tk python3-picamera2 python3-opencv opencv-data rpicam-apps
 cd ~
-git clone https://github.com/phosairobot/phos phos
+git clone https://github.com/phosairobot/phos.git phos
 cd ~/phos
-git rev-parse HEAD
-python3 -m venv --system-site-packages .venv
-.venv/bin/python -m pip install -r requirements-web.txt
-.venv/bin/python -m pip check
-.venv/bin/python -c "import tkinter, cv2, flask, flask_wtf, waitress; from picamera2 import Picamera2; print('Runtime imports OK; OpenCV', cv2.__version__)"
+./scripts/install-phos.sh
 ```
 
-Use the audited commit when it becomes available; no `v1.2.0` tag is assumed to
+Use the audited commit when it becomes available; no `v1.3.0` tag is assumed to
 exist yet. The source checkout already contains `config/phos.json`; do not create
-an incomplete JSON file. No package installation is needed to run the source
-entry point. The web dependency snapshot is pinned; camera/OpenCV/Tk come from
-apt and are exposed to the venv by `--system-site-packages`. Do not pip-install
-the `vision` extra on the Pi. OpenCV DNN loads ONNX directly: **onnxruntime,
-TensorFlow and PyTorch are not required**.
+an incomplete JSON file. The installer validates Raspberry Pi OS/Debian ARM,
+installs required APT packages, creates/reuses `.venv`, installs canonical
+`.[all]` runtime extras, prepares the local ONNX model, and performs
+software-only smoke checks. It does not require connected hardware. OpenCV DNN
+loads ONNX directly: **onnxruntime, TensorFlow and PyTorch are not required**.
+
+The APT packages are `build-essential`, `ca-certificates`, `git`, `i2c-tools`,
+`libcap-dev`, `opencv-data`, `python3-dev`, `python3-opencv`,
+`python3-picamera2`, `python3-smbus`, `python3-tk`, `python3-venv`,
+`rpicam-apps`, and `wget`.
+`.[all]` includes the existing Web Admin/Remote API, Vision, AWS,
+environmental, CCS811, IMU, and LED-ring Python support.
+
+### Advanced/manual installation
+
+For contributors or constrained deployments, install the same supported runtime
+manually:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential ca-certificates git i2c-tools libcap-dev opencv-data python3-dev python3-opencv python3-picamera2 python3-smbus python3-tk python3-venv rpicam-apps wget
+python3 -m venv --system-site-packages .venv
+.venv/bin/python -m pip install --upgrade pip setuptools wheel
+.venv/bin/pip install -e '.[all]'
+```
+
+Then prepare the model below and run the installer smoke-check commands. The
+script remains the recommended path because it performs those steps consistently.
+
+```bash
+.venv/bin/python -c "import robot; from robot.config import RuntimeConfig; RuntimeConfig.from_file(); print('PHOS configuration ready')"
+.venv/bin/pip check
+```
 
 Alternative source transfer: review the destination in `run_pi.sh` and run it
 from your development checkout. It copies release scripts, including the WS2812B
@@ -45,7 +67,7 @@ settings/models/administrator data; it neither installs dependencies nor restart
 PHOS. Upgrades must merge new required fields from the complete
 canonical schema. The script has a site-specific destination, not auto-discovery.
 
-### 2. Check the camera and display
+## Camera and display check
 
 Before starting PHOS, run this from the Pi desktop with the camera connected:
 
@@ -59,11 +81,12 @@ expressions, arrows for gaze and `q` to exit. Resolve camera connection/desktop
 permission problems before proceeding. Camera packages and setup follow
 [Raspberry Pi's supported camera documentation](https://www.raspberrypi.com/documentation/computers/camera_software.html).
 
-### 3. Configure PHOS and Web Admin
+## Configure PHOS and Web Admin
 
 Edit `~/phos/config/phos.json`. Release defaults start only eyes: tracking,
 expressions, camera preview, environmental sensors, CCS811 and Web Admin are disabled. Keep this complete file;
-all seven sections (`web`, `display`, `behavior`, `vision`, `expression`, `sensors`, `logging`)
+all required sections (`web`, `display`, `led_ring`, `presence`, `attention`,
+`behavior`, `vision`, `expression`, `expression_reactions`, `sensors`, `logging`)
 are required, including inactive provider fields and `vision.camera_preview`.
 Paths inside JSON resolve relative to its directory.
 
@@ -80,11 +103,11 @@ Enable gaze with `vision.face_tracking_enabled: true`. Enable the local display
 picture-in-picture with `vision.camera_preview.enabled: true` (it is **not a web
 video stream**). Keep expressions off until choosing one provider below.
 
-### 4. Select optional expression processing
+## Local ONNX expression model
 
-Skip this step for eyes, tracking or camera preview alone. For AWS follow
-[optional AWS mode](#optional-aws-expression-mode). For local mode, install the
-configured MobileFaceNet candidate:
+The unified installer downloads and verifies the configured MobileFaceNet model
+unless the local copy already has the expected checksum. For manual installation,
+prepare it with:
 
 ```bash
 cd ~/phos
@@ -102,7 +125,7 @@ preprocessing. No AWS dependency is needed. The candidate's recognition quality
 is not established; read [model evaluation](vision-model-evaluation.md).
 Keep neutral reactions disabled until calibrated. Revalidate the JSON.
 
-### 5. Start PHOS
+## Start PHOS
 
 For a first foreground check from the desktop:
 
@@ -111,7 +134,7 @@ cd ~/phos
 .venv/bin/python src/robot/main.py --config config/phos.json
 ```
 
-Check the startup version is **1.2.0** and the logged configuration path is the
+Check the startup version is **1.3.0** and the logged configuration path is the
 file you edited. Escape leaves fullscreen; Ctrl+C stops PHOS. Stop this process
 before installing/starting the production service below.
 
@@ -183,12 +206,10 @@ manual launches. See [systemd service semantics](https://github.com/systemd/syst
 
 ## Optional AWS expression mode
 
-Camera/OpenCV remain required. Install the SDK into the Pi system environment
-which the venv can access:
+Camera/OpenCV remain required. The unified installer already includes the
+optional SDK; confirm its import with:
 
 ```bash
-sudo apt install -y python3-boto3
-cd ~/phos
 .venv/bin/python -c "import boto3; print('AWS SDK import OK')"
 ```
 
@@ -253,7 +274,7 @@ remain available; no obsolete provider-specific JSON files are required.
 
 ## Optional environmental sensor
 
-This is an optional PHOS 1.2.0 capability. Leave it
+This is an optional PHOS 1.3.0 capability. Leave it
 disabled until wired according to [hardware notes](hardware.md#bme280). Confirm
 the breakout accepts 3.3 V power/logic; the exact board revision is not assumed.
 With PHOS stopped, on Raspberry Pi OS as the desktop/service user:
