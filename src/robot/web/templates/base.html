@@ -6,21 +6,29 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
   <script src="{{ url_for('static', filename='admin.js') }}" defer></script>
 </head>
-<body><main>
-<header><h1>PHOS <small>Administration</small></h1>
+<body><div class="admin-shell{% if not session.get('sid') %} login-shell{% endif %}">
 {% if session.get('sid') %}
-<nav aria-label="Account"><a href="{{ url_for('configuration') }}">Configuration</a><a href="{{ url_for('password') }}">Change password</a><a href="{{ url_for('system') }}">System actions</a>
-<form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Log out</button></form></nav>
-{% endif %}</header>
-{% if session.get('sid') %}
-<nav class="domain-nav" aria-label="Configuration areas">
-{% for key, domain in domains.items() %}
-<a href="{{ url_for('configuration', area=key) }}" {% if area is defined and area == key %}aria-current="page"{% endif %}>{{ domain.title }}</a>
-{% endfor %}
-</nav>
+<aside class="sidebar"><a class="brand" href="{{ url_for('configuration') }}"><span class="brand-mark" aria-hidden="true">◉</span><span>PHOS <small>ADMIN</small></span></a>
+<nav class="side-nav" aria-label="PHOS administration">
+<p class="nav-heading">Basic</p>
+<a href="{{ url_for('configuration') }}" {% if area is defined and area == 'general' %}aria-current="page"{% endif %}><i>⌂</i>Dashboard</a>
+<a href="{{ url_for('configuration', area='status') }}" {% if area is defined and area == 'status' %}aria-current="page"{% endif %}><i>◎</i>PHOS Status</a>
+<a href="{{ url_for('configuration', area='controls') }}" {% if area is defined and area == 'controls' %}aria-current="page"{% endif %}><i>⌁</i>Controls</a>
+<p class="nav-heading">Advanced</p>
+<a href="{{ url_for('configuration', area='sensors') }}" {% if area is defined and area == 'sensors' %}aria-current="page"{% endif %}><i>◫</i>Sensors</a>
+<a href="{{ url_for('configuration', area='api') }}" {% if area is defined and area == 'api' %}aria-current="page"{% endif %}><i>⌘</i>API</a>
+<a href="{{ url_for('configuration', area='diagnostics') }}" {% if area is defined and area == 'diagnostics' %}aria-current="page"{% endif %}><i>◇</i>Diagnostics</a>
+<a href="{{ url_for('system') }}" {% if request.endpoint == 'system' or request.endpoint == 'reload_configuration' or request.endpoint == 'restart_phos' %}aria-current="page"{% endif %}><i>⚠</i>System Actions</a>
+<p class="nav-heading">Settings</p>
+<a href="{{ url_for('configuration', area='appearance') }}" {% if area is defined and area == 'appearance' %}aria-current="page"{% endif %}><i>◫</i>Appearance</a>
+<a href="{{ url_for('configuration', area='eyes') }}" {% if area is defined and area == 'eyes' %}aria-current="page"{% endif %}><i>◉</i>Eyes</a>
+<a href="{{ url_for('configuration', area='network') }}" {% if area is defined and area == 'network' %}aria-current="page"{% endif %}><i>⌁</i>Network</a>
+<a href="{{ url_for('configuration', area='runtime') }}" {% if area is defined and area == 'runtime' %}aria-current="page"{% endif %}><i>⏱</i>Runtime</a>
+<a href="{{ url_for('configuration', area='behavior') }}" {% if area is defined and area == 'behavior' %}aria-current="page"{% endif %}><i>◇</i>Behavior</a>
+<a href="{{ url_for('configuration', area='integrations') }}" {% if area is defined and area == 'integrations' %}aria-current="page"{% endif %}><i>⌘</i>Integrations</a>
+</nav><div class="sidebar-account"><a href="{{ url_for('password') }}">Change password</a><form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Log out</button></form></div></aside>
 {% endif %}
-{% for message in get_flashed_messages() %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
-{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-{% block content %}{% endblock %}
-<footer>Trusted local network only. HTTP traffic is not encrypted. AWS credentials stay outside PHOS configuration.</footer>
-</main></body></html>
+<div class="admin-main"><header class="topbar"><div><p class="eyebrow">LOCAL ROBOT CONSOLE</p><h1>PHOS <small>Administration</small></h1></div>{% if session.get('sid') %}<span id="phos-connection" class="connection disconnected" role="status">Live: disconnected</span>{% endif %}</header>
+<main class="content">{% for message in get_flashed_messages() %}<p class="notice" role="status">{{ message }}</p>{% endfor %}{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}{% block content %}{% endblock %}</main>
+<footer>Trusted local network only. HTTP traffic is not encrypted. AWS credentials stay outside PHOS configuration.</footer></div>
+</div></body></html>

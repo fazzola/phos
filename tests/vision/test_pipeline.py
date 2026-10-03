@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from robot.core import EventBus
+from robot.core.presence import PERSON_LEFT, PresenceInterpreter, PresenceKind
 from robot.vision import (
     ExpressionObservation as RawObservation,
     ExpressionSmoother,
@@ -12,6 +13,7 @@ from robot.vision import (
     VISION_FACE_LOST,
     VISION_FACE_POSITION,
 )
+from robot.vision.pipeline import OBSERVED_EXPRESSION_CHANGED
 
 
 def ExpressionObservation(label, confidence):
@@ -62,6 +64,24 @@ class FakeExpressionProvider:
         return self.observations.pop(0) if self.observations else None
 
 
+class FailingExpressionProvider(FakeExpressionProvider):
+    async def classify(self, face_crop):
+        self.crops.append(face_crop)
+        raise RuntimeError("model unavailable")
+
+
+class AdvancingExpressionProvider(FakeExpressionProvider):
+    def __init__(self, observations, clock, duration_seconds):
+        super().__init__(observations)
+        self._clock = clock
+        self._duration_seconds = duration_seconds
+
+    async def classify(self, face_crop):
+        self.crops.append(face_crop)
+        self._clock[0] += self._duration_seconds
+        return self.observations.pop(0) if self.observations else None
+
+
 def make_pipeline(camera, detector, expressions, *, events=None, smoother=None):
     return VisionPipeline(
         camera,
@@ -84,6 +104,121 @@ def test_no_face_does_not_call_expression_provider():
     result, expressions = asyncio.run(exercise())
     assert result.status is VisionStatus.NO_FACE
     assert expressions.crops == []
+
+
+def test_observed_expression_uses_raw_classifier_confidence_and_emits_only_semantic_changes():
+    async def exercise():
+        events = EventBus()
+        published = []
+        events.subscribe(OBSERVED_EXPRESSION_CHANGED, lambda event: published.append(dict(event.data)))
+        pipeline = VisionPipeline(FakeCamera(), FakeFaceDetector([FaceRegion(0, 0, 100, 100)]),
+                                  FakeExpressionProvider([ExpressionObservation("happy", .82), ExpressionObservation("happy", .71)]),
+                                  ExpressionSmoother(minimum_observations=3), events=events,
+                                  detection_interval_seconds=.1, expression_interval_seconds=.1,
+                                  observed_expression_provider="local", observed_expression_model="emotion-ferplus-8.onnx")
+        await pipeline.process_once(timestamp=0.0)  # selected-face acquisition
+        await pipeline.process_once(timestamp=.2)
+        await pipeline.process_once(timestamp=.4)
+        pipeline._face_detector.faces = []  # no inference is not an unavailable result
+        await pipeline.process_once(timestamp=.6)
+        return pipeline.observed_expression, published
+
+    observed, published = asyncio.run(exercise())
+    assert (observed.available, observed.label, observed.confidence) == (True, "happy", .71)
+    assert published == [
+        {"available": True, "label": "happy", "confidence": .82, "provider": "local",
+         "model": "emotion-ferplus-8.onnx", "observed_at": .2, "unavailable_reason": None},
+    ]
+
+
+def test_observed_expression_normalizes_provider_alias_and_drives_preview_from_same_state():
+    async def exercise():
+        pipeline = VisionPipeline(
+            FakeCamera(), FakeFaceDetector([FaceRegion(0, 0, 100, 100)]),
+            FakeExpressionProvider([ExpressionObservation("happiness", .90)]),
+            ExpressionSmoother(minimum_observations=3), preview_enabled=True,
+            detection_interval_seconds=.1, expression_interval_seconds=.1,
+        )
+        await pipeline.process_once(timestamp=0.0)  # selected-face acquisition
+        await pipeline.process_once(timestamp=.2)
+        return pipeline.observed_expression, pipeline.preview_snapshot
+
+    observed, preview = asyncio.run(exercise())
+    assert observed.available is True
+    assert (observed.label, observed.confidence) == ("happy", .90)
+    assert (preview.raw_expression, preview.confidence) == (observed.label, observed.confidence)
+
+
+def test_observed_expression_stays_available_between_inferences_then_expires():
+    async def exercise():
+        pipeline = VisionPipeline(
+            FakeCamera(), FakeFaceDetector([FaceRegion(0, 0, 100, 100)]),
+            FakeExpressionProvider([RawObservation("neutral", .75, (("neutral", .75), ("other", .25)),
+                                                   sampled_at=1_700_000_000.0)]),
+            ExpressionSmoother(minimum_observations=3),
+            detection_interval_seconds=.1, expression_interval_seconds=10,
+            observed_expression_ttl_seconds=1.5,
+        )
+        await pipeline.process_once(timestamp=0.0)  # selected-face acquisition
+        await pipeline.process_once(timestamp=.2)  # classifier result
+        fresh = pipeline.observed_expression
+        pipeline._face_detector.faces = []
+        await pipeline.process_once(timestamp=1.0)  # no face/no inference: retain fresh value
+        between_inferences = pipeline.observed_expression
+        await pipeline.process_once(timestamp=1.8)
+        return fresh, between_inferences, pipeline.observed_expression
+
+    fresh, between_inferences, stale = asyncio.run(exercise())
+    assert (fresh.available, fresh.label, fresh.confidence) == (True, "neutral", .75)
+    assert fresh.observed_at == 1_700_000_000.0
+    assert between_inferences == fresh
+    assert stale.available is False
+    assert stale.label is None and stale.unavailable_reason == "expired"
+
+
+def test_observed_expression_freshness_starts_when_slow_inference_completes():
+    async def exercise():
+        clock = [.0]
+        pipeline = VisionPipeline(
+            FakeCamera(), FakeFaceDetector([FaceRegion(0, 0, 100, 100)]),
+            AdvancingExpressionProvider([ExpressionObservation("happy", 1.0)], clock, 2.0),
+            ExpressionSmoother(minimum_observations=3),
+            detection_interval_seconds=.1, expression_interval_seconds=10,
+            observed_expression_ttl_seconds=1.5, clock=lambda: clock[0],
+        )
+        await pipeline.process_once()  # selected-face acquisition at 0.0
+        clock[0] = .2
+        await pipeline.process_once()  # inference completes at 2.2
+        fresh = pipeline.observed_expression
+        clock[0] = 2.3
+        await pipeline.process_once()  # would expire if freshness used 0.2
+        return fresh, pipeline.observed_expression
+
+    fresh, after_next_frame = asyncio.run(exercise())
+    assert fresh.available is True and fresh.observed_at == 2.2
+    assert after_next_frame.available is True and after_next_frame.label == "happy"
+
+
+def test_expression_failure_marks_only_observation_unavailable_not_presence():
+    async def exercise():
+        events = EventBus()
+        presence = PresenceInterpreter(events, enter_confirmation_seconds=.1, leave_confirmation_seconds=.2)
+        left = []
+        events.subscribe(PERSON_LEFT, left.append)
+        await presence.start()
+        pipeline = VisionPipeline(FakeCamera(), FakeFaceDetector([FaceRegion(0, 0, 100, 100)]),
+                                  FailingExpressionProvider([]), ExpressionSmoother(minimum_observations=3),
+                                  events=events, detection_interval_seconds=.1, expression_interval_seconds=.1)
+        await pipeline.process_once(timestamp=0.0)
+        await pipeline.process_once(timestamp=.2)
+        result = presence.state, pipeline.observed_expression, left
+        await presence.stop()
+        return result
+
+    presence, observed, left = asyncio.run(exercise())
+    assert presence.state is PresenceKind.PERSON_PRESENT
+    assert observed.available is False and observed.unavailable_reason == "classification_failed"
+    assert left == []
 
 
 def test_camera_preview_snapshot_tracks_latest_frame_and_can_be_cleared():
@@ -266,7 +401,10 @@ def test_expression_observation_is_logged_before_it_becomes_stable(caplog):
     with caplog.at_level(logging.INFO, logger="robot.vision.pipeline"):
         asyncio.run(exercise())
 
-    assert caplog.messages == ["Visible expression observation: happiness (confidence 0.90)"]
+    assert "Visible expression observation: happiness (confidence 0.90)" in caplog.messages
+    assert caplog.messages.index("EXPR RAW: label=happiness confidence=0.9 monotonic=0.200") < caplog.messages.index(
+        "Visible expression observation: happiness (confidence 0.90)"
+    )
 
 
 def test_detection_is_rate_limited_while_frames_are_captured():

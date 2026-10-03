@@ -161,7 +161,7 @@ thresholds to conceal this failure. No runtime/detector settings were changed.
 ## Install and run
 
 Use the exact verified download/checksum and candidate PHOS launch commands in
-[installation](installation.md#5-start-phos). The existing Pi apt-installed
+[installation](installation.md#start-phos). The existing Pi apt-installed
 OpenCV/Picamera2 dependencies suffice for the intended path; no model export.
 Model files stay external to Git. Deployment is not performed by this evaluation.
 

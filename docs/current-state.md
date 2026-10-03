@@ -10,15 +10,21 @@ This file is an implementation handoff for coding agents. It records what is pre
 - Microphone available; exact interface remains TBD.
 - Display/eyes and Pi Camera/tracking are documented as operational in `docs/hardware.md`; exact camera model remains unspecified.
 
-## PHOS 1.2.0 release candidate
+## PHOS 1.3.0 release candidate
 
-The source version is **1.2.0**. It adds the authenticated Remote API,
-capability discovery, overlay arbitration and local API documentation to the
-implemented optional environmental, air-quality, IMU, WS2812B and visual-source
-paths. It is **not ready to tag**: complete-suite execution in a permissive
-environment and the target-Pi acceptance checklist remain required. See
-[release-1.2.0.md](release-1.2.0.md) for current gates; older release sections
+The source version is **1.3.0**. It adds stable Presence and Attention state,
+transient presence LED reactions, observed facial-expression telemetry, and a
+bounded expression-reaction policy to the existing Remote API and Web Admin.
+Automated regression has passed. It is **not ready to tag** until the target-Pi
+acceptance checklist is complete. See
+[release-1.3.0.md](release-1.3.0.md) for current gates; older release sections
 below are retained as implementation history, not current release status.
+
+The recommended Raspberry Pi OS installation path is now
+`./scripts/install-phos.sh`. It validates the supported platform, installs the
+canonical `.[all]` runtime dependency aggregate, prepares the configured local
+ONNX model, and performs software-only smoke checks. Physical hardware setup
+and acceptance remain separate.
 
 ## Present in the repository
 
@@ -29,6 +35,11 @@ below are retained as implementation history, not current release status.
 - Environmental overlays are additive display decoration: the interpreter also exposes independently confirmed temperature (`warm`/`cold`) and air-quality (`warning`/`bad`) intents, allowing sweat/snow and haze to coexist while the existing single priority `EnvironmentalState` continues to drive eyes and LEDs.
 - Behavior produces `FaceState` and handles blink/idle gaze.
 - Robot states include IDLE, LISTENING, THINKING, SPEAKING, SLEEPING and ERROR.
+- Presence/Attention vertical slice is implemented and covered by hardware-free
+  lifecycle tests: provider-neutral selected-face observations use confirmed
+  Presence edges and Attention `IDLE → ACQUIRING → TRACKING → LOST → IDLE`.
+  It supplies semantic gaze and optional configured LED enter/leave transients
+  through `BehaviorEngine` and `FaceState`, without identity recognition.
 
 ### UI / eyes
 - UI-neutral `FaceState` and expression/blink enums.
@@ -81,16 +92,30 @@ below are retained as implementation history, not current release status.
 
 ## Current development priority
 
-Complete PHOS 1.2.0 release acceptance: the optional sensor, motion, LED and
-overlay paths are implemented, but must be verified together on the target Pi.
-See [the 1.2.0 release record](release-1.2.0.md) for the exact automated and
-manual gates. Other scope remains deferred.
+Complete PHOS 1.3.0 release acceptance on the target Pi: Presence/Attention,
+expression observation/reaction, optional LED feedback, and existing
+sensor/overlay paths must be verified together. Automated regression is passed.
+See [the 1.3.0 release record](release-1.3.0.md) for the remaining manual gates.
+Other scope remains deferred.
 The expression-reaction implementation needs target-hardware verification with
 a selected lightweight ONNX model. Confirm the model's labels, dimensions and
 preprocessing, then verify semantic happy/surprised confirmation and UNKNOWN
 abstention on the Pi Camera/display while checking CPU use and clean shutdown.
 Neither current model has demonstrated reliable recognition; neutral activation
 requires calibration, not just a high softmax score.
+
+### Presence / Attention Pi acceptance (pending)
+
+This workspace does not establish physical Pi acceptance. On the Pi, start with
+no person (`no_one` / `idle`), enter and remain in frame (one confirmed
+`person_entered`, `idle → acquiring → tracking`, configured entered sweep and
+gaze), then move in each direction while checking environmental/expression
+visuals remain independent. A brief departure must not emit `person_left`; a
+confirmed departure must emit it once, run the configured reverse sweep and
+hold Attention in `lost` for `attention.lost_hold_ms` before `idle`. Re-entry
+must repeat one complete cycle. Finally verify Dashboard/Status update target
+details and show unavailable—not fake 100%—confidence when the detector has no
+confidence value.
 
 ## Selectable expression providers
 
@@ -132,6 +157,12 @@ Logging level, iris appearance and camera-preview settings are live-reloadable a
 PHOS restart uses the supplied user systemd service; manual launches reject
 browser restart. No OS reboot, AWS credential probe, automatic backup or Internet
 deployment.
+The General, System / Status and Sensors pages additionally use the authenticated
+Remote API for an initial semantic runtime snapshot and live SSE updates. The
+Waitress-compatible event stream reconnects with bounded backoff and retains
+last-known values; the Sensors dashboard presents optional sensor states
+independently and capabilities populate runtime controls. Server-rendered status
+remains available when JavaScript is unavailable.
 See [user manual](web-administration.md) for installation and recovery. Tests are
 hardware-free; Pi resource usage and LAN browser verification remain required.
 

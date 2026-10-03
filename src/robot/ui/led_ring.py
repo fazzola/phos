@@ -11,7 +11,7 @@ from typing import Callable, Optional, Tuple
 from robot.config import LED_RING_COLOR_RGB
 from robot.hardware.ws2812b import LEDRingProvider, RGB
 
-from .state import EnvironmentalLEDIntent, FaceState, VisualAccent
+from .state import EnvironmentalLEDIntent, FaceState, TransientVisualEffect, VisualAccent
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,24 @@ def led_frame(state: FaceState, settings: LEDRingSettings, now: float) -> LEDRin
             alert = _ACCENT_COLORS[VisualAccent.ALERT]
             pixels = [scale_rgb(alert, min(1.0, scale + strength * max(.25, pulse)))] * settings.led_count
             effect = motion
+    # Presence is below error/sleep and impact/shake, but above persistent state.
+    transient = state.transient_effect
+    if (transient is not None and state.transient_effect_duration_seconds is not None
+            and state.transient_effect_duration_seconds > 0
+            and accent not in {VisualAccent.ERROR, VisualAccent.SLEEPY}
+            and state.motion_state not in {"shake", "impact"}):
+        started = state.transient_effect_started_at or now
+        duration = state.transient_effect_duration_seconds
+        elapsed = max(0.0, now - started)
+        if elapsed < duration:
+            progress = min(settings.led_count, max(1, int(settings.led_count * elapsed / duration) + 1))
+            cyan = LED_RING_COLOR_RGB["cyan"]
+            pixels = [scale_rgb(color, scale)] * settings.led_count
+            direction = 1 if state.transient_effect_direction == "clockwise" else -1
+            for offset in range(progress):
+                strength = 1.0 if transient is TransientVisualEffect.PRESENCE_ENTERED else max(.25, 1 - offset / settings.led_count)
+                pixels[(settings.forward_led_index + direction * offset) % settings.led_count] = scale_rgb(cyan, min(1.0, settings.brightness * strength))
+            effect = transient.value
     target = state.motion_state.removeprefix("tilt_") if (settings.imu_reactions_enabled and state.motion_state
                                                              and state.motion_state.startswith("tilt_")
                                                              and accent not in {VisualAccent.ERROR, VisualAccent.SLEEPY}) else None

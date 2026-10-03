@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>System actions</h2>
+<h2>System Actions</h2>
 <p><a href="{{ url_for('configuration', area='status') }}">View read-only status</a></p>
 {% if not state.ok %}<p class="error" role="alert">{{ state.error }}</p>
 {% else %}
@@ -17,11 +17,11 @@
 <section><h3>Reload configuration</h3>
 <p>Validate the entire saved file and apply logging level, eye appearance and camera-preview settings without restarting PHOS. Other changed settings remain pending and require restart. Invalid configuration is never applied.</p>
 <form action="{{ url_for('reload_configuration') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Reload configuration</button></form></section>
-<section class="account"><h3>Restart PHOS</h3>
-<p>Stop and restart the PHOS application, briefly interrupting eyes, Vision and web access. This does not reboot the Raspberry Pi.</p>
+<section class="account danger-action"><p class="eyebrow">DISRUPTIVE ACTION</p><h3>Restart PHOS</h3>
+<p>Stop and restart the PHOS application, briefly interrupting eyes, Vision and web access. This does not reboot the Raspberry Pi. Confirmation is required.</p>
 {% if state.restart_supported %}<a href="{{ url_for('restart_phos') }}">Review and confirm restart</a>
 {% else %}<p>Unavailable for this launch. Install and start the documented user systemd service, or stop and start PHOS from the terminal.</p>{% endif %}</section>
 {% endif %}
-<p>Reboot Raspberry Pi is not supported in PHOS 1.2.0.</p>
+<p>Reboot Raspberry Pi is not supported in PHOS 1.3.0.</p>
 {% endif %}
 {% endblock %}

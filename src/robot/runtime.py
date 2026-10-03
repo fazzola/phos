@@ -19,8 +19,9 @@ from robot.sensors import (EnvironmentalSensorProvider, EnvironmentalSensorServi
                            AirQualitySensorProvider, AirQualitySensorService,
                            IMUSensorProvider, IMUSensorService)
 from robot.core import (BehaviorEngine, EnvironmentalInterpreter, EnvironmentalSettings, Event, EventBus,
-                        RobotCore, RobotState, STATE_CHANGED)
+                        RobotCore, RobotState, STATE_CHANGED, PresenceInterpreter, AttentionManager)
 from robot.core.behavior_engine import ENVIRONMENTAL_STATE_CHANGED, IMU_MOTION_STATE
+from robot.core.expression_reaction import ExpressionReactionPolicy
 from robot.ui import (CameraPreviewSettings, CameraPreviewView, EyeDisplay, EyeRenderer, LEDRingController,
                       LEDRingSettings, TkEyeDisplay)
 from robot.ui.runtime import EyeRenderLoop
@@ -53,6 +54,8 @@ class PhosRuntime:
         air_quality_service: Optional[AirQualitySensorService] = None,
         imu_service: Optional[IMUSensorService] = None,
         led_ring_controller: Optional[LEDRingController] = None,
+        presence_interpreter: Optional[PresenceInterpreter] = None,
+        attention_manager: Optional[AttentionManager] = None,
     ) -> None:
         self.core = core
         self._behavior_engine = behavior_engine
@@ -64,6 +67,8 @@ class PhosRuntime:
         self._air_quality_service = air_quality_service
         self._imu_service = imu_service
         self._led_ring_controller = led_ring_controller
+        self._presence_interpreter = presence_interpreter
+        self._attention_manager = attention_manager
         self._environmental_interpreter = None
         self._loop = None
         self._vision_changed: Optional[asyncio.Event] = None
@@ -340,7 +345,10 @@ class PhosRuntime:
                 except Exception as error:
                     logger.exception("PHOS subsystem failed", exc_info=error)
                     await self._transition_to_error(type(error).__name__)
-                    raise
+                    # The failure is represented by Core's ERROR state and
+                    # clean shutdown below; callers must not receive a second
+                    # exception while the failing subsystem is being released.
+                    return
         finally:
             for task in [stop_task, *supervisors]:
                 if not task.done():
@@ -423,9 +431,16 @@ def build_runtime(
         imu_shake_reaction_duration_seconds=config.imu_shake_reaction_duration_seconds,
         imu_impact_reaction_duration_seconds=config.imu_impact_reaction_duration_seconds,
         imu_reaction_cooldown_seconds=config.imu_reaction_cooldown_seconds,
+        presence_led_reactions_enabled=config.presence_led_reactions_enabled,
+        presence_led_entered_duration_seconds=config.presence_led_entered_duration_ms / 1000,
+        presence_led_left_duration_seconds=config.presence_led_left_duration_ms / 1000,
+        presence_led_entered_direction=config.presence_led_entered_direction,
+        presence_led_left_direction=config.presence_led_left_direction,
     )
     behavior_engine.configure_base_visual_source(config.base_visual_source)
     behavior_engine.configure_environment_overlays(config.environment_overlays_enabled)
+    presence = PresenceInterpreter(core.events)
+    attention = AttentionManager(core.events, lost_hold_seconds=config.attention_lost_hold_ms / 1000)
     vision_holder = {"pipeline": vision_pipeline}
     eye_render_loop = EyeRenderLoop(
         EyeRenderer(width=config.display_width, height=config.display_height,
@@ -437,6 +452,8 @@ def build_runtime(
         preview_supplier=lambda: _preview_view(vision_holder["pipeline"]),
         preview_settings=_preview_settings(config),
     )
+    core.add_behavior(presence)
+    core.add_behavior(attention)
     core.add_behavior(behavior_engine)
     core.add_behavior(eye_render_loop)
     runtime_holder = {}
@@ -496,7 +513,8 @@ def build_runtime(
     )
     runtime = PhosRuntime(core, behavior_engine, eye_render_loop, vision_pipeline=resolved_vision,
                        config=config, vision_forced=injected_vision, sensor_service=sensors,
-                       air_quality_service=air_quality, imu_service=imu, led_ring_controller=led_ring)
+                       air_quality_service=air_quality, imu_service=imu, led_ring_controller=led_ring,
+                       presence_interpreter=presence, attention_manager=attention)
     runtime_holder["runtime"] = runtime
     runtime._environmental_interpreter = environmental_interpreter
     return runtime
@@ -584,6 +602,17 @@ def _build_configured_vision(config: RuntimeConfig, events: EventBus) -> Optiona
         crop_margin=config.expression_crop_margin,
         preview_enabled=config.camera_preview_enabled,
         publish_face_position=config.face_tracking_enabled or config.expression_enabled,
+        observed_expression_provider=config.expression_provider if config.expression_enabled else None,
+        observed_expression_model=(config.resolve_path(config.expression_model_path).name
+                                   if config.expression_enabled and config.expression_provider == "local"
+                                   and config.expression_model_path is not None else None),
+        expression_reaction_policy=ExpressionReactionPolicy(
+            enabled=config.expression_reactions_enabled,
+            min_confidence=config.expression_reactions_min_confidence,
+            confirmation_ms=config.expression_reactions_confirmation_ms,
+            cooldown_ms=config.expression_reactions_cooldown_ms,
+            reaction_duration_ms=config.expression_reactions_duration_ms,
+        ),
     )
 
 

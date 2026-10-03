@@ -12,7 +12,9 @@ from .pipeline import (
     VisionStatus,
     crop_face,
     face_position,
+    vision_observation,
 )
+from robot.core.presence import VISION_FACE_OBSERVATION
 from .provider import (
     CameraProvider,
     ExpressionObservation,
@@ -20,6 +22,8 @@ from .provider import (
     FaceDetector,
     FacePosition,
     FaceRegion,
+    ObservedExpression,
+    VisionObservation,
     VisualExpression,
 )
 from .smoother import ExpressionSmoother
@@ -27,21 +31,25 @@ from .smoother import ExpressionSmoother
 __all__ = [
     "CameraProvider",
     "ExpressionObservation",
+    "ObservedExpression",
     "ExpressionProvider",
     "ExpressionSmoother",
     "FaceDetector",
     "FacePosition",
     "FaceRegion",
+    "VisionObservation",
     "OpenCVExpressionProvider",
     "OpenCVFaceDetector",
     "Picamera2CameraProvider",
     "VISION_EXPRESSION_STABLE",
     "VISION_FACE_LOST",
     "VISION_FACE_POSITION",
+    "VISION_FACE_OBSERVATION",
     "VisionPipeline",
     "VisionResult",
     "VisionStatus",
     "VisualExpression",
     "crop_face",
     "face_position",
+    "vision_observation",
 ]

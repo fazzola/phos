@@ -358,6 +358,62 @@ it does not silently change the camera contract. A future correction must update
 camera, detector and expression configurations together and repeat the baseline.
 See the [Picamera2 format mapping](https://github.com/raspberrypi/picamera2/blob/main/picamera2/request.py).
 
+## Presence and attention
+
+The selected face is converted to a provider-neutral observation before it
+reaches Presence or Attention. It carries a runtime-local target ID, normalized
+`x`/`y` position, normalized width/height, an optional detector confidence, and
+a timestamp. A missing detector confidence remains unavailable; PHOS does not
+invent `1.0` confidence.
+
+`PresenceInterpreter` uses enter/leave hysteresis to move between `no_one` and
+`person_present`. It emits `person_entered` and `person_left` only on confirmed
+edges, never for every video frame. `person_engaged` is reserved in the state
+vocabulary but no eye-contact, identity, voice, or other engagement inference
+is implemented.
+
+`AttentionManager` keeps target continuity separately from Presence. Its states
+are `idle`, `acquiring`, `tracking`, and `lost`: a candidate first enters
+`acquiring`, then a subsequent eligible observation enters `tracking`; failed
+acquisition returns to `idle`. A changed target ID emits `attention_target_changed`.
+Confirmed departure produces `attention_target_lost`, holds `lost` for canonical
+`attention.lost_hold_ms`, then returns to `idle`. Acquisition and loss events
+are edge-triggered. Behavior consumes this semantic state to update `FaceState`;
+neither component drives the renderer directly.
+
+### Observed facial expression
+
+The same selected-face path also exposes an **Observed Expression** read model:
+an uncertain expression-classifier result for the visible selected face. It is
+not a confirmed emotion, mood, identity, PHOS's expression, or an identity
+recognition result. The model retains the classifier's real confidence, provider
+and configured local-model filename when available; no detector or Presence
+confidence is substituted.
+
+Known provider aliases are normalized once in this read model (for example,
+`happiness` to `happy`, `surprise` to `surprised`, and `sadness` to `sad`),
+without treating an unknown value as neutral. The preview overlay and Remote
+API consume this same state. A valid result remains current for 1.5 seconds to
+bridge ordinary inference-frame gaps, then becomes explicitly unavailable.
+
+Face selection has independent sibling consumers: Presence answers whether
+someone is present, while the expression classifier describes the selected
+face's current visual resemblance. A disabled, slow, missing, or failing
+classifier produces an unavailable observation only. It never changes Presence
+hysteresis, Presence events, Attention, or face-loss semantics.
+
+### Expression reaction policy
+
+`ObservedExpression` is classifier telemetry; `ExpressionReactionPolicy` is a
+separate conservative behavioral decision; and `ReactionIntent` is a transient
+semantic request consumed by `BehaviorEngine`. PHOS's resulting expression is
+its own visual output, not a mirror of a person. The default policy requires
+70% confidence, 500ms label confirmation, and a 2500ms per-reaction cooldown;
+it displays reactions for 1200ms. Happy maps to HAPPY, surprised to SURPRISED,
+and sad/fearful/angry to CURIOUS; neutral, disgust and unknown labels do not
+react. Reactions are suppressed outside IDLE or during a motion transient, and
+preserve attention gaze and environmental overlays.
+
 ## Selectable local / AWS expressions
 
 `expression.provider` in `config/phos.json` selects `local` (existing ONNX

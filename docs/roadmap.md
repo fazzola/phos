@@ -1,5 +1,22 @@
 # PHOS roadmap
 
+## PHOS 1.3.0 — Presence, Attention & Expression Awareness
+
+PHOS 1.3.0 integrates provider-neutral Presence and Attention, observed
+facial-expression telemetry, cautious expression reactions, and realtime Web
+Admin/API visibility. See the [release record](release-1.3.0.md). Automated
+regression has passed; target-Pi acceptance remains before tagging.
+
+- [x] Versioned 1.3.0 source, package metadata and current-release documentation.
+- [x] Presence hysteresis, semantic enter/leave events, Attention lifecycle,
+  semantic gaze, and configurable LED arrival/departure sweeps.
+- [x] ObservedExpression read model and conservative ExpressionReactionPolicy
+  with confirmation, cooldown, bounded duration, lifecycle events and Web Admin visibility.
+- [x] Unified Raspberry Pi OS installer with the canonical `.[all]` runtime
+  aggregate, model preparation, smoke checks, and consolidated installation docs.
+- [x] Complete automated release regression and strict documentation validation.
+- [ ] Complete target-Pi camera/display/LED acceptance.
+
 ## PHOS 1.2.0 — Remote API release candidate
 
 PHOS 1.2.0 adds the authenticated, provider-neutral Remote API with semantic
@@ -74,6 +91,14 @@ remains separate from implementation.
   adapter provides an SSE compatibility stream at `/api/v1/events`.
 - [ ] Select and deploy a WebSocket-capable local server adapter if a true
   WebSocket transport is required; it must reuse the same service contract.
+
+## Attention / Presence vertical slice
+
+- [x] Provider-neutral selected-face observations, confirmed Presence edges,
+  Attention acquisition/tracking/loss, semantic gaze, configured LED sweeps,
+  application/SSE forwarding, and read-only Web Admin status.
+- [ ] Perform the target-Pi camera/display/LED acceptance checklist; automated
+  coverage does not establish physical behavior or calibration.
 
 ## Post-1.0 — explicitly deferred
 

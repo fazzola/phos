@@ -1,6 +1,37 @@
 {% extends 'base.html' %}
 {% block content %}
 <h2>{{ page.title }}</h2><p>{{ page.description }}</p>
+{% if area in ('general', 'status', 'sensors', 'controls') %}
+<section id="phos-operations" class="status live-dashboard" data-phos-live aria-label="Live PHOS status">
+<div class="section-heading"><div><p class="eyebrow">LIVE OPERATIONS</p><h3>Current PHOS Status</h3></div><div class="status-heading-side"><span class="status-pulse">● Semantic runtime</span>{% if area == 'general' %}<img class="dashboard-phos-image" src="{{ url_for('static', filename='images/phos-dashboard-black.webp') }}" alt="" loading="lazy">{% endif %}</div></div>
+<p class="live-note">Loading the current semantic snapshot…</p>
+{% if area != 'controls' %}
+<div class="domain-cards live-cards status-summary">
+<dl><dt>Robot state</dt><dd data-live="robot.state">Unavailable</dd><dt>PHOS Expression</dt><dd data-live="visual.expression">Unavailable</dd><dt>Motion</dt><dd data-live="motion.motion_state">Unavailable</dd></dl>
+<dl><dt>Environment</dt><dd data-live="environment.state">Unavailable</dd><dt>Visual source</dt><dd data-live="visual.source">Unavailable</dd><dt>Resolved overlay</dt><dd data-live="overlay.resolved">Unavailable</dd></dl>
+<dl><dt>BMP280 / environmental</dt><dd data-live="environment.status">Unavailable</dd><dt>CCS811</dt><dd data-live="ccs811.status">Unavailable</dd><dt>MPU6050</dt><dd data-live="motion.status">Unavailable</dd></dl>
+<dl><dt>Presence</dt><dd data-live="presence.state">Unavailable</dd><dt>People</dt><dd data-live="presence.people_count">Unavailable</dd><dt>Attention</dt><dd data-live="attention.state">Unavailable</dd><dt>Target</dt><dd data-live="attention.target_id">Unavailable</dd><dt>Target position</dt><dd data-live="attention.target_position">Unavailable</dd><dt>Target confidence</dt><dd data-live="attention.target_confidence">Unavailable</dd></dl>
+<dl><dt>Observed Expression</dt><dd data-live="observed_expression.label">Unavailable</dd><dt>Confidence</dt><dd data-live="observed_expression.confidence">Unavailable</dd><dt>Provider</dt><dd data-live="observed_expression.provider">Unavailable</dd><dt>Model</dt><dd data-live="observed_expression.model">Unavailable</dd><dt>Availability</dt><dd data-live="observed_expression.available">Unavailable</dd><dt>Observation</dt><dd data-live="observed_expression.detail">No valid facial-expression observation</dd><dt>Observed at</dt><dd data-live="observed_expression.observed_at">Unavailable</dd></dl>
+<dl><dt>Expression Reaction</dt><dd data-live="expression_reaction.active">Inactive</dd><dt>Reaction type</dt><dd data-live="expression_reaction.reaction">Unavailable</dd><dt>Source observed label</dt><dd data-live="expression_reaction.observed_label">Unavailable</dd></dl>
+</div>
+{% endif %}
+{% if area in ('general', 'sensors') %}
+<div class="domain-cards live-cards status-summary">
+<dl><dt>Temperature</dt><dd data-live="environment.temperature">Unavailable</dd><dt>Pressure</dt><dd data-live="environment.pressure">Unavailable</dd><dt>Environmental freshness</dt><dd data-live="environment.age">Unavailable</dd></dl>
+<dl><dt>eCO2</dt><dd data-live="ccs811.eco2">Unavailable</dd><dt>TVOC</dt><dd data-live="ccs811.tvoc">Unavailable</dd><dt>CCS811 freshness</dt><dd data-live="ccs811.age">Unavailable</dd></dl>
+<dl><dt>Interpreted motion</dt><dd data-live="motion.motion_state">Unavailable</dd><dt>MPU6050 freshness</dt><dd data-live="motion.age">Unavailable</dd><dt>Health</dt><dd data-live="health">Unavailable</dd></dl>
+</div>
+{% endif %}
+{% if area == 'controls' %}<div class="control-grid live-controls" data-live-controls hidden>
+<section class="control-card" data-control-section="robot-state"><h4>Robot State</h4><dl class="control-current"><dt>Current robot state</dt><dd data-live="robot.state">Unavailable</dd><dt>Allowed transitions</dt><dd data-live="robot.transitions">Unavailable</dd></dl><label for="robot-state">Robot state<select id="robot-state" data-command="set_robot_state"></select></label><div class="button-group"><button type="button" data-command-apply="set_robot_state">Apply robot state</button></div><p class="control-feedback" role="status" hidden></p></section>
+<section class="control-card" data-control-section="expression"><h4>Expression</h4><dl class="control-current"><dt>Current expression</dt><dd data-live="visual.expression">Unavailable</dd></dl><label for="expression">Expression<select id="expression" data-command="set_expression"></select></label><div class="button-group"><button type="button" data-command-apply="set_expression">Apply expression</button></div><p class="control-feedback" role="status" hidden></p></section>
+<section class="control-card" data-control-section="visual-source"><h4>Visual Source</h4><dl class="control-current"><dt>Current visual source</dt><dd data-live="visual.source">Unavailable</dd></dl><label for="visual-source">Visual source<select id="visual-source" data-command="set_visual_source"></select></label><div class="button-group"><button type="button" data-command-apply="set_visual_source">Apply visual source</button></div><p class="control-feedback" role="status" hidden></p></section>
+<section class="control-card" data-control-section="overlay"><h4>Overlay</h4><dl class="control-current"><dt>Resolved overlay</dt><dd data-live="overlay.resolved">Unavailable</dd><dt>Manual override</dt><dd data-live="overlay.override">Unavailable</dd></dl><label for="temperature-overlay">Temperature overlay<select id="temperature-overlay" data-overlay="temperature"></select></label><label for="air-quality-overlay">Air-quality overlay<select id="air-quality-overlay" data-overlay="air_quality"></select></label><label for="overlay-duration">Override duration (ms)<input id="overlay-duration" data-overlay="duration_ms" type="number" min="1" value="30000"></label><div class="button-group"><button type="button" data-overlay-submit>Apply overlay</button><button type="button" class="secondary-action" data-overlay-clear>Cancel overlay</button></div><p class="control-feedback" role="status" hidden></p></section>
+</div>{% endif %}
+<p class="live-error" role="status" hidden></p>
+<p class="live-success" role="status" hidden></p>
+</section>
+{% endif %}
 {% if related_area and related_area != area %}
 <p class="error">The complete configuration could not be validated. Check
 <a href="{{ url_for('configuration', area=related_area) }}#{{ error_group }}">{{ domains[related_area].title }}</a>.
@@ -13,28 +44,17 @@ Your edits on this page have not been saved.</p>
 <a class="domain-card" href="{{ url_for('configuration', area=key) }}"><strong>{{ domain.title }}</strong><span>{{ domain.description }}</span></a>
 {% endfor %}
 </div>
+{% elif area == 'controls' %}
+<p class="notice">Controls apply only supported semantic commands through the Remote API. Current runtime values are selected automatically; no command is sent when this page loads. Each action reports its result in its own section.</p>
+{% elif area == 'api' %}
+<section class="status"><h3>Remote API</h3><p>Use the authenticated API documentation and OpenAPI contract to inspect PHOS capabilities and endpoint models.</p>
+<p><a href="/docs">Open Swagger API documentation</a> · <a href="/openapi.json">View OpenAPI document</a></p></section>
+{% elif area == 'diagnostics' %}
+<section class="status" aria-label="Runtime diagnostics"><h3>Runtime diagnostics</h3>
+{% if runtime_state and runtime_state.ok %}<dl><dt>Last successful startup/reload</dt><dd>{{ runtime_state.loaded_at }}</dd><dt>Changes requiring restart</dt><dd>{{ runtime_state.restart_required | join(', ') or 'None' }}</dd><dt>Reloadable changes</dt><dd>{{ runtime_state.reloadable | join(', ') or 'None' }}</dd></dl>{% else %}<p>Runtime diagnostics are unavailable. {{ runtime_state.error if runtime_state else 'The lifecycle service is not available.' }}</p>{% endif %}
+<p><a href="{{ url_for('system') }}">Open System actions and configuration diagnostics</a></p></section>
 {% elif area == 'status' %}
-<section class="status" aria-label="Read-only system information">
-<dl><dt>PHOS version</dt><dd>{{ phos_version }}</dd>
-<dt>Configuration file in use</dt><dd><code>{{ config_path }}</code></dd>
-{% if runtime_state %}
-{% if runtime_state.ok %}
-<dt>Last successful startup/reload (UTC)</dt><dd>{{ runtime_state.loaded_at }}</dd>
-<dt>Changes requiring restart</dt><dd>{{ runtime_state.restart_required | join(', ') or 'None' }}</dd>
-<dt>Changes available to reload</dt><dd>{{ runtime_state.reloadable | join(', ') or 'None' }}</dd>
-{% else %}<dt>Live configuration metadata</dt><dd>{{ runtime_state.error }} Showing startup snapshot only.</dd>{% endif %}
-{% endif %}
-<dt>Runtime state</dt><dd>Not monitored by the administration worker.</dd>
-<dt>Startup expression provider</dt><dd>{{ active.expression.provider if active else 'Unavailable' }}</dd>
-<dt>Expressions at startup</dt><dd>{{ ('Enabled' if active.expression.enabled else 'Disabled') if active else 'Unavailable' }}</dd>
-<dt>Saved expression provider</dt><dd>{{ document.expression.provider }}</dd>
-<dt>AWS credential availability</dt><dd>Not checked. Credentials remain in the external AWS SDK chain.</dd>
-</dl>
-{% if runtime_state and not runtime_state.ok %}<p>Saved-versus-active comparison is unavailable until the lifecycle service responds.</p>
-{% elif active %}<p>{{ 'Saved configuration differs from active settings. Open System actions to reload or restart.' if pending else 'Saved configuration matches active settings.' }}</p>
-{% else %}<p>Active runtime settings are unavailable.</p>{% endif %}
-</section>
-<p><a href="{{ url_for('system') }}">System actions: reload configuration or restart PHOS</a></p>
+<p class="notice">This operational overview contains semantic state and sensor health summaries. Detailed runtime diagnostics are available in Diagnostics; lifecycle actions have their own System Actions page.</p>
 {% else %}
 <p class="notice">Editing saved settings. Save does not apply changes. Use System actions to reload eligible settings, or restart PHOS for hardware and other pending changes.</p>
 {% if area == 'sensors' %}
@@ -78,7 +98,7 @@ Your edits on this page have not been saved.</p>
 <dt>Reading age</dt><dd>{{ '%.1f seconds' | format(sensor.age_seconds) if sensor.age_seconds is not none else 'Unavailable' }}</dd>
 {% if sensor.error %}<dt>Sensor error</dt><dd>{{ sensor.error }}</dd>{% endif %}</dl>
 {% else %}<p>Sensor status unavailable. {{ runtime_state.error if runtime_state and not runtime_state.ok else 'The runtime sensor service has not reported a snapshot.' }}</p>{% endif %}
-<p><a href="{{ url_for('system') }}">System actions: Restart PHOS to apply sensor settings</a></p>
+<p>All sensor settings require Restart PHOS.</p>
 </section>
 <section class="status" aria-label="Current CCS811 air-quality readings">
 <h3>CCS811 air quality</h3>

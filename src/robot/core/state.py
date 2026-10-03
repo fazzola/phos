@@ -37,6 +37,23 @@ _ALLOWED_TRANSITIONS = {
 }
 
 
+def writable_states() -> tuple[RobotState, ...]:
+    """Stable remote-command vocabulary, in canonical enum order."""
+    return tuple(state for state in RobotState if state is not RobotState.ERROR)
+
+
+def allowed_next_states(current: RobotState) -> tuple[RobotState, ...]:
+    """Canonical reachable targets, excluding lifecycle-only ERROR."""
+    return tuple(state for state in RobotState
+                 if state is not RobotState.ERROR and state in _ALLOWED_TRANSITIONS[current])
+
+
+def transition_graph() -> dict[str, list[str]]:
+    """JSON-ready, deterministic projection of the authoritative graph."""
+    return {state.value: [target.value for target in allowed_next_states(state)]
+            for state in writable_states()}
+
+
 class RobotStateMachine:
     def __init__(self, initial_state: RobotState = RobotState.IDLE) -> None:
         self._state = initial_state

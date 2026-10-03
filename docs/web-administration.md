@@ -8,20 +8,12 @@ require restarting PHOS.
 
 ## Install and enable
 
-Use the [PHOS 1.2.0 installation procedure](installation.md#phos-120-reproducible-installation)
-on the Pi (Python 3.11+). In `/home/pi/phos`, create the virtual environment with
-`--system-site-packages` so the system camera/OpenCV/Tk packages remain available,
-then install the pinned web dependencies:
-
-```bash
-python3 -m venv --system-site-packages .venv
-.venv/bin/python -m pip install -r requirements-web.txt
-```
-
-`run_pi.sh` now copies that snapshot and the manual alongside source. Full
-package installs may use `.venv/bin/python -m pip install -c requirements-web.txt
-'.[web]'`. The existing Python >=3.9 package compatibility remains, but older
-interpreters are not the pinned release-installation baseline.
+Use the [PHOS 1.3.0 installation procedure](installation.md#recommended-unified-installer)
+on the Pi (Python 3.11+). Its unified installer creates the canonical environment
+and installs the Web Admin dependency together with all other supported runtime
+components. For contributor-specific manual setup, use the concise
+[advanced/manual path](installation.md#advancedmanual-installation); do not create
+a separate Web Admin environment.
 
 The canonical `web` section defaults to `enabled: false`, `host: "127.0.0.1"`,
 `port: 8080`, preserving eyes-only startup without extra dependencies. Existing
@@ -81,15 +73,33 @@ minute after a throttle message. This global budget prevents bypass by changing
 IP or cookies, but another LAN client can temporarily deny login. Limits reset
 on restart. There is no persistent lockout or remote password reset.
 
+## Live presence and attention
+
+Dashboard and PHOS Status show read-only Presence state, people count,
+Attention state, target ID, normalized target position, and confidence. The
+initial semantic status snapshot is refreshed through the existing SSE stream;
+edge events refresh the target state without adding a writable vision control.
+Unavailable detector confidence is displayed as unavailable rather than as a
+synthetic 100% value.
+
+They also show **Observed Expression** separately from PHOS's own expression.
+This is a read-only, uncertain selected-face classifier result with availability,
+label, confidence, provider, model and observation time. It may be unavailable
+while Presence remains present; it never controls PHOS expression or state.
+
 ## Edit configuration
 
-The administration home is **General**, with links to each configuration domain.
-The same navigation appears on every authenticated page and wraps for phone and
-tablet screens. The current page is highlighted. No frontend framework is needed.
+The administration home is **Dashboard**. The sidebar groups read-only and
+writable runtime pages under Basic/Advanced, followed by configuration Settings;
+**System Actions** is a direct Advanced destination. The same navigation appears
+on every authenticated page and wraps for phone and tablet screens. The current
+page is highlighted. No frontend framework is needed.
 
 | Page | Settings and actions |
 | --- | --- |
-| General | Overview and navigation to configuration pages. |
+| Dashboard | Read-only overview and navigation to configuration pages. |
+| PHOS Status | Read-only semantic state and subsystem health summary. |
+| Controls | Writable runtime actions only: separate Robot State, Expression, Visual Source and Overlay cards. Each action uses Remote API capabilities and reports feedback in its own card. |
 | Network | Web bind address (`web.host`) and port (`web.port`). Wi-Fi, DNS and other OS networking remain managed on the Pi. |
 | Display & Appearance | Display dimensions, fps, fullscreen and transitions; blink/gaze intervals, gaze smoothing and reaction decay from `behavior`. |
 | Vision | Face tracking, camera resolution/cadence, face detection and optional display-only camera picture-in-picture preview. |
@@ -98,9 +108,10 @@ tablet screens. The current page is highlighted. No frontend framework is needed
 | Sensors | Environmental type (BME280/BMP280), CCS811 air quality, environmental behavior and GY-521/MPU-6050 motion: enable, I2C address, polling and stale timeout; read-only current readings, interpreter state/reason, age and sensor health from the parent runtime. Hardware settings require Restart PHOS; IMU and environmental interpretation settings use Reload configuration. |
 | Logging | Supported log level, output file and expression diagnostics. No credential/payload logging switches; SDK credential/request debug output remains suppressed. |
 | Web Administration / Security | Enable/disable web administration (`web.enabled`) and a link to the separate password-change page. Passwords are never runtime configuration. |
-| System / Status | Read-only PHOS version, configuration path, active expression provider/enabled state, last successful load/reload time, saved-versus-active comparison and restart-required fields. Live robot state is not monitored and AWS credential availability is not probed. |
+| Diagnostics | Read-only runtime health and saved-versus-active configuration diagnostics. |
+| System Actions | Reload configuration and, when managed by the documented systemd service, review/confirm Restart PHOS. Restart is visually marked as disruptive; reboot and shutdown are not supported. |
 
-Active-configuration information is shown on **System / Status**, visually separated
+Active-configuration information is shown in **Diagnostics**, visually separated
 from editable settings. Deprecated CLI overrides, if used, appear in startup
 settings but do not change the saved file. The software version comes from the authoritative `robot.__version__`; live
 health is not inferred from the active configuration snapshot.
@@ -316,7 +327,7 @@ install the user service. Manual terminal launches support Reload, but browser
 Restart is unavailable; stop and rerun the normal startup command locally. Do
 not run a manual copy beside the service (camera/port contention). No reboot,
 arbitrary command execution, privileged shell or generic service-management API
-is provided. **Reboot Raspberry Pi** is deferred beyond 1.2.0.
+is provided. **Reboot Raspberry Pi** is deferred beyond 1.3.0.
 
 Configuration must remain valid until restart completes. Avoid concurrent local
 file edits; a file changed or hardware removed after validation can still cause

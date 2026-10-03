@@ -12,9 +12,9 @@ classes:
 
 <span class="phos-kicker">CAPABILITY MAP</span>
 
-PHOS 1.2.0 is a **source release candidate**. The capabilities below are
+PHOS 1.3.0 is a **source release candidate**. The capabilities below are
 implemented in the repository; optional hardware paths still require target-Pi
-acceptance before a release tag. See the [release record](release-1.2.0.md) for
+acceptance before a release tag. See the [release record](release-1.3.0.md) for
 the exact scope and gates.
 
 </div>
@@ -37,6 +37,16 @@ picture-in-picture.
 The Pi Camera pipeline selects and tracks a face, maps its position to bounded
 pupil gaze, and can use local ONNX or optional AWS expression providers. Stable
 observations—not raw labels—reach behavior.
+</article>
+
+<article class="phos-card" markdown>
+<span class="phos-status">IMPLEMENTED</span>
+### Presence and attention
+Confirmed face presence produces edge-triggered enter/leave semantics. A
+provider-neutral attention state acquires, tracks, holds loss and returns to
+idle, driving semantic gaze and optional configured LED sweeps. It is not face
+recognition, biometric identity, eye-contact, multi-person arbitration, or
+voice engagement.
 </article>
 
 <article class="phos-card" markdown>
@@ -93,8 +103,8 @@ PHOS exposes a versioned local REST API for robot status, health, environmental 
 
 <div class="phos-callout" markdown>
 
-Voice/STT, TTS playback, conversational LLM operation, Home Assistant, remote
-API and MCP are explicitly deferred. Existing interfaces or scaffolding are not
+Voice/STT, TTS playback, conversational LLM operation, Home Assistant and MCP
+are explicitly deferred. Existing interfaces or scaffolding are not
 evidence of an end-to-end delivered feature. [Read the roadmap](roadmap.md).
 
 </div>

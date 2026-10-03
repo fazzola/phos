@@ -34,6 +34,12 @@ def create_api(service):
     def environment(): return jsonify(service.environment())
     @api.get("/motion")
     def motion(): return jsonify(service.motion())
+    @api.get("/presence")
+    def presence(): return jsonify(service.presence())
+    @api.get("/attention")
+    def attention(): return jsonify(service.attention())
+    @api.get("/observed-expression")
+    def observed_expression(): return jsonify(service.observed_expression())
     @api.get("/health")
     def health(): return jsonify(service.health())
     @api.get("/capabilities")
@@ -72,9 +78,20 @@ def create_api(service):
                 service.emit_snapshot_changes()
                 while True:
                     try:
-                        event = queue.get(timeout=15)
-                        yield "event: %s\ndata: %s\n\n" % (event["type"], json.dumps(event, separators=(",", ":")))
+                        event = queue.get(timeout=.25)
+                        # Application-service values are JSON-safe.  Keep
+                        # this strict as a final adapter guard: browsers must
+                        # never receive Python's non-standard NaN/Infinity.
+                        yield "event: %s\ndata: %s\n\n" % (event["type"], json.dumps(event, separators=(",", ":"), allow_nan=False))
                     except Empty:
+                        # A separate-process WSGI worker can only ask its
+                        # parent for a bounded snapshot at this keepalive
+                        # boundary.  Direct in-process services simply emit
+                        # their already-published semantic changes here.
+                        # Runtime and WSGI worker are separate processes. A
+                        # short transient reaction must cross this bounded
+                        # snapshot bridge before it completes.
+                        service.emit_snapshot_changes()
                         yield ": keepalive\n\n"
             finally:
                 unsubscribe()

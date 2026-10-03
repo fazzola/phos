@@ -7,6 +7,7 @@ import math
 import os
 import tempfile
 import sys
+import copy
 from dataclasses import asdict, dataclass, fields, field
 from pathlib import Path
 from typing import Optional, Tuple
@@ -62,7 +63,14 @@ def load_document(path: Path = DEFAULT_CONFIG_PATH) -> dict:
             result[key] = value
         return result
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+        document = json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+        # Explicit schema evolution only: no general missing-key permissiveness.
+        if isinstance(document, dict) and Path(path).resolve() != DEFAULT_CONFIG_PATH.resolve() and any(section not in document for section in ("presence", "attention", "expression_reactions")):
+            default = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+            for section in ("presence", "attention", "expression_reactions"):
+                if section not in document:
+                    document[section] = copy.deepcopy(default[section])
+        return document
     except json.JSONDecodeError as error:
         raise ConfigurationError(f"{path}: invalid JSON at line {error.lineno}, column {error.colno}") from error
     except (OSError, UnicodeError) as error:
@@ -141,6 +149,8 @@ _SCHEMA = {
                  "imu_animation_color": "led_ring_imu_animation_color",
                  "directional_animation_speed": "led_ring_directional_animation_speed",
                  "bottom_led_index": "led_ring_bottom_led_index", "forward_led_index": "led_ring_forward_led_index", "clockwise": "led_ring_clockwise"},
+    "presence": {"led_reactions": {"enabled": "presence_led_reactions_enabled", "entered": {"duration_ms": "presence_led_entered_duration_ms", "direction": "presence_led_entered_direction"}, "left": {"duration_ms": "presence_led_left_duration_ms", "direction": "presence_led_left_direction"}}},
+    "attention": {"lost_hold_ms": "attention_lost_hold_ms"},
     "behavior": {"blink_interval_seconds": "blink_interval_seconds", "gaze_interval_seconds": "gaze_interval_seconds",
                  "face_gaze_smoothing": "face_gaze_smoothing", "reaction_decay_per_second": "reaction_decay_per_second",
                  "imu_reaction_strength": "imu_reaction_strength", "imu_tilt_gaze_strength": "imu_tilt_gaze_strength",
@@ -177,6 +187,7 @@ _SCHEMA = {
                   "swap_rb": "expression_swap_rb", "grayscale": "expression_grayscale"},
         "aws": "cloud_expression",
     },
+    "expression_reactions": {"enabled": "expression_reactions_enabled", "min_confidence": "expression_reactions_min_confidence", "confirmation_ms": "expression_reactions_confirmation_ms", "cooldown_ms": "expression_reactions_cooldown_ms", "reaction_duration_ms": "expression_reactions_duration_ms"},
     "sensors": {"environmental": {"type": "environmental_type",
                            "enabled": "environmental_enabled",
                            "i2c_address": "environmental_i2c_address",
@@ -238,6 +249,12 @@ class RuntimeConfig:
     """
 
     environmental_type: str
+    presence_led_reactions_enabled: bool
+    presence_led_entered_duration_ms: int
+    presence_led_entered_direction: str
+    presence_led_left_duration_ms: int
+    presence_led_left_direction: str
+    attention_lost_hold_ms: int
     environmental_enabled: bool
     environmental_i2c_address: str
     environmental_poll_interval_seconds: float
@@ -342,6 +359,11 @@ class RuntimeConfig:
     expression_grayscale: bool
     expression_diagnostics: bool
     expression_crop_margin: float
+    expression_reactions_enabled: bool
+    expression_reactions_min_confidence: float
+    expression_reactions_confirmation_ms: int
+    expression_reactions_cooldown_ms: int
+    expression_reactions_duration_ms: int
     log_level: str
     log_file: Optional[Path]
     _base_dir: Path = field(init=False, repr=False, compare=False)
@@ -545,10 +567,18 @@ class RuntimeConfig:
         for name in ("environmental_confirmation_seconds", "environmental_recovery_seconds"):
             number(name, minimum=1, inclusive=True, maximum=86400)
         number("expression_minimum_confidence", inclusive=True, maximum=1)
+        number("expression_reactions_min_confidence", inclusive=True, maximum=1)
+        for name in ("expression_reactions_confirmation_ms", "expression_reactions_cooldown_ms", "expression_reactions_duration_ms"):
+            number(name, minimum=0 if name != "expression_reactions_duration_ms" else 1, inclusive=True, maximum=60000, integer=True)
         number("expression_crop_margin", inclusive=True, maximum=.5)
-        for name in ("ccs811_enabled", "environmental_enabled", "environmental_behavior_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "led_ring_imu_reactions_enabled", "led_ring_clockwise", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
+        number("attention_lost_hold_ms", minimum=0, inclusive=True, maximum=60000, integer=True)
+        for name in ("presence_led_entered_duration_ms", "presence_led_left_duration_ms"):
+            number(name, minimum=1, inclusive=True, maximum=60000, integer=True)
+        if self.presence_led_entered_direction not in {"clockwise", "counter_clockwise"} or self.presence_led_left_direction not in {"clockwise", "counter_clockwise"}:
+            raise ConfigurationError("presence LED directions must be clockwise or counter_clockwise")
+        for name in ("ccs811_enabled", "environmental_enabled", "environmental_behavior_enabled", "imu_enabled", "led_ring_enabled", "led_ring_follow_visual_state", "led_ring_imu_reactions_enabled", "led_ring_clockwise", "presence_led_reactions_enabled", "web_enabled", "fullscreen", "face_tracking_enabled", "camera_preview_enabled",
                      "camera_preview_show_face_box", "camera_preview_show_expression", "camera_preview_show_confidence", "expression_enabled", "expression_neutral_enabled",
-                     "expression_swap_rb", "expression_grayscale", "expression_diagnostics"):
+                     "expression_swap_rb", "expression_grayscale", "expression_diagnostics", "expression_reactions_enabled"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(f"{name} must be a boolean")
         for name in ("camera_resolution", "expression_input_size", "detector_min_size"):

@@ -40,7 +40,10 @@ All read endpoints use `GET` and return JSON.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `/api/v1/status` | Consolidated robot, visual, environmental, motion and health state. |
+| `/api/v1/status` | Consolidated robot, visual, environmental, motion, health, presence and attention state. |
+| `/api/v1/presence` | Current provider-neutral Presence read model. |
+| `/api/v1/attention` | Current provider-neutral Attention read model and optional target. |
+| `/api/v1/observed-expression` | Latest uncertain classifier observation for the selected face. |
 | `/api/v1/state` | Lifecycle state and whether Core is running. |
 | `/api/v1/environment` | Environmental sensor availability and current measurements when available. |
 | `/api/v1/motion` | IMU availability and current semantic motion snapshot. |
@@ -59,6 +62,19 @@ curl --cookie "$PHOS_ADMIN_COOKIE" http://127.0.0.1:8080/api/v1/environment
 Unavailable, stale, disabled, and warming-up sensor states remain explicit in
 responses; clients must not treat missing measurements as current data.
 
+Presence has `no_one`, `person_present`, and reserved `person_engaged` values.
+Attention has `idle`, `acquiring`, `tracking`, and `lost` values. Target ID is
+runtime-local only; position is normalized, and confidence may be `null` when a
+detector did not supply it. These are observation models, not identity or
+biometric-recognition APIs.
+
+Observed Expression is independent telemetry, not PHOS's own visual expression
+and not a statement of a person's emotion. It returns HTTP 200 with
+`available: false` when no current classified face exists (or its 1.5-second
+freshness window has expired); this does not imply that Presence is `no_one`. When available, confidence is the actual classifier
+confidence. `observed_expression_changed` SSE events are emitted only when
+availability or label changes, not for confidence jitter alone.
+
 ## Capabilities
 
 `GET /api/v1/capabilities` is the discovery endpoint. `observable_states`
@@ -71,7 +87,7 @@ Current semantic command values are:
 | Command | Allowed values |
 | --- | --- |
 | `set_robot_state` | `idle`, `listening`, `thinking`, `speaking`, `sleeping` |
-| `set_expression` | `neutral`, `happy`, `surprised` |
+| `set_expression` | `neutral`, `happy`, `curious`, `surprised` |
 | `set_visual_source` | `manual`, `environment`, `state` |
 | `set_overlay.temperature` | `none`, `cold`, `warm` |
 | `set_overlay.air_quality` | `none`, `warning`, `bad` |
@@ -94,13 +110,22 @@ the form `{"error":{"code":...,"message":...,"details":...}}` with HTTP
 {"state":"sleeping"}
 ```
 
-Allowed values are `idle`, `listening`, `thinking`, `speaking`, and `sleeping`.
-`error` is observable only and is rejected as runtime-only. A successful response
+`/capabilities` lists the stable writable vocabulary; `error` is observable
+only and is rejected as runtime-only. The existing state machine enforces
+`IDLE → LISTENING → THINKING → SPEAKING → IDLE` with its documented sleeping
+alternatives, so a skipped transition returns HTTP `409` with
+`invalid_state_transition` and the current/target values. A successful response
 is the current robot-state document, for example:
 
 ```json
 {"state":"sleeping","running":true}
 ```
+
+`GET /api/v1/state` and the `robot` member of `/api/v1/status` also include
+`current`, stable `writable` values and state-dependent `allowed_next` values.
+`/api/v1/capabilities` exposes the complete stable transition graph under
+`commands.set_robot_state.transitions`; clients use it to disable invalid
+targets without removing or reordering the writable options.
 
 ```sh
 curl --cookie "$PHOS_ADMIN_COOKIE" -X POST http://127.0.0.1:8080/api/v1/state \
@@ -116,10 +141,13 @@ curl --cookie "$PHOS_ADMIN_COOKIE" -X POST http://127.0.0.1:8080/api/v1/expressi
   -H 'Content-Type: application/json' -d '{"expression":"happy"}'
 ```
 
-Allowed values are `neutral`, `happy`, and `surprised`. A successful response is
-`{"expression":"happy"}`. Other readable expressions, such as `worried`, are
-not writable and return `unsupported_expression_command`; unknown values return
-`invalid_expression`.
+Allowed values are `neutral`, `happy`, `curious`, and `surprised`. A successful response is
+`{"expression":"happy"}`. A command is a 30-second manual semantic override
+owned by `BehaviorEngine`: it takes priority over Vision, environment and motion
+expression selection while PHOS is IDLE, but RobotState visual intent remains
+higher priority. The response includes its remaining lifetime. Other readable
+expressions, such as `worried`, are not writable and return
+`unsupported_expression_command`; unknown values return `invalid_expression`.
 
 ### Set visual source
 
@@ -203,6 +231,12 @@ Invalid temperature, air-quality, or duration values return respectively
 emits bounded semantic events as `type`, `timestamp`, and `payload`, suppresses
 consecutive duplicate payloads, and sends keepalive comments while idle. The
 current WSGI deployment does not implement a WebSocket endpoint.
+
+The stream forwards `presence_changed`, `person_entered`, `person_left`,
+`attention_changed`, acquired/lost/changed attention target events,
+`observed_expression_changed`, and `expression_reaction_changed` in addition to
+existing semantic updates. The Web Admin uses these only for its read-only
+status display.
 
 ```sh
 curl --cookie "$PHOS_ADMIN_COOKIE" -N http://127.0.0.1:8080/api/v1/events
